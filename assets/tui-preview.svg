@@ -1,0 +1,46 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="900" rx="24" fill="#0B1220"/>
+  <rect x="40" y="36" width="1320" height="828" rx="18" fill="#111827" stroke="#243041" stroke-width="2"/>
+  <rect x="40" y="36" width="1320" height="54" rx="18" fill="#0F172A"/>
+  <circle cx="80" cy="63" r="8" fill="#EF4444"/>
+  <circle cx="106" cy="63" r="8" fill="#F59E0B"/>
+  <circle cx="132" cy="63" r="8" fill="#10B981"/>
+  <text x="164" y="69" fill="#E5E7EB" font-family="Menlo, Monaco, monospace" font-size="22">Claude Code-lite TUI</text>
+  <text x="860" y="69" fill="#93C5FD" font-family="Menlo, Monaco, monospace" font-size="18">Mode: default · Session: session-8ee9 · Busy: no</text>
+
+  <rect x="68" y="120" width="860" height="650" rx="14" fill="#0F172A" stroke="#243041" stroke-width="2"/>
+  <rect x="956" y="120" width="376" height="650" rx="14" fill="#0F172A" stroke="#243041" stroke-width="2"/>
+
+  <text x="92" y="158" fill="#F8FAFC" font-family="Menlo, Monaco, monospace" font-size="20">Conversation</text>
+  <text x="980" y="158" fill="#F8FAFC" font-family="Menlo, Monaco, monospace" font-size="20">Activity</text>
+
+  <text x="92" y="210" fill="#A7F3D0" font-family="Menlo, Monaco, monospace" font-size="18">&gt; user: read README.md</text>
+  <text x="92" y="252" fill="#C4B5FD" font-family="Menlo, Monaco, monospace" font-size="18">&lt; assistant: 我会先读取 README.md</text>
+  <text x="92" y="294" fill="#FDE68A" font-family="Menlo, Monaco, monospace" font-size="18">• tool_use: Read path=README.md</text>
+  <text x="92" y="336" fill="#93C5FD" font-family="Menlo, Monaco, monospace" font-size="18">• tool_result: { content: "# Claude Code-lite..." }</text>
+  <text x="92" y="378" fill="#C4B5FD" font-family="Menlo, Monaco, monospace" font-size="18">&lt; assistant: 已读取目标内容，下面是预览...</text>
+  <text x="92" y="440" fill="#64748B" font-family="Menlo, Monaco, monospace" font-size="18">[#1] tool_result (collapsed)</text>
+  <text x="92" y="492" fill="#A7F3D0" font-family="Menlo, Monaco, monospace" font-size="18">&gt; user: /inspect latest</text>
+  <text x="92" y="534" fill="#C4B5FD" font-family="Menlo, Monaco, monospace" font-size="18">&lt; assistant: Session Inspect</text>
+  <text x="92" y="576" fill="#C4B5FD" font-family="Menlo, Monaco, monospace" font-size="18">  summary: ready · Read · read README.md</text>
+  <text x="92" y="618" fill="#C4B5FD" font-family="Menlo, Monaco, monospace" font-size="18">  tools/errors: 1 / 0</text>
+
+  <text x="980" y="212" fill="#CBD5E1" font-family="Menlo, Monaco, monospace" font-size="17">Now Running</text>
+  <rect x="980" y="228" width="328" height="132" rx="10" fill="#111827"/>
+  <text x="1000" y="262" fill="#86EFAC" font-family="Menlo, Monaco, monospace" font-size="16">phase: done</text>
+  <text x="1000" y="294" fill="#E5E7EB" font-family="Menlo, Monaco, monospace" font-size="16">tool: Read</text>
+  <text x="1000" y="326" fill="#93C5FD" font-family="Menlo, Monaco, monospace" font-size="16">detail: permission granted</text>
+
+  <text x="980" y="404" fill="#CBD5E1" font-family="Menlo, Monaco, monospace" font-size="17">Recent Completed</text>
+  <rect x="980" y="420" width="328" height="268" rx="10" fill="#111827"/>
+  <text x="1000" y="456" fill="#E5E7EB" font-family="Menlo, Monaco, monospace" font-size="15">#1 08:41 Read README.md · 124ms</text>
+  <text x="1000" y="492" fill="#E5E7EB" font-family="Menlo, Monaco, monospace" font-size="15">#2 08:42 inspect latest · 19ms</text>
+  <text x="1000" y="528" fill="#E5E7EB" font-family="Menlo, Monaco, monospace" font-size="15">#3 08:44 export-session · 22ms</text>
+  <text x="1000" y="564" fill="#FCA5A5" font-family="Menlo, Monaco, monospace" font-size="15">#4 08:46 Shell denied · 4ms</text>
+
+  <text x="980" y="734" fill="#94A3B8" font-family="Menlo, Monaco, monospace" font-size="15">Keys</text>
+  <text x="980" y="762" fill="#64748B" font-family="Menlo, Monaco, monospace" font-size="14">Enter submit · Ctrl+F filter · Ctrl+E expand</text>
+
+  <rect x="68" y="796" width="1264" height="44" rx="12" fill="#0B1220" stroke="#243041" stroke-width="2"/>
+  <text x="92" y="824" fill="#93C5FD" font-family="Menlo, Monaco, monospace" font-size="18">Prompt&gt; /help</text>
+</svg>
