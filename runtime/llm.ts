@@ -390,9 +390,12 @@ const openAiProvider: LlmProvider = {
         return;
       }
 
-      if (typeof delta.content === "string" && delta.content.length > 0) {
-        accumulatedText += delta.content;
-        params.onTextDelta?.(accumulatedText);
+      if (delta.content !== undefined && delta.content !== null) {
+        const textContent = extractOpenAiText(delta.content);
+        if (textContent.length > 0) {
+          accumulatedText += textContent;
+          params.onTextDelta?.(accumulatedText);
+        }
       }
 
       for (const partial of delta.tool_calls ?? []) {

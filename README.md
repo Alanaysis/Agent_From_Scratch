@@ -33,13 +33,23 @@
 - 把值得学习的 runtime 设计拆成尽量清楚的层次
 - 让开发者可以在一个小代码库里理解 tool loop、permissions、session、TUI 这些关键问题
 
-## 当前能力
+## Dependencies
 
-- 可安装、可打包、可运行
-- TUI、REPL、headless chat 三种入口
-- 已接入真实 LLM provider 和 tool loop
-- 已具备 transcript、session index、权限确认、会话恢复、导出、清理等基础能力
-- 可通过 Bun 编译为不依赖 Node.js 的单文件可执行入口
+This project requires:
+
+**Runtime:**
+- Node.js >= 18
+
+**Development & Build:**
+- Bun (for building and running tests)
+- TypeScript compiler
+
+**Installation:**
+```bash
+npm install
+```
+
+This will install all dependencies listed in `package.json`.
 
 ## 适合谁
 

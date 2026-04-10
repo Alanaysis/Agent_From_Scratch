@@ -33,8 +33,11 @@ export const WriteTool: Tool<WriteInput, WriteOutput> = {
     };
   },
   async validateInput(input) {
-    if (!input.path.trim()) {
+    if (!input?.path || typeof input.path !== 'string' || !input.path.trim()) {
       return { result: false, message: "Path is required" };
+    }
+    if (typeof input.content !== 'string') {
+      return { result: false, message: "Content must be a string" };
     }
     return { result: true };
   },
@@ -53,7 +56,7 @@ export const WriteTool: Tool<WriteInput, WriteOutput> = {
   isReadOnly() {
     return false;
   },
-  isConcurrencySafe() {
-    return false;
+  isConcurrencySafe(): boolean {
+    return true;
   },
 };

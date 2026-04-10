@@ -32,7 +32,7 @@ export const ReadTool: Tool<ReadInput, ReadOutput> = {
     };
   },
   async validateInput(input) {
-    if (!input.path.trim()) {
+    if (!input?.path || typeof input.path !== 'string' || !input.path.trim()) {
       return { result: false, message: "Path is required" };
     }
     return { result: true };

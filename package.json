@@ -20,10 +20,13 @@
     "dev": "bun ./app/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "check": "bun run build && node ./bin/claude-code-lite.js --help",
-    "prepack": "bun run build"
+    "prepack": "bun run build",
+    "test": "bun test",
+    "coverage": "c8 bun test"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
+    "c8": "^11.0.0",
     "typescript": "^5.9.3"
   },
   "engines": {
@@ -36,5 +39,8 @@
     "tools",
     "developer-tools"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "c8": "^11.0.0"
+  }
 }

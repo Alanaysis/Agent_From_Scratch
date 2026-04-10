@@ -43,8 +43,14 @@ export const EditTool: Tool<EditInput, EditOutput> = {
     };
   },
   async validateInput(input) {
-    if (!input.path.trim()) {
+    if (!input?.path || typeof input.path !== 'string' || !input.path.trim()) {
       return { result: false, message: "Path is required" };
+    }
+    if (typeof input.oldString !== 'string') {
+      return { result: false, message: "oldString must be a string" };
+    }
+    if (typeof input.newString !== 'string') {
+      return { result: false, message: "newString must be a string" };
     }
     if (input.oldString === input.newString) {
       return { result: false, message: "oldString and newString must differ" };
@@ -66,7 +72,7 @@ export const EditTool: Tool<EditInput, EditOutput> = {
   isReadOnly() {
     return false;
   },
-  isConcurrencySafe() {
-    return false;
+  isConcurrencySafe(): boolean {
+    return true;
   },
 };

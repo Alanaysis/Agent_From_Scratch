@@ -55,7 +55,7 @@ export const ShellTool: Tool<ShellInput, ShellOutput> = {
     };
   },
   async validateInput(input) {
-    if (!input.command.trim()) {
+    if (!input?.command || !String(input.command).trim()) {
       return { result: false, message: "Command is required" };
     }
     return { result: true };

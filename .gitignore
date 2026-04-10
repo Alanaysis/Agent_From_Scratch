@@ -1,0 +1,16 @@
+node_modules/
+.env
+*.log
+.DS_Store
+
+# Claude-related settings and agent memory
+.claude/
+CLAUDE.md
+CLA_DE.md
+
+# Project documentation (not for git)
+MEMORY.md
+PLAN.md
+
+# Test coverage output
+coverage/
