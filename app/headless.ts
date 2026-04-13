@@ -109,7 +109,7 @@ type SessionsCommandOptions = {
   status?: SessionInfo["status"];
 };
 
-function parseTranscript(text: string): unknown[] {
+export function parseTranscript(text: string): unknown[] {
   return text
     .split("\n")
     .map((line) => line.trim())
@@ -123,7 +123,7 @@ function parseTranscript(text: string): unknown[] {
     });
 }
 
-function formatSessionList(
+export function formatSessionList(
   sessions: SessionInfo[],
   options?: SessionsCommandOptions,
 ): string {
@@ -170,7 +170,7 @@ function formatSessionList(
   return filters.length > 0 ? `[${filters.join(", ")}]\n${lines}` : lines;
 }
 
-function formatSessionMetadata(session: SessionInfo): string {
+export function formatSessionMetadata(session: SessionInfo): string {
   return [
     `session: ${session.id}`,
     `title: ${session.title || session.id}`,
@@ -188,7 +188,7 @@ function formatSessionMetadata(session: SessionInfo): string {
   ].join("\n");
 }
 
-function clipText(text: string, maxLength: number): string {
+export function clipText(text: string, maxLength: number): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
     return normalized;
@@ -196,7 +196,7 @@ function clipText(text: string, maxLength: number): string {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-function formatExportMessageEntry(message: Message): string {
+export function formatExportMessageEntry(message: Message): string {
   if (message.type === "user") {
     return `user: ${clipText(message.content, 240)}`;
   }
@@ -212,10 +212,10 @@ function formatExportMessageEntry(message: Message): string {
         ? `assistant: ${clipText(block.text, 400)}`
         : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`,
     )
-    .join("\n");
+    .join(" | ");
 }
 
-function formatInspectView(
+export function formatInspectView(
   cwd: string,
   session: SessionInfo,
   messages: Message[],
@@ -253,7 +253,7 @@ function formatInspectView(
   ].join("\n");
 }
 
-function formatCleanupSummary(
+export function formatCleanupSummary(
   removed: SessionInfo[],
   skippedCount: number,
   dryRun = false,
@@ -276,7 +276,7 @@ function formatCleanupSummary(
     .join("\n");
 }
 
-function formatMarkdownExport(
+export function formatMarkdownExport(
   session: SessionInfo,
   messages: Message[],
 ): string {
@@ -307,7 +307,7 @@ function formatMarkdownExport(
   ].join("\n");
 }
 
-function formatJsonExport(session: SessionInfo, messages: Message[]): string {
+export function formatJsonExport(session: SessionInfo, messages: Message[]): string {
   return JSON.stringify(
     {
       session,
@@ -334,7 +334,7 @@ function formatJsonExport(session: SessionInfo, messages: Message[]): string {
   );
 }
 
-function formatTranscriptEntry(message: Message): string {
+export function formatTranscriptEntry(message: Message): string {
   if (message.type === "user") {
     return `user: ${message.content}`;
   }
@@ -353,7 +353,7 @@ function formatTranscriptEntry(message: Message): string {
     .join("\n");
 }
 
-function formatTranscriptMessages(
+export function formatTranscriptMessages(
   messages: Message[],
   compact = false,
 ): string {
@@ -386,6 +386,147 @@ function formatTranscriptMessages(
   return messages
     .map((message, index) => `${index + 1}. ${formatTranscriptEntry(message)}`)
     .join("\n\n");
+}
+
+export function parseCommand(argv: string[]): ParsedCommand {
+  const [command, ...rest] = argv;
+  switch (command) {
+    case "help":
+    case "--help":
+    case "-h":
+      return {
+        kind: "meta",
+        output: formatHelp(),
+      };
+    case "--version":
+    case "-v":
+      return {
+        kind: "meta",
+        output: "claude-code-lite 0.1.0",
+      };
+    case "tools":
+      return {
+        kind: "meta",
+        output: `Available tools: ${getTools()
+          .map((tool) => tool.name)
+          .join(", ")}`,
+      };
+    case "sessions":
+      return {
+        kind: "utility",
+        utilityName: "sessions",
+        args: rest,
+      };
+    case "transcript":
+      return {
+        kind: "utility",
+        utilityName: "transcript",
+        args: rest,
+      };
+    case "inspect":
+      return {
+        kind: "utility",
+        utilityName: "inspect",
+        args: rest,
+      };
+    case "export-session":
+      return {
+        kind: "utility",
+        utilityName: "export-session",
+        args: rest,
+      };
+    case "rm-session":
+      return {
+        kind: "utility",
+        utilityName: "rm-session",
+        args: rest,
+      };
+    case "cleanup-sessions":
+      return {
+        kind: "utility",
+        utilityName: "cleanup-sessions",
+        args: rest,
+      };
+    case "chat":
+      return {
+        kind: "utility",
+        utilityName: "chat",
+        args: rest,
+      };
+    case "read":
+      return {
+        kind: "tool",
+        toolName: "Read",
+        toolInput: { path: rest[0] ?? "" },
+      };
+    case "write":
+      return {
+        kind: "tool",
+        toolName: "Write",
+        toolInput: {
+          path: rest[0] ?? "",
+          content: rest.slice(1).join(" "),
+        },
+      };
+    case "edit":
+      return {
+        kind: "tool",
+        toolName: "Edit",
+        toolInput: {
+          path: rest[0] ?? "",
+          oldString: rest[1] ?? "",
+          newString: rest.slice(2).join(" "),
+        },
+      };
+    case "shell":
+      return {
+        kind: "tool",
+        toolName: "Shell",
+        toolInput: { command: rest.join(" ") },
+      };
+    case "fetch":
+      return {
+        kind: "tool",
+        toolName: "WebFetch",
+        toolInput: {
+          url: rest[0] ?? "",
+          prompt: rest.slice(1).join(" "),
+        },
+      };
+    case "agent":
+      return {
+        kind: "tool",
+        toolName: "Agent",
+        toolInput: {
+          description: rest[0] ?? "",
+          prompt: rest[1] ?? "",
+          subagentType: rest[2],
+        },
+      };
+    case "tool":
+      return {
+        kind: "tool",
+        toolName: rest[0] ?? "",
+        toolInput: JSON.parse(rest.slice(1).join(" ") || "{}"),
+      };
+    default:
+      throw new Error(`Unknown command "${command}".\n\n${formatHelp()}`);
+  }
+}
+
+export function parseCommand(argv: string[]): ParsedCommand {
+  try {
+    return parseCommandInternal(argv);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Unknown command')) {
+      // Return meta result for unknown commands instead of throwing
+      return {
+        kind: "meta",
+        output: error.message,
+      };
+    }
+    throw error;
+  }
 }
 
 export function formatHelp(): string {
@@ -427,7 +568,7 @@ export function formatHelp(): string {
   ].join("\n");
 }
 
-function summarizeUnknown(value: unknown, maxLength = 120): string {
+export function summarizeUnknown(value: unknown, maxLength = 120): string {
   const text =
     typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -437,7 +578,7 @@ function summarizeUnknown(value: unknown, maxLength = 120): string {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-function summarizeToolInput(input: unknown): string {
+export function summarizeToolInput(input: unknown): string {
   if (typeof input !== "object" || input === null) {
     return summarizeUnknown(input, 60);
   }
@@ -461,14 +602,14 @@ function summarizeToolInput(input: unknown): string {
   return summarizeUnknown(input, 60);
 }
 
-function summarizeToolResult(message: Message): string {
+export function summarizeToolResult(message: Message): string {
   if (message.type !== "tool_result") {
     return "";
   }
   return summarizeUnknown(message.content, 80);
 }
 
-async function resolveSessionIdArg(
+export async function resolveSessionIdArg(
   cwd: string,
   rawSession: string | undefined,
 ): Promise<string | undefined> {
@@ -486,14 +627,14 @@ async function resolveSessionIdArg(
   return rawSession;
 }
 
-async function resolveSessionIdForChat(
+export async function resolveSessionIdForChat(
   cwd: string,
   rawSession: string | undefined,
 ): Promise<string | undefined> {
   return resolveSessionIdArg(cwd, rawSession);
 }
 
-async function parseChatCommandOptions(
+export async function parseChatCommandOptions(
   cwd: string,
   args: string[],
 ): Promise<ChatCommandOptions> {
@@ -530,7 +671,7 @@ async function parseChatCommandOptions(
   };
 }
 
-async function parseExportCommandOptions(
+export async function parseExportCommandOptions(
   cwd: string,
   args: string[],
 ): Promise<ExportCommandOptions> {
@@ -573,7 +714,7 @@ async function parseExportCommandOptions(
   return { sessionId, format, outputPath };
 }
 
-function buildSyntheticAssistant(
+export function buildSyntheticAssistant(
   toolName: string,
   toolInput: unknown,
 ): AssistantMessage {
@@ -591,7 +732,7 @@ function buildSyntheticAssistant(
   };
 }
 
-async function confirmOrThrow(
+export async function confirmOrThrow(
   message: string,
   autoApprove: boolean,
 ): Promise<void> {
@@ -611,7 +752,7 @@ async function confirmOrThrow(
   }
 }
 
-function parseCleanupCommandOptions(args: string[]): CleanupCommandOptions {
+export function parseCleanupCommandOptions(args: string[]): CleanupCommandOptions {
   let keep: number | undefined;
   let olderThanDays: number | undefined;
   let dryRun = false;
@@ -666,7 +807,7 @@ function parseCleanupCommandOptions(args: string[]): CleanupCommandOptions {
   return { keep, olderThanDays, dryRun, status };
 }
 
-function parseSessionsCommandOptions(args: string[]): SessionsCommandOptions {
+export function parseSessionsCommandOptions(args: string[]): SessionsCommandOptions {
   let limit: number | undefined;
   let status: SessionInfo["status"] | undefined;
 
@@ -698,7 +839,7 @@ function parseSessionsCommandOptions(args: string[]): SessionsCommandOptions {
   return { limit, status };
 }
 
-async function deleteSessionArtifacts(
+export async function deleteSessionArtifacts(
   cwd: string,
   sessionId: string,
 ): Promise<void> {
@@ -708,7 +849,7 @@ async function deleteSessionArtifacts(
   ]);
 }
 
-async function confirmWithSessionRule<Input>(
+export async function confirmWithSessionRule<Input>(
   message: string,
   autoApprove: boolean,
   tool: Tool<Input, unknown>,
@@ -739,7 +880,7 @@ async function confirmWithSessionRule<Input>(
   }
 }
 
-function createToolContext(
+export function createToolContext(
   cwd: string,
   appStateRef: { current: AppState },
   session: SessionEngine,
@@ -756,7 +897,7 @@ function createToolContext(
   };
 }
 
-function parseCommand(argv: string[]): ParsedCommand {
+export function parseCommand(argv: string[]): ParsedCommand {
   const [command, ...rest] = argv;
   switch (command) {
     case "help":

@@ -43,14 +43,17 @@ type PlannedAction =
       text: string;
     };
 
-function truncate(value: string, maxLength = 500): string {
+export function truncate(value: string | undefined | null, maxLength = 500): string {
+  if (!value || value.length === 0) {
+    return "";
+  }
   if (value.length <= maxLength) {
     return value;
   }
   return `${value.slice(0, maxLength)}\n...`;
 }
 
-function stringify(value: unknown): string {
+export function stringify(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
@@ -87,7 +90,7 @@ function createToolResultMessage(
   };
 }
 
-function summarizeReadResult(result: unknown): string {
+export function summarizeReadResult(result: unknown): string {
   const content =
     typeof result === "object" &&
     result !== null &&
@@ -98,7 +101,7 @@ function summarizeReadResult(result: unknown): string {
   return `我已经读取了目标内容。下面是预览：\n\n${truncate(content, 1200)}`;
 }
 
-function summarizeShellResult(result: unknown): string {
+export function summarizeShellResult(result: unknown): string {
   if (
     typeof result === "object" &&
     result !== null &&

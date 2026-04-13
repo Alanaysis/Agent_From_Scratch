@@ -1,5 +1,8 @@
 import readline from "readline/promises";
-import { stdin as input, stdout as output } from "process";
+
+// Export for testing purposes - allows dependency injection
+export const processStdin = process.stdin;
+export const processStdout = process.stdout;
 import { createInitialAppState, type AppState } from "../runtime/state";
 import { SessionEngine } from "../runtime/session";
 import { canUseTool, rememberPermissionRule } from "../permissions/engine";
@@ -17,7 +20,7 @@ export type ReplOptions = {
   autoApprove?: boolean;
 };
 
-function summarizeUnknown(value: unknown, maxLength = 120): string {
+export function summarizeUnknown(value: unknown, maxLength = 120): string {
   const text =
     typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -27,7 +30,7 @@ function summarizeUnknown(value: unknown, maxLength = 120): string {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-function summarizeToolInput(input: unknown): string {
+export function summarizeToolInput(input: unknown): string {
   if (typeof input !== "object" || input === null) {
     return summarizeUnknown(input, 60);
   }
@@ -46,7 +49,7 @@ function summarizeToolInput(input: unknown): string {
   return summarizeUnknown(input, 60);
 }
 
-function createContext(
+export function createContext(
   cwd: string,
   session: SessionEngine,
   appStateRef: { current: AppState },
@@ -63,7 +66,7 @@ function createContext(
   };
 }
 
-async function resolveResumeTarget(
+export async function resolveResumeTarget(
   cwd: string,
   raw: string | undefined,
 ): Promise<string | undefined> {
@@ -77,8 +80,11 @@ async function resolveResumeTarget(
   return raw;
 }
 
-export async function startRepl(options: ReplOptions): Promise<void> {
-  const rl = readline.createInterface({ input, output });
+export async function startRepl(
+  options: ReplOptions,
+  { stdin = processStdin, stdout = processStdout }: { stdin?: any; stdout?: any } = {},
+): Promise<void> {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
   const appStateRef = { current: createInitialAppState() };
   let session = new SessionEngine({
     id: createId("session"),
@@ -87,8 +93,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   let activeAbortController: AbortController | null = null;
   let interrupted = false;
 
-  output.write(`${formatHelp()}\n\n`);
-  output.write(
+  stdout.write(`${formatHelp()}\n\n`);
+  stdout.write(
     [
       "REPL commands:",
       "  /help",
@@ -110,7 +116,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     if (activeAbortController) {
       interrupted = true;
       activeAbortController.abort(new Error("User interrupted current turn"));
-      output.write("\n[interrupt] abort requested\n");
+      stdout.write("\n[interrupt] abort requested\n");
       return;
     }
     rl.close();
@@ -128,7 +134,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       }
 
       if (trimmed === "/help") {
-        output.write(
+        stdout.write(
           [
             "REPL commands:",
             "  /help",
@@ -154,7 +160,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
           id: createId("session"),
           cwd: options.cwd,
         });
-        output.write(`started ${session.sessionId}\n`);
+        stdout.write(`started ${session.sessionId}\n`);
         continue;
       }
 
@@ -164,7 +170,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
           ["sessions"],
           options.autoApprove ?? false,
         );
-        output.write(
+        stdout.write(
           `${typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2)}\n`,
         );
         continue;
@@ -174,7 +180,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         const [, rawTarget] = trimmed.split(/\s+/, 2);
         const target = await resolveResumeTarget(options.cwd, rawTarget);
         if (!target) {
-          output.write("no resumable session found\n");
+          stdout.write("no resumable session found\n");
           continue;
         }
         appStateRef.current = createInitialAppState();
@@ -185,7 +191,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         session.hydrateMessages(
           await readTranscriptMessages(options.cwd, target),
         );
-        output.write(`resumed ${target}\n`);
+        stdout.write(`resumed ${target}\n`);
         continue;
       }
 
@@ -196,7 +202,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
             trimmed.slice(1).trim().split(/\s+/),
             options.autoApprove ?? false,
           );
-          output.write(`${JSON.stringify(result, null, 2)}\n`);
+          stdout.write(`${JSON.stringify(result, null, 2)}\n`);
           continue;
         }
 
@@ -225,7 +231,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
           onAssistantTextDelta: (text) => {
             const delta = text.slice(lastAssistantText.length);
             if (delta) {
-              output.write(delta);
+              stdout.write(delta);
               lastAssistantText = text;
             }
           },
@@ -265,13 +271,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
             );
             if (toolUses.length > 0) {
               if (lastAssistantText) {
-                output.write("\n");
+                stdout.write("\n");
               }
               for (const toolUse of toolUses) {
                 const summary =
                   `${toolUse.name} ${summarizeToolInput(toolUse.input)}`.trim();
                 toolSummaries.set(toolUse.id, summary);
-                output.write(`[tool:start] ${summary}\n`);
+                stdout.write(`[tool:start] ${summary}\n`);
               }
             }
             continue;
@@ -281,11 +287,11 @@ export async function startRepl(options: ReplOptions): Promise<void> {
             const summary =
               toolSummaries.get(message.toolUseId) || message.toolUseId;
             if (message.isError) {
-              output.write(
+              stdout.write(
                 `[tool:error] ${summary} · ${summarizeUnknown(message.content, 80)}\n`,
               );
             } else {
-              output.write(
+              stdout.write(
                 `[tool:done] ${summary} · ${summarizeUnknown(message.content, 80)}\n`,
               );
             }
@@ -294,16 +300,16 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         }
 
         if (lastAssistantText) {
-          output.write("\n");
+          stdout.write("\n");
         }
         if (interrupted) {
-          output.write("[interrupt] current turn aborted\n");
+          stdout.write("[interrupt] current turn aborted\n");
         }
-        output.write(`[transcript] ${session.getTranscriptPath()}\n`);
+        stdout.write(`[transcript] ${session.getTranscriptPath()}\n`);
       } catch (error) {
         const interruptedNow = activeAbortController?.signal.aborted ?? false;
         const message = error instanceof Error ? error.message : String(error);
-        output.write(
+        stdout.write(
           interruptedNow
             ? "[interrupt] current turn aborted\n"
             : `${message}\n`,
