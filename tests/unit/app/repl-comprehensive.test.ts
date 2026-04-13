@@ -11,17 +11,25 @@ describe("repl.ts - comprehensive coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Create mock stdin with question capability
-    mockStdin = {
-      isTTY: true,
-      on: vi.fn(),
-      removeListener: vi.fn(),
-    };
+    // Create proper Readable/Writable stream mocks that support all readline requirements
+    const { Readable, Writable } = require('stream');
 
-    mockStdout = {
-      isTTY: true,
-      write: vi.fn(),
-    };
+    mockStdin = new Readable({
+      read() {},
+    });
+    mockStdin.isTTY = true;
+    mockStdin.listenerCount = (event: string) => 0;
+    mockStdin.removeListener = vi.fn();
+    mockStdin.resume = vi.fn();
+    mockStdin.pause = vi.fn();
+
+    mockStdout = new Writable({
+      write(chunk, encoding, callback) {
+        callback();
+      },
+    });
+    mockStdout.isTTY = true;
+    mockStdout.write = vi.fn().mockReturnThis();
 
     // Mock readline/promises - use process mocking instead of doMock
     const mockQuestion = vi.fn().mockResolvedValue("");

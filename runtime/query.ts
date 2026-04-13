@@ -29,7 +29,7 @@ export type QueryParams = {
   }) => Promise<boolean>;
 };
 
-type PlannedAction =
+export type PlannedAction =
   | {
       kind: "tool";
       toolName: string;
@@ -125,6 +125,9 @@ export function summarizeShellResult(result: unknown): string {
   }
   return `命令已执行。\n\n${truncate(stringify(result), 1200)}`;
 }
+
+// Re-export planPrompt as parseQuery for backward compatibility with tests
+export const parseQuery = planPrompt;
 
 function planPrompt(prompt: string): PlannedAction {
   const trimmed = prompt.trim();

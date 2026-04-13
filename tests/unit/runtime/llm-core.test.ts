@@ -526,3 +526,4 @@ describe("LLM config handling", () => {
     expect(validConfig.baseUrl).toBeDefined();
   });
 });
+

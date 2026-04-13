@@ -98,10 +98,27 @@ function wrapText(text: string, width: number): string[] {
 
     let line = rawLine;
     while (line.length > width) {
-      wrapped.push(line.slice(0, width));
-      line = line.slice(width);
+      // 尝试在单词边界处换行
+      let splitIndex = width;
+      if (line.charAt(width) !== ' ' && width > 0) {
+        // 查找最近的空格
+        const spaceIndex = line.lastIndexOf(' ', width);
+        if (spaceIndex > 0) {
+          splitIndex = spaceIndex;
+        }
+      }
+      wrapped.push(line.slice(0, splitIndex).trimEnd());
+      line = line.slice(splitIndex).trimStart();
+      
+      // 如果找不到空格或行的剩余部分仍然太长，强制截断
+      if (line.length > width && line.indexOf(' ') === -1) {
+        wrapped.push(line.slice(0, width));
+        line = line.slice(width);
+      }
     }
-    wrapped.push(line);
+    if (line) {
+      wrapped.push(line);
+    }
   }
 
   return wrapped;
@@ -402,6 +419,46 @@ function withPanelBorder(
   return normalized.slice(0, height);
 }
 
+function withSinglePanelBorder(
+  title: string,
+  lines: string[],
+  width: number,
+  height: number,
+): string[] {
+  const innerWidth = Math.max(8, width - 2);
+  const bodyRows = Math.max(0, height - 2);
+  const normalized = [
+    `┌${trimTextPlain(` ${title} `, innerWidth).replace(/ /g, "─")}┐`,
+    ...Array.from({ length: bodyRows }).map((_, index) => {
+      const line = lines[index] ?? "";
+      return `│ ${trimText(line, innerWidth - 2)} │`;
+    }),
+    `└${"─".repeat(innerWidth)}┘`,
+  ];
+  return normalized.slice(0, height);
+}
+
+function withSinglePanelBorderColored(
+  title: string,
+  lines: string[],
+  width: number,
+  height: number,
+  borderColor: string,
+): string[] {
+  const innerWidth = Math.max(8, width - 2);
+  const bodyRows = Math.max(0, height - 2);
+  
+  const normalized = [
+    `${borderColor}\x1b[1m┌${trimTextPlain(` ${title} `, innerWidth).replace(/ /g, "─")}┐\x1b[0m`,
+    ...Array.from({ length: bodyRows }).map((_, index) => {
+      const line = lines[index] ?? "";
+      return `${borderColor}\x1b[0m│ ${trimText(line, innerWidth - 2)} │`;
+    }),
+    `${borderColor}\x1b[1m└${"─".repeat(innerWidth)}┘\x1b[0m`,
+  ];
+  return normalized.slice(0, height);
+}
+
 function formatConversationLine(entry: ConversationEntry): string {
   if (entry.collapsible && entry.expanded === false) {
     return formatEntry({
@@ -420,15 +477,22 @@ function applyModalOverlay(
 ): string[] {
   const boxWidth = Math.min(width - 6, Math.max(36, Math.floor(width * 0.7)));
   const contentLines = wrapText(modal.message, Math.max(10, boxWidth - 4));
+  
+  // 模态框使用黄色边框
+  const YELLOW = "\x1b[33m";
+  const RESET = "\x1b[0m";
+  const BOLD = "\x1b[1m";
+  
   const boxLines = [
-    `┌${"─".repeat(boxWidth - 2)}┐`,
-    `│ ${trimTextPlain(modal.title, boxWidth - 4)} │`,
+    `${BOLD}${YELLOW}┌${"─".repeat(boxWidth - 2)}┐${RESET}`,
+    `${BOLD}${YELLOW}│ ${trimTextPlain(modal.title, boxWidth - 4)} │${RESET}`,
     `├${"─".repeat(boxWidth - 2)}┤`,
     ...contentLines.map((line) => `│ ${trimTextPlain(line, boxWidth - 4)} │`),
     `├${"─".repeat(boxWidth - 2)}┤`,
-    `│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │`,
+    `${YELLOW}│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │${RESET}`,
     `└${"─".repeat(boxWidth - 2)}┘`,
   ];
+  
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
   const startX = Math.max(0, Math.floor((width - boxWidth) / 2));
   const next = [...lines];
@@ -455,35 +519,65 @@ function renderScreen(
 ): void {
   const width = Math.max(60, output.columns ?? 80);
   const height = Math.max(20, output.rows ?? 24);
-  const sidebarWidth = width >= 110 ? 34 : 0;
-  const gutter = sidebarWidth > 0 ? 3 : 0;
-  const mainWidth = width - sidebarWidth - gutter;
-  const contentHeight = Math.max(8, height - 9);
-  const panelHeight = contentHeight + 2;
+  
+  // ANSI 颜色代码（移到函数开头）
+  const RESET = "\x1b[0m";
+  const BOLD = "\x1b[1m";
+  const CYAN = "\x1b[36m";
+  const GREEN = "\x1b[32m";
+  const YELLOW = "\x1b[33m";
+  const BLUE = "\x1b[34m";
+  const MAGENTA = "\x1b[35m";
+  const GRAY = "\x1b[90m";
+  const RED = "\x1b[31m";
+
+  // 移除侧边栏，使用单栏布局
+  const mainWidth = width - 4; // 留出左右边框空间
+  const contentHeight = Math.max(8, height - 10);
   const mode = getPermissionMode(state, runtimeRef);
+  
+  // 极简标题栏（无边框）
   const header = [
-    "Claude Code-lite TUI",
-    trimText(
-      `Mode: ${mode} · Session: ${state.currentSessionId} · Busy: ${state.busy ? "yes" : "no"} · Scroll: ${state.scrollOffset}`,
-      width,
-    ),
-    "".padEnd(width, "─"),
+    `${BOLD}${CYAN}Claude Code-lite TUI${RESET}`,
+    `${GRAY}Mode: ${mode} · Session: ${state.currentSessionId}${RESET}`,
+    "",
   ];
 
-  const messageLines = state.entries.flatMap((entry) =>
-    wrapText(formatConversationLine(entry), Math.max(20, mainWidth)),
-  );
+  const messageLines = state.entries.flatMap((entry) => {
+    // 为不同消息类型添加颜色
+    let coloredText = formatEntry(entry);
+    switch (entry.kind) {
+      case "user":
+        coloredText = `${BLUE}${coloredText}${RESET}`;
+        break;
+      case "assistant":
+        coloredText = `${GREEN}${coloredText}${RESET}`;
+        break;
+      case "tool":
+        coloredText = `${YELLOW}${coloredText}${RESET}`;
+        break;
+      case "result":
+        coloredText = `${GRAY}${coloredText}${RESET}`;
+        break;
+      case "error":
+        coloredText = `${RED}${coloredText}${RESET}`;
+        break;
+    }
+    return wrapText(coloredText, Math.max(20, mainWidth - 4));
+  });
+  
   if (state.streamingAssistantText.trim()) {
     messageLines.push(
       ...wrapText(
-        formatEntry({
+        `${GREEN}${formatEntry({
           kind: "assistant",
           text: `${state.streamingAssistantText}▌`,
-        }),
-        Math.max(20, mainWidth),
+        })}${RESET}`,
+        Math.max(20, mainWidth - 4),
       ),
     );
   }
+  
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
     state.scrollOffset = maxScroll;
@@ -493,46 +587,22 @@ function renderScreen(
     messageLines.length - contentHeight - state.scrollOffset,
   );
   const visibleMessages = messageLines.slice(start, start + contentHeight);
-  const sidebarLines =
-    sidebarWidth > 0 ? buildSidebar(state, sidebarWidth, contentHeight) : [];
-  const conversationPanel = withPanelBorder(
-    "Conversation",
-    visibleMessages,
-    mainWidth,
-    panelHeight,
-  );
-  const activityPanel =
-    sidebarWidth > 0
-      ? withPanelBorder("Activity", sidebarLines, sidebarWidth, panelHeight)
-      : [];
 
-  const body: string[] = [];
-  for (let i = 0; i < panelHeight; i += 1) {
-    const left = conversationPanel[i] ?? "".padEnd(mainWidth, " ");
-    if (sidebarWidth > 0) {
-      body.push(
-        `${left}${" ".repeat(gutter)}${activityPanel[i] ?? "".padEnd(sidebarWidth, " ")}`,
-      );
-    } else {
-      body.push(left);
-    }
-  }
-
-  const footerSeparator = "".padEnd(width, "─");
-  const statusLine = `Status: ${state.status}`;
-  const metaLine =
-    "Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit";
-  const promptLine = state.modal
-    ? "Modal active"
-    : `Prompt> ${state.inputBuffer}`;
-
+  // 极简风格，没有边框
   let lines = [
     ...header,
-    ...body,
-    footerSeparator,
-    ...wrapText(statusLine, width),
-    ...wrapText(metaLine, width),
-    ...wrapText(promptLine, width),
+    ...visibleMessages,
+    "",
+    `${GRAY}${"-".repeat(width)}${RESET}`,
+    state.status.includes("Error") || state.status.includes("failed") 
+      ? `${RED}Status: ${state.status}${RESET}`
+      : state.busy 
+        ? `${YELLOW}Status: ${state.status}${RESET}`
+        : `${GREEN}Status: ${state.status}${RESET}`,
+    `${GRAY}Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit${RESET}`,
+    state.modal
+      ? `${YELLOW}Modal active${RESET}`
+      : `${BLUE}Prompt> ${state.inputBuffer}${RESET}`,
   ].slice(0, height);
 
   if (state.modal) {
@@ -916,44 +986,51 @@ export async function startTui(options: TuiOptions): Promise<void> {
             state.streamingAssistantText = "";
           }
           await runtimeRef.current.session.recordMessages([message]);
-          state.entries.push(...makeConversationEntries(state, message));
-          if (message.type === "assistant") {
-            const toolUse = message.content.find(
-              (block) => block.type === "tool_use",
-            );
-            if (toolUse && toolUse.type === "tool_use") {
-              setCurrentActivity(state, {
-                phase: "running",
-                toolName: toolUse.name,
-                detail: "tool executing",
-              });
-              addActivityStep(state, `run ${toolUse.name}`, "tool", "info");
-            }
-          }
-          if (message.type === "tool_result") {
-            const previousToolName = state.currentActivity?.toolName;
-            const durationMs =
-              state.activityStartedAt === null
-                ? undefined
-                : Date.now() - state.activityStartedAt;
+          // 记录当前滚动位置是否在底部
+        const wasAtBottom = state.scrollOffset === 0;
+        
+        state.entries.push(...makeConversationEntries(state, message));
+        if (message.type === "assistant") {
+          const toolUse = message.content.find(
+            (block) => block.type === "tool_use",
+          );
+          if (toolUse && toolUse.type === "tool_use") {
             setCurrentActivity(state, {
-              phase: message.isError ? "failed" : "done",
-              toolName: previousToolName,
-              detail: message.isError
-                ? "tool returned error"
-                : "tool completed",
-              lastResult: message.isError ? "error" : "ok",
+              phase: "running",
+              toolName: toolUse.name,
+              detail: "tool executing",
             });
-            addActivityStep(
-              state,
-              `${message.isError ? "error" : "done"} ${previousToolName ?? message.toolUseId.slice(0, 10)}`,
-              message.isError ? "error" : "tool",
-              message.isError ? "failed" : "done",
-              durationMs,
-            );
+            addActivityStep(state, `run ${toolUse.name}`, "tool", "info");
           }
+        }
+        if (message.type === "tool_result") {
+          const previousToolName = state.currentActivity?.toolName;
+          const durationMs =
+            state.activityStartedAt === null
+              ? undefined
+              : Date.now() - state.activityStartedAt;
+          setCurrentActivity(state, {
+            phase: message.isError ? "failed" : "done",
+            toolName: previousToolName,
+            detail: message.isError
+              ? "tool returned error"
+              : "tool completed",
+            lastResult: message.isError ? "error" : "ok",
+          });
+          addActivityStep(
+            state,
+            `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`,
+            message.isError ? "error" : "tool",
+            message.isError ? "failed" : "done",
+            durationMs,
+          );
+        }
+        
+        // 只有当用户之前在底部时，才自动滚动到底部
+        if (wasAtBottom) {
           state.scrollOffset = 0;
-          renderScreen(state, runtimeRef);
+        }
+        renderScreen(state, runtimeRef);
         }
       }
 
@@ -1052,6 +1129,12 @@ export async function startTui(options: TuiOptions): Promise<void> {
     if (key.ctrl && key.name === "f") {
       state.timelineFilter = cycleTimelineFilter(state.timelineFilter);
       state.status = `Timeline filter: ${state.timelineFilter}`;
+      renderScreen(state, runtimeRef);
+      return;
+    }
+
+    if (key.ctrl && key.name === "l") {
+      output.write("\x1b[2J\x1b[H");
       renderScreen(state, runtimeRef);
       return;
     }

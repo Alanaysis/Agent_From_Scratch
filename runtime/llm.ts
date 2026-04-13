@@ -146,13 +146,25 @@ export function getLlmConfigFromEnv(): LlmConfig | null {
   };
 }
 
-function extractOpenAiText(content: OpenAiContent | undefined): string {
+export function extractOpenAiText(content: OpenAiContent | undefined): string {
   if (typeof content === "string") {
     return content;
+  }
+  // Handle single object with text property
+  if (
+    typeof content === "object" &&
+    content !== null &&
+    "text" in content &&
+    typeof content.text === "string"
+  ) {
+    return content.text;
   }
   if (Array.isArray(content)) {
     return content
       .map((part) => {
+        if (typeof part === "undefined") {
+          return "";
+        }
         if (
           typeof part === "object" &&
           part !== null &&
@@ -169,7 +181,21 @@ function extractOpenAiText(content: OpenAiContent | undefined): string {
   return "";
 }
 
-function parseToolArguments(raw: string): unknown {
+export function parseToolArguments(raw: string | null | undefined): unknown {
+  // Handle non-string types by checking if it's already a primitive or object
+  if (raw === null || raw === undefined) {
+    return {};
+  }
+  // If it's not a string, check the type
+  const rawType = typeof raw;
+  if (rawType !== "string") {
+    // For non-string types, convert to JSON and parse
+    try {
+      return JSON.parse(String(raw));
+    } catch {
+      return {};
+    }
+  }
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
@@ -177,7 +203,7 @@ function parseToolArguments(raw: string): unknown {
   }
 }
 
-function toOpenAiMessages(
+export function toOpenAiMessages(
   messages: Message[],
   systemPrompt: string[],
   config: LlmConfig,

@@ -2,6 +2,7 @@ node_modules/
 .env
 *.log
 .DS_Store
+.claude-code-lite/
 
 # Claude-related settings and agent memory
 .claude/

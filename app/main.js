@@ -649,7 +649,7 @@ var ShellTool = {
     };
   },
   async validateInput(input) {
-    if (!input.command.trim()) {
+    if (!input?.command || !String(input.command).trim()) {
       return { result: false, message: "Command is required" };
     }
     return { result: true };
@@ -751,7 +751,39 @@ function getLlmConfigFromEnv() {
     anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01"
   };
 }
+function extractOpenAiText(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (typeof content === "object" && content !== null && "text" in content && typeof content.text === "string") {
+    return content.text;
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "undefined") {
+        return "";
+      }
+      if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
+        return part.text;
+      }
+      return "";
+    }).filter(Boolean).join(`
+`);
+  }
+  return "";
+}
 function parseToolArguments(raw) {
+  if (raw === null || raw === undefined) {
+    return {};
+  }
+  const rawType = typeof raw;
+  if (rawType !== "string") {
+    try {
+      return JSON.parse(String(raw));
+    } catch {
+      return {};
+    }
+  }
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
@@ -916,9 +948,12 @@ var openAiProvider = {
       if (!delta) {
         return;
       }
-      if (typeof delta.content === "string" && delta.content.length > 0) {
-        accumulatedText += delta.content;
-        params.onTextDelta?.(accumulatedText);
+      if (delta.content !== undefined && delta.content !== null) {
+        const textContent = extractOpenAiText(delta.content);
+        if (textContent.length > 0) {
+          accumulatedText += textContent;
+          params.onTextDelta?.(accumulatedText);
+        }
       }
       for (const partial of delta.tool_calls ?? []) {
         const existing = toolCallsByIndex.get(partial.index) ?? {
@@ -1044,6 +1079,9 @@ async function runLlmTurn(params) {
 
 // runtime/query.ts
 function truncate(value, maxLength = 500) {
+  if (!value || value.length === 0) {
+    return "";
+  }
   if (value.length <= maxLength) {
     return value;
   }
@@ -1517,8 +1555,7 @@ function formatExportMessageEntry(message) {
     const status = message.isError ? "tool_error" : "tool_result";
     return `${status}(${message.toolUseId}): ${summarizeUnknown(message.content, 400)}`;
   }
-  return message.content.map((block) => block.type === "text" ? `assistant: ${clipText(block.text, 400)}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`).join(`
-`);
+  return message.content.map((block) => block.type === "text" ? `assistant: ${clipText(block.text, 400)}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`).join(" | ");
 }
 function formatInspectView(cwd, session, messages, recentCount = 8) {
   const recentMessages = messages.slice(-recentCount);
@@ -1627,6 +1664,131 @@ function formatTranscriptMessages(messages, compact = false) {
   return messages.map((message, index) => `${index + 1}. ${formatTranscriptEntry(message)}`).join(`
 
 `);
+}
+function parseCommand(argv) {
+  const [command, ...rest] = argv;
+  switch (command) {
+    case "help":
+    case "--help":
+    case "-h":
+      return {
+        kind: "meta",
+        output: formatHelp()
+      };
+    case "--version":
+    case "-v":
+      return {
+        kind: "meta",
+        output: "claude-code-lite 0.1.0"
+      };
+    case "tools":
+      return {
+        kind: "meta",
+        output: `Available tools: ${getTools().map((tool) => tool.name).join(", ")}`
+      };
+    case "sessions":
+      return {
+        kind: "utility",
+        utilityName: "sessions",
+        args: rest
+      };
+    case "transcript":
+      return {
+        kind: "utility",
+        utilityName: "transcript",
+        args: rest
+      };
+    case "inspect":
+      return {
+        kind: "utility",
+        utilityName: "inspect",
+        args: rest
+      };
+    case "export-session":
+      return {
+        kind: "utility",
+        utilityName: "export-session",
+        args: rest
+      };
+    case "rm-session":
+      return {
+        kind: "utility",
+        utilityName: "rm-session",
+        args: rest
+      };
+    case "cleanup-sessions":
+      return {
+        kind: "utility",
+        utilityName: "cleanup-sessions",
+        args: rest
+      };
+    case "chat":
+      return {
+        kind: "utility",
+        utilityName: "chat",
+        args: rest
+      };
+    case "read":
+      return {
+        kind: "tool",
+        toolName: "Read",
+        toolInput: { path: rest[0] ?? "" }
+      };
+    case "write":
+      return {
+        kind: "tool",
+        toolName: "Write",
+        toolInput: {
+          path: rest[0] ?? "",
+          content: rest.slice(1).join(" ")
+        }
+      };
+    case "edit":
+      return {
+        kind: "tool",
+        toolName: "Edit",
+        toolInput: {
+          path: rest[0] ?? "",
+          oldString: rest[1] ?? "",
+          newString: rest.slice(2).join(" ")
+        }
+      };
+    case "shell":
+      return {
+        kind: "tool",
+        toolName: "Shell",
+        toolInput: { command: rest.join(" ") }
+      };
+    case "fetch":
+      return {
+        kind: "tool",
+        toolName: "WebFetch",
+        toolInput: {
+          url: rest[0] ?? "",
+          prompt: rest.slice(1).join(" ")
+        }
+      };
+    case "agent":
+      return {
+        kind: "tool",
+        toolName: "Agent",
+        toolInput: {
+          description: rest[0] ?? "",
+          prompt: rest[1] ?? "",
+          subagentType: rest[2]
+        }
+      };
+    case "tool":
+      return {
+        kind: "tool",
+        toolName: rest[0] ?? "",
+        toolInput: JSON.parse(rest.slice(1).join(" ") || "{}")
+      };
+    default:
+      throw new Error(`Unknown command "${command}".
+
+${formatHelp()}`);
+  }
 }
 function formatHelp() {
   return [
@@ -1919,131 +2081,6 @@ function createToolContext(cwd, appStateRef, session, abortController) {
       appStateRef.current = updater(appStateRef.current);
     }
   };
-}
-function parseCommand(argv) {
-  const [command, ...rest] = argv;
-  switch (command) {
-    case "help":
-    case "--help":
-    case "-h":
-      return {
-        kind: "meta",
-        output: formatHelp()
-      };
-    case "--version":
-    case "-v":
-      return {
-        kind: "meta",
-        output: "claude-code-lite 0.1.0"
-      };
-    case "tools":
-      return {
-        kind: "meta",
-        output: `Available tools: ${getTools().map((tool) => tool.name).join(", ")}`
-      };
-    case "sessions":
-      return {
-        kind: "utility",
-        utilityName: "sessions",
-        args: rest
-      };
-    case "transcript":
-      return {
-        kind: "utility",
-        utilityName: "transcript",
-        args: rest
-      };
-    case "inspect":
-      return {
-        kind: "utility",
-        utilityName: "inspect",
-        args: rest
-      };
-    case "export-session":
-      return {
-        kind: "utility",
-        utilityName: "export-session",
-        args: rest
-      };
-    case "rm-session":
-      return {
-        kind: "utility",
-        utilityName: "rm-session",
-        args: rest
-      };
-    case "cleanup-sessions":
-      return {
-        kind: "utility",
-        utilityName: "cleanup-sessions",
-        args: rest
-      };
-    case "chat":
-      return {
-        kind: "utility",
-        utilityName: "chat",
-        args: rest
-      };
-    case "read":
-      return {
-        kind: "tool",
-        toolName: "Read",
-        toolInput: { path: rest[0] ?? "" }
-      };
-    case "write":
-      return {
-        kind: "tool",
-        toolName: "Write",
-        toolInput: {
-          path: rest[0] ?? "",
-          content: rest.slice(1).join(" ")
-        }
-      };
-    case "edit":
-      return {
-        kind: "tool",
-        toolName: "Edit",
-        toolInput: {
-          path: rest[0] ?? "",
-          oldString: rest[1] ?? "",
-          newString: rest.slice(2).join(" ")
-        }
-      };
-    case "shell":
-      return {
-        kind: "tool",
-        toolName: "Shell",
-        toolInput: { command: rest.join(" ") }
-      };
-    case "fetch":
-      return {
-        kind: "tool",
-        toolName: "WebFetch",
-        toolInput: {
-          url: rest[0] ?? "",
-          prompt: rest.slice(1).join(" ")
-        }
-      };
-    case "agent":
-      return {
-        kind: "tool",
-        toolName: "Agent",
-        toolInput: {
-          description: rest[0] ?? "",
-          prompt: rest[1] ?? "",
-          subagentType: rest[2]
-        }
-      };
-    case "tool":
-      return {
-        kind: "tool",
-        toolName: rest[0] ?? "",
-        toolInput: JSON.parse(rest.slice(1).join(" ") || "{}")
-      };
-    default:
-      throw new Error(`Unknown command "${command}".
-
-${formatHelp()}`);
-  }
 }
 async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
   const parsed = parseCommand(argv);
@@ -2356,7 +2393,8 @@ async function runHeadless(options) {
 
 // app/repl.ts
 import readline2 from "readline/promises";
-import { stdin as input2, stdout as output2 } from "process";
+var processStdin = process.stdin;
+var processStdout = process.stdout;
 function summarizeUnknown2(value, maxLength = 120) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? "";
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -2365,23 +2403,23 @@ function summarizeUnknown2(value, maxLength = 120) {
   }
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
-function summarizeToolInput2(input3) {
-  if (typeof input3 !== "object" || input3 === null) {
-    return summarizeUnknown2(input3, 60);
+function summarizeToolInput2(input2) {
+  if (typeof input2 !== "object" || input2 === null) {
+    return summarizeUnknown2(input2, 60);
   }
-  if ("path" in input3 && typeof input3.path === "string") {
-    return input3.path;
+  if ("path" in input2 && typeof input2.path === "string") {
+    return input2.path;
   }
-  if ("command" in input3 && typeof input3.command === "string") {
-    return summarizeUnknown2(input3.command, 60);
+  if ("command" in input2 && typeof input2.command === "string") {
+    return summarizeUnknown2(input2.command, 60);
   }
-  if ("url" in input3 && typeof input3.url === "string") {
-    return input3.url;
+  if ("url" in input2 && typeof input2.url === "string") {
+    return input2.url;
   }
-  if ("description" in input3 && typeof input3.description === "string") {
-    return summarizeUnknown2(input3.description, 60);
+  if ("description" in input2 && typeof input2.description === "string") {
+    return summarizeUnknown2(input2.description, 60);
   }
-  return summarizeUnknown2(input3, 60);
+  return summarizeUnknown2(input2, 60);
 }
 function createContext(cwd, session, appStateRef, abortController) {
   return {
@@ -2404,8 +2442,8 @@ async function resolveResumeTarget(cwd, raw) {
   }
   return raw;
 }
-async function startRepl(options) {
-  const rl = readline2.createInterface({ input: input2, output: output2 });
+async function startRepl(options, { stdin = processStdin, stdout = processStdout } = {}) {
+  const rl = readline2.createInterface({ input: stdin, output: stdout });
   const appStateRef = { current: createInitialAppState() };
   let session = new SessionEngine({
     id: createId("session"),
@@ -2413,10 +2451,10 @@ async function startRepl(options) {
   });
   let activeAbortController = null;
   let interrupted = false;
-  output2.write(`${formatHelp()}
+  stdout.write(`${formatHelp()}
 
 `);
-  output2.write([
+  stdout.write([
     "REPL commands:",
     "  /help",
     "  /new",
@@ -2436,7 +2474,7 @@ async function startRepl(options) {
     if (activeAbortController) {
       interrupted = true;
       activeAbortController.abort(new Error("User interrupted current turn"));
-      output2.write(`
+      stdout.write(`
 [interrupt] abort requested
 `);
       return;
@@ -2454,7 +2492,7 @@ async function startRepl(options) {
         break;
       }
       if (trimmed === "/help") {
-        output2.write([
+        stdout.write([
           "REPL commands:",
           "  /help",
           "  /new",
@@ -2478,13 +2516,13 @@ async function startRepl(options) {
           id: createId("session"),
           cwd: options.cwd
         });
-        output2.write(`started ${session.sessionId}
+        stdout.write(`started ${session.sessionId}
 `);
         continue;
       }
       if (trimmed === "/sessions") {
         const result = await executeCliCommand(options.cwd, ["sessions"], options.autoApprove ?? false);
-        output2.write(`${typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2)}
+        stdout.write(`${typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2)}
 `);
         continue;
       }
@@ -2492,7 +2530,7 @@ async function startRepl(options) {
         const [, rawTarget] = trimmed.split(/\s+/, 2);
         const target = await resolveResumeTarget(options.cwd, rawTarget);
         if (!target) {
-          output2.write(`no resumable session found
+          stdout.write(`no resumable session found
 `);
           continue;
         }
@@ -2502,14 +2540,14 @@ async function startRepl(options) {
           cwd: options.cwd
         });
         session.hydrateMessages(await readTranscriptMessages(options.cwd, target));
-        output2.write(`resumed ${target}
+        stdout.write(`resumed ${target}
 `);
         continue;
       }
       try {
         if (trimmed.startsWith("/")) {
           const result = await executeCliCommand(options.cwd, trimmed.slice(1).trim().split(/\s+/), options.autoApprove ?? false);
-          output2.write(`${JSON.stringify(result, null, 2)}
+          stdout.write(`${JSON.stringify(result, null, 2)}
 `);
           continue;
         }
@@ -2532,7 +2570,7 @@ async function startRepl(options) {
           onAssistantTextDelta: (text) => {
             const delta = text.slice(lastAssistantText.length);
             if (delta) {
-              output2.write(delta);
+              stdout.write(delta);
               lastAssistantText = text;
             }
           },
@@ -2558,13 +2596,13 @@ async function startRepl(options) {
             const toolUses = message.content.filter((block) => block.type === "tool_use");
             if (toolUses.length > 0) {
               if (lastAssistantText) {
-                output2.write(`
+                stdout.write(`
 `);
               }
               for (const toolUse of toolUses) {
                 const summary = `${toolUse.name} ${summarizeToolInput2(toolUse.input)}`.trim();
                 toolSummaries.set(toolUse.id, summary);
-                output2.write(`[tool:start] ${summary}
+                stdout.write(`[tool:start] ${summary}
 `);
               }
             }
@@ -2573,29 +2611,29 @@ async function startRepl(options) {
           if (message.type === "tool_result") {
             const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
             if (message.isError) {
-              output2.write(`[tool:error] ${summary} · ${summarizeUnknown2(message.content, 80)}
+              stdout.write(`[tool:error] ${summary} · ${summarizeUnknown2(message.content, 80)}
 `);
             } else {
-              output2.write(`[tool:done] ${summary} · ${summarizeUnknown2(message.content, 80)}
+              stdout.write(`[tool:done] ${summary} · ${summarizeUnknown2(message.content, 80)}
 `);
             }
             toolSummaries.delete(message.toolUseId);
           }
         }
         if (lastAssistantText) {
-          output2.write(`
+          stdout.write(`
 `);
         }
         if (interrupted) {
-          output2.write(`[interrupt] current turn aborted
+          stdout.write(`[interrupt] current turn aborted
 `);
         }
-        output2.write(`[transcript] ${session.getTranscriptPath()}
+        stdout.write(`[transcript] ${session.getTranscriptPath()}
 `);
       } catch (error) {
         const interruptedNow = activeAbortController?.signal.aborted ?? false;
         const message = error instanceof Error ? error.message : String(error);
-        output2.write(interruptedNow ? `[interrupt] current turn aborted
+        stdout.write(interruptedNow ? `[interrupt] current turn aborted
 ` : `${message}
 `);
       } finally {
@@ -2610,15 +2648,15 @@ async function startRepl(options) {
 
 // app/tui.ts
 import readline3 from "readline";
-import { stdin as input3, stdout as output3 } from "process";
+import { stdin as input2, stdout as output2 } from "process";
 
 // shared/cli.ts
-function tokenizeCommandLine(input3) {
+function tokenizeCommandLine(input2) {
   const tokens = [];
   let current = "";
   let quote = null;
   let escaped = false;
-  for (const char of input3) {
+  for (const char of input2) {
     if (escaped) {
       current += char;
       escaped = false;
@@ -2678,19 +2716,25 @@ function wrapText(text, width) {
     }
     let line = rawLine;
     while (line.length > width) {
-      wrapped.push(line.slice(0, width));
-      line = line.slice(width);
+      let splitIndex = width;
+      if (line.charAt(width) !== " " && width > 0) {
+        const spaceIndex = line.lastIndexOf(" ", width);
+        if (spaceIndex > 0) {
+          splitIndex = spaceIndex;
+        }
+      }
+      wrapped.push(line.slice(0, splitIndex).trimEnd());
+      line = line.slice(splitIndex).trimStart();
+      if (line.length > width && line.indexOf(" ") === -1) {
+        wrapped.push(line.slice(0, width));
+        line = line.slice(width);
+      }
     }
-    wrapped.push(line);
+    if (line) {
+      wrapped.push(line);
+    }
   }
   return wrapped;
-}
-function trimText(text, width) {
-  const plain = text.replace(/\x1b\[[0-9;]*m/g, "");
-  if (plain.length <= width) {
-    return text + " ".repeat(Math.max(0, width - plain.length));
-  }
-  return `${plain.slice(0, Math.max(0, width - 1))}…`;
 }
 function trimTextPlain(text, width) {
   if (text.length <= width) {
@@ -2799,40 +2843,6 @@ function addActivityStep(state, label, kind, status, durationMs) {
   });
   state.toolSteps = state.toolSteps.slice(-12);
 }
-function colorize(text, color) {
-  return `${color}${text}\x1B[0m`;
-}
-function getPhaseBadge(card) {
-  const phase = card?.phase ?? "idle";
-  switch (phase) {
-    case "idle":
-      return colorize("○ idle", "\x1B[90m");
-    case "planning":
-      return colorize("◌ planning", "\x1B[36m");
-    case "approval":
-      return colorize("◆ approval", "\x1B[33m");
-    case "running":
-      return colorize("▶ running", "\x1B[34m");
-    case "done":
-      return colorize("✓ done", "\x1B[32m");
-    case "failed":
-      return colorize("✕ failed", "\x1B[31m");
-  }
-}
-function formatDuration(durationMs) {
-  if (durationMs === undefined) {
-    return "-";
-  }
-  if (durationMs < 1000) {
-    return `${durationMs}ms`;
-  }
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
-function formatStep(step) {
-  const icon = step.status === "done" ? colorize("✓", "\x1B[32m") : step.status === "failed" ? colorize("✕", "\x1B[31m") : colorize("•", "\x1B[36m");
-  const duration = step.durationMs !== undefined ? ` ${formatDuration(step.durationMs)}` : "";
-  return `${icon} #${step.seq} ${step.at}${duration} ${step.summary}`;
-}
 function cycleTimelineFilter(filter) {
   switch (filter) {
     case "all":
@@ -2841,16 +2851,6 @@ function cycleTimelineFilter(filter) {
       return "tools";
     case "tools":
       return "all";
-  }
-}
-function getFilteredSteps(state) {
-  switch (state.timelineFilter) {
-    case "failed":
-      return state.toolSteps.filter((step) => step.status === "failed");
-    case "tools":
-      return state.toolSteps.filter((step) => step.kind === "tool");
-    case "all":
-      return state.toolSteps;
   }
 }
 function updateFoldState(state, target, expanded) {
@@ -2867,78 +2867,19 @@ function updateFoldState(state, target, expanded) {
   }
   return affected;
 }
-function buildSidebar(state, width, height) {
-  const filteredSteps = getFilteredSteps(state);
-  const rows = [
-    `  id: ${state.currentSessionId}`,
-    `  busy: ${state.busy ? "yes" : "no"}`,
-    `  scroll: ${state.scrollOffset}`,
-    `  filter: ${state.timelineFilter}`,
-    "",
-    "Now Running",
-    `  phase: ${getPhaseBadge(state.currentActivity)}`,
-    `  tool: ${state.currentActivity?.toolName ?? "-"}`,
-    `  detail: ${state.currentActivity?.detail ?? "-"}`,
-    `  last: ${state.currentActivity?.lastResult ?? "-"}`,
-    "",
-    "Recent Completed",
-    ...filteredSteps.slice(-Math.max(4, height - 12)).map((step) => `  ${formatStep(step)}`),
-    "",
-    "Keys",
-    "  Enter submit",
-    "  Up/Down scroll",
-    "  PgUp/PgDn page",
-    "  Ctrl+E expand all",
-    "  Ctrl+G collapse all",
-    "  Ctrl+F cycle filter",
-    "  Esc clear input",
-    "  Ctrl+C quit",
-    "",
-    "Commands",
-    "  /help /tools /sessions",
-    "  /inspect <id> /export-session <id>",
-    "  /rm-session <id>",
-    "  /cleanup-sessions --keep N [--dry-run]",
-    "  /expand [n|all]",
-    "  /collapse [n|all]",
-    "  /filter [all|failed|tools]",
-    "  /resume latest|failed",
-    "  /new /clear /quit"
-  ];
-  return rows.slice(0, height).map((line) => trimText(line, width));
-}
-function withPanelBorder(title, lines, width, height) {
-  const innerWidth = Math.max(8, width - 2);
-  const bodyRows = Math.max(0, height - 2);
-  const normalized = [
-    `┌${trimTextPlain(` ${title} `, innerWidth).replace(/ /g, "─")}┐`,
-    ...Array.from({ length: bodyRows }).map((_, index) => {
-      const line = lines[index] ?? "";
-      return `│${trimText(line, innerWidth)}│`;
-    }),
-    `└${"─".repeat(innerWidth)}┘`
-  ];
-  return normalized.slice(0, height);
-}
-function formatConversationLine(entry) {
-  if (entry.collapsible && entry.expanded === false) {
-    return formatEntry({
-      ...entry,
-      text: `[#${entry.collapseKey}] ${entry.summary ?? "collapsed result"} (collapsed)`
-    });
-  }
-  return formatEntry(entry);
-}
 function applyModalOverlay(lines, modal, width, height) {
   const boxWidth = Math.min(width - 6, Math.max(36, Math.floor(width * 0.7)));
   const contentLines = wrapText(modal.message, Math.max(10, boxWidth - 4));
+  const YELLOW = "\x1B[33m";
+  const RESET = "\x1B[0m";
+  const BOLD = "\x1B[1m";
   const boxLines = [
-    `┌${"─".repeat(boxWidth - 2)}┐`,
-    `│ ${trimTextPlain(modal.title, boxWidth - 4)} │`,
+    `${BOLD}${YELLOW}┌${"─".repeat(boxWidth - 2)}┐${RESET}`,
+    `${BOLD}${YELLOW}│ ${trimTextPlain(modal.title, boxWidth - 4)} │${RESET}`,
     `├${"─".repeat(boxWidth - 2)}┤`,
     ...contentLines.map((line) => `│ ${trimTextPlain(line, boxWidth - 4)} │`),
     `├${"─".repeat(boxWidth - 2)}┤`,
-    `│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │`,
+    `${YELLOW}│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │${RESET}`,
     `└${"─".repeat(boxWidth - 2)}┘`
   ];
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
@@ -2956,25 +2897,51 @@ function applyModalOverlay(lines, modal, width, height) {
   return next;
 }
 function renderScreen(state, runtimeRef) {
-  const width = Math.max(60, output3.columns ?? 80);
-  const height = Math.max(20, output3.rows ?? 24);
-  const sidebarWidth = width >= 110 ? 34 : 0;
-  const gutter = sidebarWidth > 0 ? 3 : 0;
-  const mainWidth = width - sidebarWidth - gutter;
-  const contentHeight = Math.max(8, height - 9);
-  const panelHeight = contentHeight + 2;
+  const width = Math.max(60, output2.columns ?? 80);
+  const height = Math.max(20, output2.rows ?? 24);
+  const RESET = "\x1B[0m";
+  const BOLD = "\x1B[1m";
+  const CYAN = "\x1B[36m";
+  const GREEN = "\x1B[32m";
+  const YELLOW = "\x1B[33m";
+  const BLUE = "\x1B[34m";
+  const MAGENTA = "\x1B[35m";
+  const GRAY = "\x1B[90m";
+  const RED = "\x1B[31m";
+  const mainWidth = width - 4;
+  const contentHeight = Math.max(8, height - 10);
   const mode = getPermissionMode(state, runtimeRef);
   const header = [
-    "Claude Code-lite TUI",
-    trimText(`Mode: ${mode} · Session: ${state.currentSessionId} · Busy: ${state.busy ? "yes" : "no"} · Scroll: ${state.scrollOffset}`, width),
-    "".padEnd(width, "─")
+    `${BOLD}${CYAN}Claude Code-lite TUI${RESET}`,
+    `${GRAY}Mode: ${mode} · Session: ${state.currentSessionId}${RESET}`,
+    ""
   ];
-  const messageLines = state.entries.flatMap((entry) => wrapText(formatConversationLine(entry), Math.max(20, mainWidth)));
+  const messageLines = state.entries.flatMap((entry) => {
+    let coloredText = formatEntry(entry);
+    switch (entry.kind) {
+      case "user":
+        coloredText = `${BLUE}${coloredText}${RESET}`;
+        break;
+      case "assistant":
+        coloredText = `${GREEN}${coloredText}${RESET}`;
+        break;
+      case "tool":
+        coloredText = `${YELLOW}${coloredText}${RESET}`;
+        break;
+      case "result":
+        coloredText = `${GRAY}${coloredText}${RESET}`;
+        break;
+      case "error":
+        coloredText = `${RED}${coloredText}${RESET}`;
+        break;
+    }
+    return wrapText(coloredText, Math.max(20, mainWidth - 4));
+  });
   if (state.streamingAssistantText.trim()) {
-    messageLines.push(...wrapText(formatEntry({
+    messageLines.push(...wrapText(`${GREEN}${formatEntry({
       kind: "assistant",
       text: `${state.streamingAssistantText}▌`
-    }), Math.max(20, mainWidth)));
+    })}${RESET}`, Math.max(20, mainWidth - 4)));
   }
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
@@ -2982,35 +2949,20 @@ function renderScreen(state, runtimeRef) {
   }
   const start = Math.max(0, messageLines.length - contentHeight - state.scrollOffset);
   const visibleMessages = messageLines.slice(start, start + contentHeight);
-  const sidebarLines = sidebarWidth > 0 ? buildSidebar(state, sidebarWidth, contentHeight) : [];
-  const conversationPanel = withPanelBorder("Conversation", visibleMessages, mainWidth, panelHeight);
-  const activityPanel = sidebarWidth > 0 ? withPanelBorder("Activity", sidebarLines, sidebarWidth, panelHeight) : [];
-  const body = [];
-  for (let i = 0;i < panelHeight; i += 1) {
-    const left = conversationPanel[i] ?? "".padEnd(mainWidth, " ");
-    if (sidebarWidth > 0) {
-      body.push(`${left}${" ".repeat(gutter)}${activityPanel[i] ?? "".padEnd(sidebarWidth, " ")}`);
-    } else {
-      body.push(left);
-    }
-  }
-  const footerSeparator = "".padEnd(width, "─");
-  const statusLine = `Status: ${state.status}`;
-  const metaLine = "Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit";
-  const promptLine = state.modal ? "Modal active" : `Prompt> ${state.inputBuffer}`;
   let lines = [
     ...header,
-    ...body,
-    footerSeparator,
-    ...wrapText(statusLine, width),
-    ...wrapText(metaLine, width),
-    ...wrapText(promptLine, width)
+    ...visibleMessages,
+    "",
+    `${GRAY}${"-".repeat(width)}${RESET}`,
+    state.status.includes("Error") || state.status.includes("failed") ? `${RED}Status: ${state.status}${RESET}` : state.busy ? `${YELLOW}Status: ${state.status}${RESET}` : `${GREEN}Status: ${state.status}${RESET}`,
+    `${GRAY}Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit${RESET}`,
+    state.modal ? `${YELLOW}Modal active${RESET}` : `${BLUE}Prompt> ${state.inputBuffer}${RESET}`
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
   }
-  output3.write("\x1B[2J\x1B[H");
-  output3.write(lines.join(`
+  output2.write("\x1B[2J\x1B[H");
+  output2.write(lines.join(`
 `));
 }
 async function restoreSession(cwd, appStateRef, state, runtimeRef, sessionId) {
@@ -3136,7 +3088,7 @@ ${formatUnknown(result.output)}`
   addToolStep(state, `slash tool ${result.tool}`);
 }
 async function startTui(options) {
-  if (!input3.isTTY || !output3.isTTY) {
+  if (!input2.isTTY || !output2.isTTY) {
     throw new Error("TUI 模式需要在交互式终端中运行。");
   }
   const appStateRef = { current: createInitialAppState() };
@@ -3174,11 +3126,11 @@ async function startTui(options) {
   }
   let exiting = false;
   const cleanup = () => {
-    output3.write("\x1B[?1049l\x1B[?25h");
-    input3.removeListener("keypress", onKeypress);
-    output3.removeListener("resize", onResize);
-    if (input3.isTTY) {
-      input3.setRawMode(false);
+    output2.write("\x1B[?1049l\x1B[?25h");
+    input2.removeListener("keypress", onKeypress);
+    output2.removeListener("resize", onResize);
+    if (input2.isTTY) {
+      input2.setRawMode(false);
     }
   };
   const onResize = () => {
@@ -3288,6 +3240,7 @@ async function startTui(options) {
             state.streamingAssistantText = "";
           }
           await runtimeRef.current.session.recordMessages([message]);
+          const wasAtBottom = state.scrollOffset === 0;
           state.entries.push(...makeConversationEntries(state, message));
           if (message.type === "assistant") {
             const toolUse = message.content.find((block) => block.type === "tool_use");
@@ -3309,9 +3262,11 @@ async function startTui(options) {
               detail: message.isError ? "tool returned error" : "tool completed",
               lastResult: message.isError ? "error" : "ok"
             });
-            addActivityStep(state, `${message.isError ? "error" : "done"} ${previousToolName ?? message.toolUseId.slice(0, 10)}`, message.isError ? "error" : "tool", message.isError ? "failed" : "done", durationMs);
+            addActivityStep(state, `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`, message.isError ? "error" : "tool", message.isError ? "failed" : "done", durationMs);
           }
-          state.scrollOffset = 0;
+          if (wasAtBottom) {
+            state.scrollOffset = 0;
+          }
           renderScreen(state, runtimeRef);
         }
       }
@@ -3393,6 +3348,11 @@ async function startTui(options) {
       renderScreen(state, runtimeRef);
       return;
     }
+    if (key.ctrl && key.name === "l") {
+      output2.write("\x1B[2J\x1B[H");
+      renderScreen(state, runtimeRef);
+      return;
+    }
     if (state.busy) {
       return;
     }
@@ -3438,12 +3398,12 @@ async function startTui(options) {
     state.inputBuffer += str;
     renderScreen(state, runtimeRef);
   };
-  output3.write("\x1B[?1049h\x1B[?25l");
-  readline3.emitKeypressEvents(input3);
-  input3.setRawMode(true);
-  input3.resume();
-  input3.on("keypress", onKeypress);
-  output3.on("resize", onResize);
+  output2.write("\x1B[?1049h\x1B[?25l");
+  readline3.emitKeypressEvents(input2);
+  input2.setRawMode(true);
+  input2.resume();
+  input2.on("keypress", onKeypress);
+  output2.on("resize", onResize);
   renderScreen(state, runtimeRef);
   while (!exiting) {
     await new Promise((resolve2) => setTimeout(resolve2, 50));
@@ -3490,5 +3450,5 @@ export {
   main
 };
 
-//# debugId=D2FEEE86A38E7A7664756E2164756E21
+//# debugId=C17128FAF4F411E364756E2164756E21
 //# sourceMappingURL=main.js.map
