@@ -12,6 +12,8 @@ import { getTools } from "../tools/registry";
 import { findToolByName, type ToolUseContext } from "../tools/Tool";
 import { listSessions } from "../storage/sessionIndex";
 import { readTranscriptMessages } from "../storage/transcript";
+import pc from "picocolors";
+import isDark from "is-dark";
 
 export type TuiOptions = {
   cwd: string;
@@ -61,6 +63,30 @@ type ActivityStep = {
 
 type TimelineFilter = "all" | "failed" | "tools";
 
+interface SlashCommand {
+  name: string;
+  description: string;
+  example: string;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { name: "help", description: "显示帮助信息", example: "/help" },
+  { name: "tools", description: "显示可用工具", example: "/tools" },
+  { name: "sessions", description: "显示会话列表", example: "/sessions" },
+  { name: "inspect", description: "检查会话详情", example: "/inspect <id>" },
+  { name: "export-session", description: "导出会话记录", example: "/export-session <id> [--format markdown|json] [--output path]" },
+  { name: "rm-session", description: "删除会话", example: "/rm-session <id>" },
+  { name: "cleanup-sessions", description: "清理旧会话", example: "/cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]" },
+  { name: "expand", description: "展开结果块", example: "/expand [n|all]" },
+  { name: "collapse", description: "折叠结果块", example: "/collapse [n|all]" },
+  { name: "filter", description: "筛选显示", example: "/filter [all|failed|tools]" },
+  { name: "resume", description: "恢复会话", example: "/resume [id|latest|failed]" },
+  { name: "new", description: "创建新会话", example: "/new" },
+  { name: "clear", description: "清空当前会话", example: "/clear" },
+  { name: "quit", description: "退出 TUI", example: "/quit" },
+  { name: "exit", description: "退出 TUI", example: "/exit" },
+];
+
 type TuiState = {
   entries: ConversationEntry[];
   streamingAssistantText: string;
@@ -76,6 +102,12 @@ type TuiState = {
   nextCollapseKey: number;
   nextStepSeq: number;
   timelineFilter: TimelineFilter;
+  isSearching: boolean; // 新增：标记是否处于搜索状态
+  searchMatches: SlashCommand[]; // 新增：存储搜索匹配的命令
+  selectedMatchIndex: number; // 新增：当前选中的匹配项索引
+  theme: "light" | "dark";
+  history: string[]; // 新增：存储历史输入
+  historyIndex: number; // 新增：当前指向历史记录的索引
 };
 
 function getPermissionMode(
@@ -109,7 +141,7 @@ function wrapText(text: string, width: number): string[] {
       }
       wrapped.push(line.slice(0, splitIndex).trimEnd());
       line = line.slice(splitIndex).trimStart();
-      
+
       // 如果找不到空格或行的剩余部分仍然太长，强制截断
       if (line.length > width && line.indexOf(' ') === -1) {
         wrapped.push(line.slice(0, width));
@@ -144,7 +176,7 @@ function formatEntry(entry: ConversationEntry): string {
     case "user":
       return `You  ${entry.text}`;
     case "assistant":
-      return `CCL  ${entry.text}`;
+      return `SLI  ${entry.text}`;
     case "tool":
       return `Tool ${entry.text}`;
     case "result":
@@ -447,7 +479,7 @@ function withSinglePanelBorderColored(
 ): string[] {
   const innerWidth = Math.max(8, width - 2);
   const bodyRows = Math.max(0, height - 2);
-  
+
   const normalized = [
     `${borderColor}\x1b[1m┌${trimTextPlain(` ${title} `, innerWidth).replace(/ /g, "─")}┐\x1b[0m`,
     ...Array.from({ length: bodyRows }).map((_, index) => {
@@ -477,12 +509,12 @@ function applyModalOverlay(
 ): string[] {
   const boxWidth = Math.min(width - 6, Math.max(36, Math.floor(width * 0.7)));
   const contentLines = wrapText(modal.message, Math.max(10, boxWidth - 4));
-  
+
   // 模态框使用黄色边框
   const YELLOW = "\x1b[33m";
   const RESET = "\x1b[0m";
   const BOLD = "\x1b[1m";
-  
+
   const boxLines = [
     `${BOLD}${YELLOW}┌${"─".repeat(boxWidth - 2)}┐${RESET}`,
     `${BOLD}${YELLOW}│ ${trimTextPlain(modal.title, boxWidth - 4)} │${RESET}`,
@@ -492,7 +524,7 @@ function applyModalOverlay(
     `${YELLOW}│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │${RESET}`,
     `└${"─".repeat(boxWidth - 2)}┘`,
   ];
-  
+
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
   const startX = Math.max(0, Math.floor((width - boxWidth) / 2));
   const next = [...lines];
@@ -519,27 +551,26 @@ function renderScreen(
 ): void {
   const width = Math.max(60, output.columns ?? 80);
   const height = Math.max(20, output.rows ?? 24);
-  
-  // ANSI 颜色代码（移到函数开头）
-  const RESET = "\x1b[0m";
-  const BOLD = "\x1b[1m";
-  const CYAN = "\x1b[36m";
-  const GREEN = "\x1b[32m";
-  const YELLOW = "\x1b[33m";
-  const BLUE = "\x1b[34m";
-  const MAGENTA = "\x1b[35m";
-  const GRAY = "\x1b[90m";
-  const RED = "\x1b[31m";
 
   // 移除侧边栏，使用单栏布局
   const mainWidth = width - 4; // 留出左右边框空间
   const contentHeight = Math.max(8, height - 10);
   const mode = getPermissionMode(state, runtimeRef);
-  
-  // 极简标题栏（无边框）
+
+
+  function setCenteredTerminalTitle(title: string, totalWidth = 24) {
+    // 计算需要填充的空格
+    const titleLength = [...title].length; // 支持 Emoji 正确计算长度
+    const spaces = Math.max(0, totalWidth - titleLength);
+    const leftPad = " ".repeat(Math.floor(spaces / 2));
+
+    // 输出到终端标签
+    process.stdout.write(`\x1b]0;${leftPad}${title}\x07`);
+  }
+  setCenteredTerminalTitle("🚀 Siok Cli");
+
   const header = [
-    `${BOLD}${CYAN}Claude Code-lite TUI${RESET}`,
-    `${GRAY}Mode: ${mode} · Session: ${state.currentSessionId}${RESET}`,
+    `${pc.bold(pc.blue(`Mode: ${mode} · Session: ${state.currentSessionId}`))}`,
     "",
   ];
 
@@ -548,36 +579,39 @@ function renderScreen(
     let coloredText = formatEntry(entry);
     switch (entry.kind) {
       case "user":
-        coloredText = `${BLUE}${coloredText}${RESET}`;
+        coloredText = `${state.theme === 'dark' ? pc.cyan(coloredText) : pc.cyanBright(coloredText)}`;
         break;
       case "assistant":
-        coloredText = `${GREEN}${coloredText}${RESET}`;
+        coloredText = `${state.theme === 'dark' ? pc.blue(coloredText) : pc.blueBright(coloredText)}`;
         break;
       case "tool":
-        coloredText = `${YELLOW}${coloredText}${RESET}`;
+        coloredText = `${state.theme === 'dark' ? pc.yellow(coloredText) : pc.yellowBright(coloredText)}`;
         break;
       case "result":
-        coloredText = `${GRAY}${coloredText}${RESET}`;
+        coloredText = `${state.theme === 'dark' ? pc.gray(coloredText) : pc.gray(coloredText)}`;
         break;
       case "error":
-        coloredText = `${RED}${coloredText}${RESET}`;
+        coloredText = `${state.theme === 'dark' ? pc.red(coloredText) : pc.redBright(coloredText)}`;
         break;
     }
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
   });
-  
+
   if (state.streamingAssistantText.trim()) {
     messageLines.push(
       ...wrapText(
-        `${GREEN}${formatEntry({
+        `${state.theme === 'dark' ? pc.blue(formatEntry({
           kind: "assistant",
           text: `${state.streamingAssistantText}▌`,
-        })}${RESET}`,
+        })) : pc.blueBright(formatEntry({
+          kind: "assistant",
+          text: `${state.streamingAssistantText}▌`,
+        }))}`,
         Math.max(20, mainWidth - 4),
       ),
     );
   }
-  
+
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
     state.scrollOffset = maxScroll;
@@ -593,16 +627,16 @@ function renderScreen(
     ...header,
     ...visibleMessages,
     "",
-    `${GRAY}${"-".repeat(width)}${RESET}`,
-    state.status.includes("Error") || state.status.includes("failed") 
-      ? `${RED}Status: ${state.status}${RESET}`
-      : state.busy 
-        ? `${YELLOW}Status: ${state.status}${RESET}`
-        : `${GREEN}Status: ${state.status}${RESET}`,
-    `${GRAY}Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit${RESET}`,
+    `${state.theme === 'dark' ? pc.dim("-".repeat(width)) : pc.dim("-".repeat(width))}`,
+    state.status.includes("Error") || state.status.includes("failed")
+      ? `${state.theme === 'dark' ? pc.red(`Status: ${state.status}`) : pc.redBright(`Status: ${state.status}`)}`
+      : state.busy
+        ? `${state.theme === 'dark' ? pc.yellow(`Status: ${state.status}`) : pc.yellowBright(`Status: ${state.status}`)}`
+        : `${state.theme === 'dark' ? pc.green(`Status: ${state.status}`) : pc.greenBright(`Status: ${state.status}`)}`,
+    `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
     state.modal
-      ? `${YELLOW}Modal active${RESET}`
-      : `${BLUE}Prompt> ${state.inputBuffer}${RESET}`,
+      ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`  
+      : `${state.theme === 'dark' ? pc.cyan(`Prompt> ${state.inputBuffer}`) : pc.cyanBright(`Prompt> ${state.inputBuffer}`)}`,
   ].slice(0, height);
 
   if (state.modal) {
@@ -783,6 +817,51 @@ async function runSlashCommand(
   addToolStep(state, `slash tool ${result.tool}`);
 }
 
+
+
+function autoCompleteSlashCommand(input: string): SlashCommand[] | null {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized.startsWith("/")) {
+    return null;
+  }
+  const command = normalized.slice(1);
+  const matches = SLASH_COMMANDS.filter((c) => c.name.startsWith(command));
+  return matches.length > 0 ? matches : null;
+}
+
+async function getTerminalTheme(): Promise<'dark' | 'light' | 'unknown'> {
+  // 1. 优先：系统级深色模式检测（最准）
+  try {
+    const systemDark = await isDark();
+    if (systemDark) return 'dark';
+  } catch (e) { /* 忽略系统检测失败 */ }
+
+  // 2. 次选：终端环境变量判断（COLORFGBG 格式：前景;背景）
+  const colorFgBg = process.env.COLORFGBG;
+  if (colorFgBg) {
+    const [fg, bg] = colorFgBg.split(';');
+    // 背景色数字 > 7 通常是亮色（白/浅灰），<7 是暗色（黑/深灰）
+    if (bg && !isNaN(Number(bg))) {
+      return Number(bg) > 7 ? 'light' : 'dark';
+    }
+  }
+
+  // 3. 兜底：常见终端默认判断
+  const term = process.env.TERM || '';
+  const termProgram = process.env.TERM_PROGRAM || '';
+  if (
+    term.includes('256color') ||
+    termProgram.includes('iTerm') ||
+    termProgram.includes('WindowsTerminal') ||
+    termProgram.includes('vscode')
+  ) {
+    // 现代终端默认多为暗色，可按你的场景调整
+    return 'dark';
+  }
+
+  return 'unknown';
+}
+
 export async function startTui(options: TuiOptions): Promise<void> {
   if (!input.isTTY || !output.isTTY) {
     throw new Error("TUI 模式需要在交互式终端中运行。");
@@ -790,6 +869,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
 
   const appStateRef = { current: createInitialAppState() };
   const runtimeRef = { current: createRuntime(options.cwd, appStateRef) };
+
+  const sysTheme = await getTerminalTheme();
+
   const state: TuiState = {
     entries: [
       {
@@ -813,6 +895,12 @@ export async function startTui(options: TuiOptions): Promise<void> {
     nextCollapseKey: 1,
     nextStepSeq: 1,
     timelineFilter: "all",
+    isSearching: false,
+    searchMatches: [],
+    selectedMatchIndex: -1,
+    theme: sysTheme === 'dark' ? 'light' : 'dark',
+    history: [],
+    historyIndex: -1,
   };
 
   const availableSessions = await listSessions(options.cwd);
@@ -933,13 +1021,13 @@ export async function startTui(options: TuiOptions): Promise<void> {
       state,
       trimmed.startsWith("/")
         ? {
-            phase: "planning",
-            detail: "running slash command",
-          }
+          phase: "planning",
+          detail: "running slash command",
+        }
         : {
-            phase: "planning",
-            detail: "planning response",
-          },
+          phase: "planning",
+          detail: "planning response",
+        },
     );
     state.entries.push({
       kind: trimmed.startsWith("/") ? "system" : "user",
@@ -987,50 +1075,50 @@ export async function startTui(options: TuiOptions): Promise<void> {
           }
           await runtimeRef.current.session.recordMessages([message]);
           // 记录当前滚动位置是否在底部
-        const wasAtBottom = state.scrollOffset === 0;
-        
-        state.entries.push(...makeConversationEntries(state, message));
-        if (message.type === "assistant") {
-          const toolUse = message.content.find(
-            (block) => block.type === "tool_use",
-          );
-          if (toolUse && toolUse.type === "tool_use") {
-            setCurrentActivity(state, {
-              phase: "running",
-              toolName: toolUse.name,
-              detail: "tool executing",
-            });
-            addActivityStep(state, `run ${toolUse.name}`, "tool", "info");
+          const wasAtBottom = state.scrollOffset === 0;
+
+          state.entries.push(...makeConversationEntries(state, message));
+          if (message.type === "assistant") {
+            const toolUse = message.content.find(
+              (block) => block.type === "tool_use",
+            );
+            if (toolUse && toolUse.type === "tool_use") {
+              setCurrentActivity(state, {
+                phase: "running",
+                toolName: toolUse.name,
+                detail: "tool executing",
+              });
+              addActivityStep(state, `run ${toolUse.name}`, "tool", "info");
+            }
           }
-        }
-        if (message.type === "tool_result") {
-          const previousToolName = state.currentActivity?.toolName;
-          const durationMs =
-            state.activityStartedAt === null
-              ? undefined
-              : Date.now() - state.activityStartedAt;
-          setCurrentActivity(state, {
-            phase: message.isError ? "failed" : "done",
-            toolName: previousToolName,
-            detail: message.isError
-              ? "tool returned error"
-              : "tool completed",
-            lastResult: message.isError ? "error" : "ok",
-          });
-          addActivityStep(
-            state,
-            `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`,
-            message.isError ? "error" : "tool",
-            message.isError ? "failed" : "done",
-            durationMs,
-          );
-        }
-        
-        // 只有当用户之前在底部时，才自动滚动到底部
-        if (wasAtBottom) {
-          state.scrollOffset = 0;
-        }
-        renderScreen(state, runtimeRef);
+          if (message.type === "tool_result") {
+            const previousToolName = state.currentActivity?.toolName;
+            const durationMs =
+              state.activityStartedAt === null
+                ? undefined
+                : Date.now() - state.activityStartedAt;
+            setCurrentActivity(state, {
+              phase: message.isError ? "failed" : "done",
+              toolName: previousToolName,
+              detail: message.isError
+                ? "tool returned error"
+                : "tool completed",
+              lastResult: message.isError ? "error" : "ok",
+            });
+            addActivityStep(
+              state,
+              `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`,
+              message.isError ? "error" : "tool",
+              message.isError ? "failed" : "done",
+              durationMs,
+            );
+          }
+
+          // 只有当用户之前在底部时，才自动滚动到底部
+          if (wasAtBottom) {
+            state.scrollOffset = 0;
+          }
+          renderScreen(state, runtimeRef);
         }
       }
 
@@ -1099,6 +1187,18 @@ export async function startTui(options: TuiOptions): Promise<void> {
       return;
     }
 
+    // 检查是否是斜杠字符（readline可能不会将斜杠识别为key.name === "slash"）
+    if (str === "/") {
+      // 处理斜杠字符输入
+      state.inputBuffer += "/";
+      state.isSearching = true;
+
+      // 显示所有可用命令作为提示
+      state.status = `可用命令: ${SLASH_COMMANDS.map(c => c.name).join(", ")}`;
+      renderScreen(state, runtimeRef);
+      return;
+    }
+
     if (key.ctrl && key.name === "c") {
       if (state.busy) {
         runtimeRef.current.toolContext.abortController.abort(
@@ -1145,33 +1245,99 @@ export async function startTui(options: TuiOptions): Promise<void> {
 
     if (key.name === "return") {
       const current = state.inputBuffer;
+
+      // 重置搜索状态
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
+
       state.inputBuffer = "";
       void submitPrompt(current);
+      // 记录当前输入到历史记录
+      state.history.push(current);
+      state.historyIndex = state.history.length;
       return;
     }
 
     if (key.name === "backspace") {
       state.inputBuffer = state.inputBuffer.slice(0, -1);
+
+      // 如果删除后不再以斜杠开头，退出搜索状态
+      if (!state.inputBuffer.startsWith("/")) {
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      } else {
+        // 更新搜索匹配
+        const matches = autoCompleteSlashCommand(state.inputBuffer);
+        if (matches) {
+          state.searchMatches = matches;
+          state.selectedMatchIndex = 0;
+          state.status = `搜索结果: ${matches.map(m => m.name).join(", ")}`;
+        } else {
+          state.searchMatches = [];
+          state.selectedMatchIndex = -1;
+          state.status = "无匹配命令";
+        }
+      }
+
       renderScreen(state, runtimeRef);
       return;
     }
 
     if (key.name === "escape") {
       state.inputBuffer = "";
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
+      state.status = "Ready";
       renderScreen(state, runtimeRef);
       return;
     }
 
-    if (key.name === "up") {
-      state.scrollOffset += 1;
-      renderScreen(state, runtimeRef);
-      return;
-    }
+    if (state.isSearching && state.searchMatches.length > 0) {
+      // 在搜索模式下，使用箭头键导航搜索结果
+      if (key.name === "up") {
+        state.selectedMatchIndex = Math.max(
+          0,
+          state.selectedMatchIndex - 1
+        );
 
-    if (key.name === "down") {
-      state.scrollOffset = Math.max(0, state.scrollOffset - 1);
-      renderScreen(state, runtimeRef);
-      return;
+        // 显示当前选中的命令
+        const selected = state.searchMatches[state.selectedMatchIndex];
+        state.status = `选中: /${selected.name} (${selected.description})`;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+
+      if (key.name === "down") {
+        state.selectedMatchIndex = Math.min(
+          state.searchMatches.length - 1,
+          state.selectedMatchIndex + 1
+        );
+
+        // 显示当前选中的命令
+        const selected = state.searchMatches[state.selectedMatchIndex];
+        state.status = `选中: /${selected.name} (${selected.description})`;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+    } else {
+      // 非搜索模式下，使用箭头键选择最近输入的消息
+      if (key.name === "up") {
+        state.historyIndex = Math.max(0, state.historyIndex - 1);
+        state.inputBuffer = state.history[state.historyIndex];
+        renderScreen(state, runtimeRef);
+        return;
+      }
+
+      if (key.name === "down") {
+        state.historyIndex =  state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
+        state.inputBuffer = state.historyIndex < state.history.length ? state.history[state.historyIndex] : "";
+        renderScreen(state, runtimeRef);
+        return;
+      }
     }
 
     if (key.name === "pageup") {
@@ -1186,11 +1352,49 @@ export async function startTui(options: TuiOptions): Promise<void> {
       return;
     }
 
+    if (key.name === "tab" && state.isSearching && state.searchMatches.length > 0) {
+      // 使用Tab键自动补全选中的命令
+      const selected = state.searchMatches[state.selectedMatchIndex];
+      if (selected) {
+        state.inputBuffer = `/${selected.name}`;
+
+        // 补全后退出搜索状态
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      }
+      renderScreen(state, runtimeRef);
+      return;
+    }
+
     if (!str || key.ctrl || key.meta) {
       return;
     }
 
     state.inputBuffer += str;
+
+    // 只要输入以斜杠开头，就更新搜索结果
+    if (state.inputBuffer.startsWith("/")) {
+      state.isSearching = true;
+      const matches = autoCompleteSlashCommand(state.inputBuffer);
+      if (matches) {
+        state.searchMatches = matches;
+        state.selectedMatchIndex = 0;
+        state.status = `搜索结果: ${matches.map(m => m.name).join(", ")}`;
+      } else {
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "无匹配命令";
+      }
+    } else {
+      // 如果输入不再以斜杠开头，退出搜索状态
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
+      state.status = "Ready";
+    }
+
     renderScreen(state, runtimeRef);
   };
 

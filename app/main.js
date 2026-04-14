@@ -1,5 +1,149 @@
 import { createRequire } from "node:module";
+var __create = Object.create;
+var __getProtoOf = Object.getPrototypeOf;
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toESMCache_node;
+var __toESMCache_esm;
+var __toESM = (mod, isNodeMode, target) => {
+  var canCache = mod != null && typeof mod === "object";
+  if (canCache) {
+    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
+    var cached = cache.get(mod);
+    if (cached)
+      return cached;
+  }
+  target = mod != null ? __create(__getProtoOf(mod)) : {};
+  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
+  for (let key of __getOwnPropNames(mod))
+    if (!__hasOwnProp.call(to, key))
+      __defProp(to, key, {
+        get: __accessProp.bind(mod, key),
+        enumerable: true
+      });
+  if (canCache)
+    cache.set(mod, to);
+  return to;
+};
+var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
+
+// node_modules/picocolors/picocolors.js
+var require_picocolors = __commonJS((exports, module) => {
+  var p = process || {};
+  var argv = p.argv || [];
+  var env = p.env || {};
+  var isColorSupported = !(!!env.NO_COLOR || argv.includes("--no-color")) && (!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || (p.stdout || {}).isTTY && env.TERM !== "dumb" || !!env.CI);
+  var formatter = (open, close, replace = open) => (input2) => {
+    let string = "" + input2, index = string.indexOf(close, open.length);
+    return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close;
+  };
+  var replaceClose = (string, close, replace, index) => {
+    let result = "", cursor = 0;
+    do {
+      result += string.substring(cursor, index) + replace;
+      cursor = index + close.length;
+      index = string.indexOf(close, cursor);
+    } while (~index);
+    return result + string.substring(cursor);
+  };
+  var createColors = (enabled = isColorSupported) => {
+    let f = enabled ? formatter : () => String;
+    return {
+      isColorSupported: enabled,
+      reset: f("\x1B[0m", "\x1B[0m"),
+      bold: f("\x1B[1m", "\x1B[22m", "\x1B[22m\x1B[1m"),
+      dim: f("\x1B[2m", "\x1B[22m", "\x1B[22m\x1B[2m"),
+      italic: f("\x1B[3m", "\x1B[23m"),
+      underline: f("\x1B[4m", "\x1B[24m"),
+      inverse: f("\x1B[7m", "\x1B[27m"),
+      hidden: f("\x1B[8m", "\x1B[28m"),
+      strikethrough: f("\x1B[9m", "\x1B[29m"),
+      black: f("\x1B[30m", "\x1B[39m"),
+      red: f("\x1B[31m", "\x1B[39m"),
+      green: f("\x1B[32m", "\x1B[39m"),
+      yellow: f("\x1B[33m", "\x1B[39m"),
+      blue: f("\x1B[34m", "\x1B[39m"),
+      magenta: f("\x1B[35m", "\x1B[39m"),
+      cyan: f("\x1B[36m", "\x1B[39m"),
+      white: f("\x1B[37m", "\x1B[39m"),
+      gray: f("\x1B[90m", "\x1B[39m"),
+      bgBlack: f("\x1B[40m", "\x1B[49m"),
+      bgRed: f("\x1B[41m", "\x1B[49m"),
+      bgGreen: f("\x1B[42m", "\x1B[49m"),
+      bgYellow: f("\x1B[43m", "\x1B[49m"),
+      bgBlue: f("\x1B[44m", "\x1B[49m"),
+      bgMagenta: f("\x1B[45m", "\x1B[49m"),
+      bgCyan: f("\x1B[46m", "\x1B[49m"),
+      bgWhite: f("\x1B[47m", "\x1B[49m"),
+      blackBright: f("\x1B[90m", "\x1B[39m"),
+      redBright: f("\x1B[91m", "\x1B[39m"),
+      greenBright: f("\x1B[92m", "\x1B[39m"),
+      yellowBright: f("\x1B[93m", "\x1B[39m"),
+      blueBright: f("\x1B[94m", "\x1B[39m"),
+      magentaBright: f("\x1B[95m", "\x1B[39m"),
+      cyanBright: f("\x1B[96m", "\x1B[39m"),
+      whiteBright: f("\x1B[97m", "\x1B[39m"),
+      bgBlackBright: f("\x1B[100m", "\x1B[49m"),
+      bgRedBright: f("\x1B[101m", "\x1B[49m"),
+      bgGreenBright: f("\x1B[102m", "\x1B[49m"),
+      bgYellowBright: f("\x1B[103m", "\x1B[49m"),
+      bgBlueBright: f("\x1B[104m", "\x1B[49m"),
+      bgMagentaBright: f("\x1B[105m", "\x1B[49m"),
+      bgCyanBright: f("\x1B[106m", "\x1B[49m"),
+      bgWhiteBright: f("\x1B[107m", "\x1B[49m")
+    };
+  };
+  module.exports = createColors();
+  module.exports.createColors = createColors;
+});
+
+// node_modules/is-dark/dist/index.js
+var require_dist = __commonJS((exports) => {
+  exports.__esModule = true;
+  var DarkModeHandler = function() {
+    function DarkModeHandler2() {
+      var _this = this;
+      this.isNode = false;
+      this.state = "light";
+      this.subscribers = [];
+      this.isDarkMode = function() {
+        if (_this.isNode)
+          return false;
+        return _this.state === "dark";
+      };
+      this.subscribeToColorScheme = function(method) {
+        _this.subscribers.push(method);
+      };
+      this.clearSubscribers = function() {
+        _this.subscribers = [];
+      };
+      this.handleUiChange = function(e) {
+        _this.state = e.matches ? "dark" : "light";
+        if (_this.subscribers.length > 0) {
+          _this.subscribers.forEach(function(subscriber) {
+            subscriber(_this.state);
+          });
+        }
+      };
+      if (typeof window === "undefined") {
+        this.isNode = true;
+        return;
+      }
+      this.media = window.matchMedia("(prefers-color-scheme: dark)");
+      this.media.addListener(this.handleUiChange);
+      this.handleUiChange(this.media);
+    }
+    return DarkModeHandler2;
+  }();
+  var dm = new DarkModeHandler;
+  exports.default = dm.isDarkMode;
+  exports.subscribeToColorScheme = dm.subscribeToColorScheme;
+});
 
 // app/main.ts
 import { cwd } from "process";
@@ -2700,6 +2844,25 @@ function tokenizeCommandLine(input2) {
 }
 
 // app/tui.ts
+var import_picocolors = __toESM(require_picocolors(), 1);
+var import_is_dark = __toESM(require_dist(), 1);
+var SLASH_COMMANDS = [
+  { name: "help", description: "显示帮助信息", example: "/help" },
+  { name: "tools", description: "显示可用工具", example: "/tools" },
+  { name: "sessions", description: "显示会话列表", example: "/sessions" },
+  { name: "inspect", description: "检查会话详情", example: "/inspect <id>" },
+  { name: "export-session", description: "导出会话记录", example: "/export-session <id> [--format markdown|json] [--output path]" },
+  { name: "rm-session", description: "删除会话", example: "/rm-session <id>" },
+  { name: "cleanup-sessions", description: "清理旧会话", example: "/cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]" },
+  { name: "expand", description: "展开结果块", example: "/expand [n|all]" },
+  { name: "collapse", description: "折叠结果块", example: "/collapse [n|all]" },
+  { name: "filter", description: "筛选显示", example: "/filter [all|failed|tools]" },
+  { name: "resume", description: "恢复会话", example: "/resume [id|latest|failed]" },
+  { name: "new", description: "创建新会话", example: "/new" },
+  { name: "clear", description: "清空当前会话", example: "/clear" },
+  { name: "quit", description: "退出 TUI", example: "/quit" },
+  { name: "exit", description: "退出 TUI", example: "/exit" }
+];
 function getPermissionMode(state, runtimeRef) {
   return runtimeRef.current.toolContext.getAppState().permissionContext.mode;
 }
@@ -2747,7 +2910,7 @@ function formatEntry(entry) {
     case "user":
       return `You  ${entry.text}`;
     case "assistant":
-      return `CCL  ${entry.text}`;
+      return `SLI  ${entry.text}`;
     case "tool":
       return `Tool ${entry.text}`;
     case "result":
@@ -2899,49 +3062,49 @@ function applyModalOverlay(lines, modal, width, height) {
 function renderScreen(state, runtimeRef) {
   const width = Math.max(60, output2.columns ?? 80);
   const height = Math.max(20, output2.rows ?? 24);
-  const RESET = "\x1B[0m";
-  const BOLD = "\x1B[1m";
-  const CYAN = "\x1B[36m";
-  const GREEN = "\x1B[32m";
-  const YELLOW = "\x1B[33m";
-  const BLUE = "\x1B[34m";
-  const MAGENTA = "\x1B[35m";
-  const GRAY = "\x1B[90m";
-  const RED = "\x1B[31m";
   const mainWidth = width - 4;
   const contentHeight = Math.max(8, height - 10);
   const mode = getPermissionMode(state, runtimeRef);
+  function setCenteredTerminalTitle(title, totalWidth = 24) {
+    const titleLength = [...title].length;
+    const spaces = Math.max(0, totalWidth - titleLength);
+    const leftPad = " ".repeat(Math.floor(spaces / 2));
+    process.stdout.write(`\x1B]0;${leftPad}${title}\x07`);
+  }
+  setCenteredTerminalTitle("\uD83D\uDE80 Siok Cli");
   const header = [
-    `${BOLD}${CYAN}Claude Code-lite TUI${RESET}`,
-    `${GRAY}Mode: ${mode} · Session: ${state.currentSessionId}${RESET}`,
+    `${import_picocolors.default.bold(import_picocolors.default.blue(`Mode: ${mode} · Session: ${state.currentSessionId}`))}`,
     ""
   ];
   const messageLines = state.entries.flatMap((entry) => {
     let coloredText = formatEntry(entry);
     switch (entry.kind) {
       case "user":
-        coloredText = `${BLUE}${coloredText}${RESET}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.cyan(coloredText) : import_picocolors.default.cyanBright(coloredText)}`;
         break;
       case "assistant":
-        coloredText = `${GREEN}${coloredText}${RESET}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.blue(coloredText) : import_picocolors.default.blueBright(coloredText)}`;
         break;
       case "tool":
-        coloredText = `${YELLOW}${coloredText}${RESET}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.yellow(coloredText) : import_picocolors.default.yellowBright(coloredText)}`;
         break;
       case "result":
-        coloredText = `${GRAY}${coloredText}${RESET}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.gray(coloredText) : import_picocolors.default.gray(coloredText)}`;
         break;
       case "error":
-        coloredText = `${RED}${coloredText}${RESET}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.red(coloredText) : import_picocolors.default.redBright(coloredText)}`;
         break;
     }
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
   });
   if (state.streamingAssistantText.trim()) {
-    messageLines.push(...wrapText(`${GREEN}${formatEntry({
+    messageLines.push(...wrapText(`${state.theme === "dark" ? import_picocolors.default.blue(formatEntry({
       kind: "assistant",
       text: `${state.streamingAssistantText}▌`
-    })}${RESET}`, Math.max(20, mainWidth - 4)));
+    })) : import_picocolors.default.blueBright(formatEntry({
+      kind: "assistant",
+      text: `${state.streamingAssistantText}▌`
+    }))}`, Math.max(20, mainWidth - 4)));
   }
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
@@ -2953,10 +3116,10 @@ function renderScreen(state, runtimeRef) {
     ...header,
     ...visibleMessages,
     "",
-    `${GRAY}${"-".repeat(width)}${RESET}`,
-    state.status.includes("Error") || state.status.includes("failed") ? `${RED}Status: ${state.status}${RESET}` : state.busy ? `${YELLOW}Status: ${state.status}${RESET}` : `${GREEN}Status: ${state.status}${RESET}`,
-    `${GRAY}Keys: Enter submit · Up/Down scroll · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit${RESET}`,
-    state.modal ? `${YELLOW}Modal active${RESET}` : `${BLUE}Prompt> ${state.inputBuffer}${RESET}`
+    `${state.theme === "dark" ? import_picocolors.default.dim("-".repeat(width)) : import_picocolors.default.dim("-".repeat(width))}`,
+    state.status.includes("Error") || state.status.includes("failed") ? `${state.theme === "dark" ? import_picocolors.default.red(`Status: ${state.status}`) : import_picocolors.default.redBright(`Status: ${state.status}`)}` : state.busy ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Status: ${state.status}`) : import_picocolors.default.yellowBright(`Status: ${state.status}`)}` : `${state.theme === "dark" ? import_picocolors.default.green(`Status: ${state.status}`) : import_picocolors.default.greenBright(`Status: ${state.status}`)}`,
+    `${import_picocolors.default.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
+    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.cyan(`Prompt> ${state.inputBuffer}`) : import_picocolors.default.cyanBright(`Prompt> ${state.inputBuffer}`)}`
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
@@ -3087,12 +3250,42 @@ ${formatUnknown(result.output)}`
   });
   addToolStep(state, `slash tool ${result.tool}`);
 }
+function autoCompleteSlashCommand(input3) {
+  const normalized = input3.trim().toLowerCase();
+  if (!normalized.startsWith("/")) {
+    return null;
+  }
+  const command = normalized.slice(1);
+  const matches = SLASH_COMMANDS.filter((c) => c.name.startsWith(command));
+  return matches.length > 0 ? matches : null;
+}
+async function getTerminalTheme() {
+  try {
+    const systemDark = await import_is_dark.default();
+    if (systemDark)
+      return "dark";
+  } catch (e) {}
+  const colorFgBg = process.env.COLORFGBG;
+  if (colorFgBg) {
+    const [fg, bg] = colorFgBg.split(";");
+    if (bg && !isNaN(Number(bg))) {
+      return Number(bg) > 7 ? "light" : "dark";
+    }
+  }
+  const term = process.env.TERM || "";
+  const termProgram = process.env.TERM_PROGRAM || "";
+  if (term.includes("256color") || termProgram.includes("iTerm") || termProgram.includes("WindowsTerminal") || termProgram.includes("vscode")) {
+    return "dark";
+  }
+  return "unknown";
+}
 async function startTui(options) {
   if (!input2.isTTY || !output2.isTTY) {
     throw new Error("TUI 模式需要在交互式终端中运行。");
   }
   const appStateRef = { current: createInitialAppState() };
   const runtimeRef = { current: createRuntime(options.cwd, appStateRef) };
+  const sysTheme = await getTerminalTheme();
   const state = {
     entries: [
       {
@@ -3115,7 +3308,13 @@ async function startTui(options) {
     activityStartedAt: null,
     nextCollapseKey: 1,
     nextStepSeq: 1,
-    timelineFilter: "all"
+    timelineFilter: "all",
+    isSearching: false,
+    searchMatches: [],
+    selectedMatchIndex: -1,
+    theme: sysTheme === "dark" ? "light" : "dark",
+    history: [],
+    historyIndex: -1
   };
   const availableSessions = await listSessions(options.cwd);
   if (availableSessions.length > 0) {
@@ -3320,6 +3519,13 @@ async function startTui(options) {
       renderScreen(state, runtimeRef);
       return;
     }
+    if (str === "/") {
+      state.inputBuffer += "/";
+      state.isSearching = true;
+      state.status = `可用命令: ${SLASH_COMMANDS.map((c) => c.name).join(", ")}`;
+      renderScreen(state, runtimeRef);
+      return;
+    }
     if (key.ctrl && key.name === "c") {
       if (state.busy) {
         runtimeRef.current.toolContext.abortController.abort(new Error("User interrupted current turn"));
@@ -3358,29 +3564,74 @@ async function startTui(options) {
     }
     if (key.name === "return") {
       const current = state.inputBuffer;
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
       state.inputBuffer = "";
       submitPrompt(current);
+      state.history.push(current);
+      state.historyIndex = state.history.length;
       return;
     }
     if (key.name === "backspace") {
       state.inputBuffer = state.inputBuffer.slice(0, -1);
+      if (!state.inputBuffer.startsWith("/")) {
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      } else {
+        const matches = autoCompleteSlashCommand(state.inputBuffer);
+        if (matches) {
+          state.searchMatches = matches;
+          state.selectedMatchIndex = 0;
+          state.status = `搜索结果: ${matches.map((m) => m.name).join(", ")}`;
+        } else {
+          state.searchMatches = [];
+          state.selectedMatchIndex = -1;
+          state.status = "无匹配命令";
+        }
+      }
       renderScreen(state, runtimeRef);
       return;
     }
     if (key.name === "escape") {
       state.inputBuffer = "";
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
+      state.status = "Ready";
       renderScreen(state, runtimeRef);
       return;
     }
-    if (key.name === "up") {
-      state.scrollOffset += 1;
-      renderScreen(state, runtimeRef);
-      return;
-    }
-    if (key.name === "down") {
-      state.scrollOffset = Math.max(0, state.scrollOffset - 1);
-      renderScreen(state, runtimeRef);
-      return;
+    if (state.isSearching && state.searchMatches.length > 0) {
+      if (key.name === "up") {
+        state.selectedMatchIndex = Math.max(0, state.selectedMatchIndex - 1);
+        const selected = state.searchMatches[state.selectedMatchIndex];
+        state.status = `选中: /${selected.name} (${selected.description})`;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+      if (key.name === "down") {
+        state.selectedMatchIndex = Math.min(state.searchMatches.length - 1, state.selectedMatchIndex + 1);
+        const selected = state.searchMatches[state.selectedMatchIndex];
+        state.status = `选中: /${selected.name} (${selected.description})`;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+    } else {
+      if (key.name === "up") {
+        state.historyIndex = Math.max(0, state.historyIndex - 1);
+        state.inputBuffer = state.history[state.historyIndex];
+        renderScreen(state, runtimeRef);
+        return;
+      }
+      if (key.name === "down") {
+        state.historyIndex = state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
+        state.inputBuffer = state.historyIndex < state.history.length ? state.history[state.historyIndex] : "";
+        renderScreen(state, runtimeRef);
+        return;
+      }
     }
     if (key.name === "pageup") {
       state.scrollOffset += 8;
@@ -3392,10 +3643,40 @@ async function startTui(options) {
       renderScreen(state, runtimeRef);
       return;
     }
+    if (key.name === "tab" && state.isSearching && state.searchMatches.length > 0) {
+      const selected = state.searchMatches[state.selectedMatchIndex];
+      if (selected) {
+        state.inputBuffer = `/${selected.name}`;
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      }
+      renderScreen(state, runtimeRef);
+      return;
+    }
     if (!str || key.ctrl || key.meta) {
       return;
     }
     state.inputBuffer += str;
+    if (state.inputBuffer.startsWith("/")) {
+      state.isSearching = true;
+      const matches = autoCompleteSlashCommand(state.inputBuffer);
+      if (matches) {
+        state.searchMatches = matches;
+        state.selectedMatchIndex = 0;
+        state.status = `搜索结果: ${matches.map((m) => m.name).join(", ")}`;
+      } else {
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "无匹配命令";
+      }
+    } else {
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
+      state.status = "Ready";
+    }
     renderScreen(state, runtimeRef);
   };
   output2.write("\x1B[?1049h\x1B[?25l");
@@ -3450,5 +3731,5 @@ export {
   main
 };
 
-//# debugId=C17128FAF4F411E364756E2164756E21
+//# debugId=873699DB6CA9DCBE64756E2164756E21
 //# sourceMappingURL=main.js.map
