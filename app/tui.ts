@@ -171,22 +171,7 @@ function trimTextPlain(text: string, width: number): string {
   return `${text.slice(0, Math.max(0, width - 1))}…`;
 }
 
-function formatEntry(entry: ConversationEntry): string {
-  switch (entry.kind) {
-    case "user":
-      return `You  ${entry.text}`;
-    case "assistant":
-      return `SLI  ${entry.text}`;
-    case "tool":
-      return `Tool ${entry.text}`;
-    case "result":
-      return `Out  ${entry.text}`;
-    case "error":
-      return `Err  ${entry.text}`;
-    case "system":
-      return `Sys  ${entry.text}`;
-  }
-}
+
 
 function formatUnknown(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -493,12 +478,9 @@ function withSinglePanelBorderColored(
 
 function formatConversationLine(entry: ConversationEntry): string {
   if (entry.collapsible && entry.expanded === false) {
-    return formatEntry({
-      ...entry,
-      text: `[#${entry.collapseKey}] ${entry.summary ?? "collapsed result"} (collapsed)`,
-    });
+    return `[#${entry.collapseKey}] ${entry.summary ?? "collapsed result"} (collapsed)`;
   }
-  return formatEntry(entry);
+  return entry.text;
 }
 
 function applyModalOverlay(
@@ -570,43 +552,45 @@ function renderScreen(
   setCenteredTerminalTitle("🚀 Siok Cli");
 
   const header = [
-    `${pc.bold(pc.blue(`Mode: ${mode} · Session: ${state.currentSessionId}`))}`,
+    `${pc.bold(pc.magenta(`Mode: ${mode}`) + `  ·  ` +  pc.blue(`Session: ${state.currentSessionId}`))}`,
     "",
   ];
 
   const messageLines = state.entries.flatMap((entry) => {
     // 为不同消息类型添加颜色
-    let coloredText = formatEntry(entry);
+    let text = entry.text;
+    if (entry.collapsible && entry.expanded === false) {
+      text = `[#${entry.collapseKey}] ${entry.summary ?? "collapsed result"} (collapsed)`;
+    }
+    let coloredText = text;
     switch (entry.kind) {
       case "user":
-        coloredText = `${state.theme === 'dark' ? pc.cyan(coloredText) : pc.cyanBright(coloredText)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok'))  + pc.cyan(` ${text}`) : pc.bgCyan(pc.white('Siok'))  + pc.cyan(` ${text}`)}`;
         break;
       case "assistant":
-        coloredText = `${state.theme === 'dark' ? pc.blue(coloredText) : pc.blueBright(coloredText)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('SLI'))  + pc.white(` ${text}`)}`;
         break;
       case "tool":
-        coloredText = `${state.theme === 'dark' ? pc.yellow(coloredText) : pc.yellowBright(coloredText)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgYellow(pc.black('Tool'))  + pc.yellow(` ${text}`) : pc.bgYellow(pc.white('Tool'))  + pc.yellow(` ${text}`)}`;
         break;
       case "result":
-        coloredText = `${state.theme === 'dark' ? pc.gray(coloredText) : pc.gray(coloredText)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Out'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('Out'))  + pc.white(` ${text}`)}`;
         break;
       case "error":
-        coloredText = `${state.theme === 'dark' ? pc.red(coloredText) : pc.redBright(coloredText)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgRed(pc.black('Err'))  + pc.red(` ${text}`) : pc.bgRed(pc.white('Err'))  + pc.red(` ${text}`)}`;
+        break;
+      case "system":
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Sys'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('Sys'))  + pc.white(` ${text}`)}`;
         break;
     }
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
   });
 
   if (state.streamingAssistantText.trim()) {
+    const streamingText = `${state.streamingAssistantText}▌`;
     messageLines.push(
       ...wrapText(
-        `${state.theme === 'dark' ? pc.blue(formatEntry({
-          kind: "assistant",
-          text: `${state.streamingAssistantText}▌`,
-        })) : pc.blueBright(formatEntry({
-          kind: "assistant",
-          text: `${state.streamingAssistantText}▌`,
-        }))}`,
+        `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI'))  + pc.black(` ${streamingText}`) : pc.bgWhite(pc.black('SLI'))  + pc.white(` ${streamingText}`)}`,
         Math.max(20, mainWidth - 4),
       ),
     );
@@ -627,7 +611,7 @@ function renderScreen(
     ...header,
     ...visibleMessages,
     "",
-    `${state.theme === 'dark' ? pc.dim("-".repeat(width)) : pc.dim("-".repeat(width))}`,
+    `${state.theme === 'dark' ? pc.gray("─".repeat(width)) : pc.gray("─".repeat(width))}`,
     state.status.includes("Error") || state.status.includes("failed")
       ? `${state.theme === 'dark' ? pc.red(`Status: ${state.status}`) : pc.redBright(`Status: ${state.status}`)}`
       : state.busy
@@ -636,7 +620,7 @@ function renderScreen(
     `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
     state.modal
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`  
-      : `${state.theme === 'dark' ? pc.cyan(`Prompt> ${state.inputBuffer}`) : pc.cyanBright(`Prompt> ${state.inputBuffer}`)}`,
+      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>'))  + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
   ].slice(0, height);
 
   if (state.modal) {

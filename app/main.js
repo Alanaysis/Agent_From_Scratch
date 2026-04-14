@@ -2905,22 +2905,6 @@ function trimTextPlain(text, width) {
   }
   return `${text.slice(0, Math.max(0, width - 1))}…`;
 }
-function formatEntry(entry) {
-  switch (entry.kind) {
-    case "user":
-      return `You  ${entry.text}`;
-    case "assistant":
-      return `SLI  ${entry.text}`;
-    case "tool":
-      return `Tool ${entry.text}`;
-    case "result":
-      return `Out  ${entry.text}`;
-    case "error":
-      return `Err  ${entry.text}`;
-    case "system":
-      return `Sys  ${entry.text}`;
-  }
-}
 function formatUnknown(value) {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
@@ -3073,38 +3057,40 @@ function renderScreen(state, runtimeRef) {
   }
   setCenteredTerminalTitle("\uD83D\uDE80 Siok Cli");
   const header = [
-    `${import_picocolors.default.bold(import_picocolors.default.blue(`Mode: ${mode} · Session: ${state.currentSessionId}`))}`,
+    `${import_picocolors.default.bold(import_picocolors.default.magenta(`Mode: ${mode}`) + `  ·  ` + import_picocolors.default.blue(`Session: ${state.currentSessionId}`))}`,
     ""
   ];
   const messageLines = state.entries.flatMap((entry) => {
-    let coloredText = formatEntry(entry);
+    let text = entry.text;
+    if (entry.collapsible && entry.expanded === false) {
+      text = `[#${entry.collapseKey}] ${entry.summary ?? "collapsed result"} (collapsed)`;
+    }
+    let coloredText = text;
     switch (entry.kind) {
       case "user":
-        coloredText = `${state.theme === "dark" ? import_picocolors.default.cyan(coloredText) : import_picocolors.default.cyanBright(coloredText)}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok")) + import_picocolors.default.cyan(` ${text}`) : import_picocolors.default.bgCyan(import_picocolors.default.white("Siok")) + import_picocolors.default.cyan(` ${text}`)}`;
         break;
       case "assistant":
-        coloredText = `${state.theme === "dark" ? import_picocolors.default.blue(coloredText) : import_picocolors.default.blueBright(coloredText)}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("SLI")) + import_picocolors.default.black(` ${text}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("SLI")) + import_picocolors.default.white(` ${text}`)}`;
         break;
       case "tool":
-        coloredText = `${state.theme === "dark" ? import_picocolors.default.yellow(coloredText) : import_picocolors.default.yellowBright(coloredText)}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgYellow(import_picocolors.default.black("Tool")) + import_picocolors.default.yellow(` ${text}`) : import_picocolors.default.bgYellow(import_picocolors.default.white("Tool")) + import_picocolors.default.yellow(` ${text}`)}`;
         break;
       case "result":
-        coloredText = `${state.theme === "dark" ? import_picocolors.default.gray(coloredText) : import_picocolors.default.gray(coloredText)}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("Out")) + import_picocolors.default.black(` ${text}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("Out")) + import_picocolors.default.white(` ${text}`)}`;
         break;
       case "error":
-        coloredText = `${state.theme === "dark" ? import_picocolors.default.red(coloredText) : import_picocolors.default.redBright(coloredText)}`;
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgRed(import_picocolors.default.black("Err")) + import_picocolors.default.red(` ${text}`) : import_picocolors.default.bgRed(import_picocolors.default.white("Err")) + import_picocolors.default.red(` ${text}`)}`;
+        break;
+      case "system":
+        coloredText = `${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("Sys")) + import_picocolors.default.black(` ${text}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("Sys")) + import_picocolors.default.white(` ${text}`)}`;
         break;
     }
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
   });
   if (state.streamingAssistantText.trim()) {
-    messageLines.push(...wrapText(`${state.theme === "dark" ? import_picocolors.default.blue(formatEntry({
-      kind: "assistant",
-      text: `${state.streamingAssistantText}▌`
-    })) : import_picocolors.default.blueBright(formatEntry({
-      kind: "assistant",
-      text: `${state.streamingAssistantText}▌`
-    }))}`, Math.max(20, mainWidth - 4)));
+    const streamingText = `${state.streamingAssistantText}▌`;
+    messageLines.push(...wrapText(`${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("SLI")) + import_picocolors.default.black(` ${streamingText}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("SLI")) + import_picocolors.default.white(` ${streamingText}`)}`, Math.max(20, mainWidth - 4)));
   }
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
@@ -3116,10 +3102,10 @@ function renderScreen(state, runtimeRef) {
     ...header,
     ...visibleMessages,
     "",
-    `${state.theme === "dark" ? import_picocolors.default.dim("-".repeat(width)) : import_picocolors.default.dim("-".repeat(width))}`,
+    `${state.theme === "dark" ? import_picocolors.default.gray("─".repeat(width)) : import_picocolors.default.gray("─".repeat(width))}`,
     state.status.includes("Error") || state.status.includes("failed") ? `${state.theme === "dark" ? import_picocolors.default.red(`Status: ${state.status}`) : import_picocolors.default.redBright(`Status: ${state.status}`)}` : state.busy ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Status: ${state.status}`) : import_picocolors.default.yellowBright(`Status: ${state.status}`)}` : `${state.theme === "dark" ? import_picocolors.default.green(`Status: ${state.status}`) : import_picocolors.default.greenBright(`Status: ${state.status}`)}`,
     `${import_picocolors.default.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
-    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.cyan(`Prompt> ${state.inputBuffer}`) : import_picocolors.default.cyanBright(`Prompt> ${state.inputBuffer}`)}`
+    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
@@ -3731,5 +3717,5 @@ export {
   main
 };
 
-//# debugId=873699DB6CA9DCBE64756E2164756E21
+//# debugId=76DB868CCF756E9664756E2164756E21
 //# sourceMappingURL=main.js.map
