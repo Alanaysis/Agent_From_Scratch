@@ -20,6 +20,24 @@ export type TuiOptions = {
   autoApprove?: boolean;
 };
 
+// 命令帮助信息列表，移到顶层以便在autoCompleteSlashCommand函数中访问
+const helpMessagesAll = [
+  "  /help",
+  "  /tools",
+  "  /sessions",
+  "  /inspect <id>",
+  "  /export-session <id>",
+  "  /rm-session <id>",
+  "  /cleanup-sessions --keep N [--dry-run]",
+  "  /expand [n|all]",
+  "  /collapse [n|all]",
+  "  /filter [all|failed|tools]",
+  "  /resume latest|failed",
+  "  /new",
+  "  /clear",
+  "  /quit",
+];
+
 type EntryKind = "user" | "assistant" | "tool" | "result" | "system" | "error";
 
 type ConversationEntry = {
@@ -103,7 +121,7 @@ type TuiState = {
   nextStepSeq: number;
   timelineFilter: TimelineFilter;
   isSearching: boolean; // 新增：标记是否处于搜索状态
-  searchMatches: SlashCommand[]; // 新增：存储搜索匹配的命令
+  searchMatches: string[]; // 新增：存储搜索匹配的命令
   selectedMatchIndex: number; // 新增：当前选中的匹配项索引
   theme: "light" | "dark";
   history: string[]; // 新增：存储历史输入
@@ -606,6 +624,7 @@ function renderScreen(
   );
   const visibleMessages = messageLines.slice(start, start + contentHeight);
 
+  let helpMessages: string[] = [];
   // 极简风格，没有边框
   let lines = [
     ...header,
@@ -621,6 +640,12 @@ function renderScreen(
     state.modal
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`  
       : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>'))  + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
+    // 渲染搜索匹配的命令，并高亮当前选中的命令
+    ...state.searchMatches.map((match, index) => 
+      index === state.selectedMatchIndex 
+        ? `${state.theme === 'dark' ? pc.bgCyan(pc.black(match)) : pc.bgCyan(pc.black(match))}` 
+        : match
+    ),
   ].slice(0, height);
 
   if (state.modal) {
@@ -803,13 +828,16 @@ async function runSlashCommand(
 
 
 
-function autoCompleteSlashCommand(input: string): SlashCommand[] | null {
+function autoCompleteSlashCommand(input: string): string[] | null {
   const normalized = input.trim().toLowerCase();
   if (!normalized.startsWith("/")) {
     return null;
   }
   const command = normalized.slice(1);
-  const matches = SLASH_COMMANDS.filter((c) => c.name.startsWith(command));
+  // 从helpMessagesAll中搜索全字符串匹配，取前5个
+  const matches = helpMessagesAll.filter(msg => 
+    msg.toLowerCase().includes(command)
+  ).slice(0, 5);
   return matches.length > 0 ? matches : null;
 }
 
@@ -1178,7 +1206,15 @@ export async function startTui(options: TuiOptions): Promise<void> {
       state.isSearching = true;
 
       // 显示所有可用命令作为提示
-      state.status = `可用命令: ${SLASH_COMMANDS.map(c => c.name).join(", ")}`;
+      state.status = "正在匹配命令";
+      const matches = autoCompleteSlashCommand(state.inputBuffer);
+      if (matches) {
+        state.searchMatches = matches;
+        state.selectedMatchIndex = 0;
+      } else {
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+      }
       renderScreen(state, runtimeRef);
       return;
     }
@@ -1258,7 +1294,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
         if (matches) {
           state.searchMatches = matches;
           state.selectedMatchIndex = 0;
-          state.status = `搜索结果: ${matches.map(m => m.name).join(", ")}`;
+          state.status = `正在匹配命令: ${matches.join(", ")}`;
         } else {
           state.searchMatches = [];
           state.selectedMatchIndex = -1;
@@ -1283,27 +1319,23 @@ export async function startTui(options: TuiOptions): Promise<void> {
     if (state.isSearching && state.searchMatches.length > 0) {
       // 在搜索模式下，使用箭头键导航搜索结果
       if (key.name === "up") {
-        state.selectedMatchIndex = Math.max(
-          0,
-          state.selectedMatchIndex - 1
-        );
+        // 实现循环列表：向上到顶时跳到底部
+        state.selectedMatchIndex = 
+          state.selectedMatchIndex - 1 < 0 
+            ? state.searchMatches.length - 1 
+            : state.selectedMatchIndex - 1;
 
-        // 显示当前选中的命令
-        const selected = state.searchMatches[state.selectedMatchIndex];
-        state.status = `选中: /${selected.name} (${selected.description})`;
         renderScreen(state, runtimeRef);
         return;
       }
 
       if (key.name === "down") {
-        state.selectedMatchIndex = Math.min(
-          state.searchMatches.length - 1,
-          state.selectedMatchIndex + 1
-        );
+        // 实现循环列表：向下到底时跳到顶部
+        state.selectedMatchIndex = 
+          state.selectedMatchIndex + 1 >= state.searchMatches.length 
+            ? 0 
+            : state.selectedMatchIndex + 1;
 
-        // 显示当前选中的命令
-        const selected = state.searchMatches[state.selectedMatchIndex];
-        state.status = `选中: /${selected.name} (${selected.description})`;
         renderScreen(state, runtimeRef);
         return;
       }
@@ -1340,7 +1372,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
       // 使用Tab键自动补全选中的命令
       const selected = state.searchMatches[state.selectedMatchIndex];
       if (selected) {
-        state.inputBuffer = `/${selected.name}`;
+        // 提取命令部分（去掉前面的空格和斜杠）
+        const command = selected.trim().slice(1);
+        state.inputBuffer = `/${command}`;
 
         // 补全后退出搜索状态
         state.isSearching = false;
@@ -1365,7 +1399,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
       if (matches) {
         state.searchMatches = matches;
         state.selectedMatchIndex = 0;
-        state.status = `搜索结果: ${matches.map(m => m.name).join(", ")}`;
+        state.status = "正在匹配命令";
       } else {
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
