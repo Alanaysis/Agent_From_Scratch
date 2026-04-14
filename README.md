@@ -1,7 +1,5 @@
 # Claude Code-lite
 
-[English](./README.en.md)
-
 ![Claude Code-lite TUI Preview](./assets/tui-preview.svg)
 
 一个面向学习、拆解和二次开发的最小 AI 编程 agent CLI。
@@ -10,11 +8,7 @@
 
 ## 项目背景
 
-今天是 04/01，愚人节。早上一打开消息就看到有人说 Claude Code CLI 的代码泄露了，起初我以为只是个玩笑，结果一查发现居然是真的。于是我把代码包下载下来，认真读了一遍。
-
-看完之后很直接的感受是：这里面确实有很多值得学习和借鉴的地方，尤其是本地 agent CLI 的 runtime、tool loop、权限模型、session 管理、TUI 交互这些部分。
-
-但因为法律和道德上的原因，我不打算直接公开那份源码。所以我基于自己对这份代码的理解，单独写了这个 `claude-code-lite`。它不是源码搬运，而是一个最小可用的参考实现，目前已经实现了：
+这个 `claude-code-lite`。它不是源码搬运，而是一个最小可用的参考实现，目前已经实现了：
 
 - 可安装、可打包、可运行的 CLI 结构
 - TUI、REPL、headless chat 三种交互入口
@@ -84,7 +78,7 @@ This will install all dependencies listed in `package.json`.
 cd claude-code-lite
 npm install
 bun run build
-node ./bin/claude-code-lite.js --help
+node ./bin/claude-code-lite.js
 ```
 
 ### 全局安装

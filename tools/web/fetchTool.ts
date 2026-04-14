@@ -1,5 +1,24 @@
 import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
+import { firefox } from 'playwright';
+
+async function web_fetch(url: string) {
+  const browser = await firefox.launch({ headless: true });
+  const page = await browser.newPage();
+
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForLoadState('domcontentloaded');
+
+  // 自动滚动加载懒加载内容
+  await page.evaluate(() => {
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+
+  const html = await page.content();
+  await browser.close();
+
+  return html;
+}
 
 export type WebFetchInput = {
   url: string;
@@ -23,8 +42,7 @@ export const WebFetchTool: Tool<WebFetchInput, WebFetchOutput> = {
     _canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<WebFetchOutput>> {
-    const response = await fetch(args.url);
-    const content = await response.text();
+    const content = await web_fetch(args.url);
     const snippet = content.slice(0, 1200);
     const result = args.prompt.trim()
       ? `Prompt: ${args.prompt}\n\nFetched snippet:\n${snippet}`

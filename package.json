@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./app/main.ts --target=node --format=esm --outfile ./app/main.js --sourcemap=linked",
+    "build": "tsc",
     "build:exe": "mkdir -p ./dist && bun build --compile --outfile ./dist/claude-code-lite ./app/main.ts",
     "dev": "bun ./app/main.ts",
     "typecheck": "tsc -p tsconfig.json",
@@ -42,8 +42,9 @@
   "license": "MIT",
   "dependencies": {
     "c8": "^11.0.0",
+    "electron": "^41.2.0",
     "is-dark": "^1.0.4",
-    "n": "^10.2.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "playwright": "^1.59.1"
   }
 }

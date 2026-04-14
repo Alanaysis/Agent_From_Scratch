@@ -3,6 +3,7 @@ node_modules/
 *.log
 .DS_Store
 .claude-code-lite/
+bin/claude-code-lite.js
 
 # Claude-related settings and agent memory
 .claude/
