@@ -1,0 +1,50 @@
+{
+  "name": "claude-code-lite",
+  "version": "0.1.0",
+  "description": "A minimal, installable CLI runtime inspired by Claude Code's architecture.",
+  "type": "module",
+  "bin": {
+    "claude-code-lite": "./bin/claude-code-lite.js"
+  },
+  "files": [
+    "bin",
+    "app/main.js",
+    "app/main.js.map",
+    "README.md",
+    ".env.example",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:exe": "mkdir -p ./dist && bun build --compile --outfile ./dist/claude-code-lite ./app/main.ts",
+    "dev": "bun ./app/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "bun run build && node ./bin/claude-code-lite.js --help",
+    "prepack": "bun run build",
+    "test": "bun test",
+    "coverage": "c8 bun test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "c8": "^11.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "llm",
+    "tools",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "c8": "^11.0.0",
+    "electron": "^41.2.0",
+    "is-dark": "^1.0.4",
+    "picocolors": "^1.1.1",
+    "playwright": "^1.59.1"
+  }
+}

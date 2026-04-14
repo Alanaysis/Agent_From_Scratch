@@ -1,0 +1,13 @@
+{
+  "test-session-1": {
+    "sessionId": "test-session-1",
+    "messages": [
+      { "role": "user", "content": "Hello" },
+      { "role": "assistant", "content": "Hi there!" }
+    ],
+    "tools": [],
+    "usage": { "inputTokens": 10, "outputTokens": 5 },
+    "createdAt": 1700000000000,
+    "updatedAt": 1700000001000
+  }
+}
