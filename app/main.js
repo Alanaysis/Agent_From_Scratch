@@ -1,148 +1,148 @@
-import { createRequire } from "node:module";
 var __create = Object.create;
-var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
-var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
   }
-  target = mod != null ? __create(__getProtoOf(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
-  for (let key of __getOwnPropNames(mod))
-    if (!__hasOwnProp.call(to, key))
-      __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
-        enumerable: true
-      });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
-var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
 // node_modules/picocolors/picocolors.js
-var require_picocolors = __commonJS((exports, module) => {
-  var p = process || {};
-  var argv = p.argv || [];
-  var env = p.env || {};
-  var isColorSupported = !(!!env.NO_COLOR || argv.includes("--no-color")) && (!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || (p.stdout || {}).isTTY && env.TERM !== "dumb" || !!env.CI);
-  var formatter = (open, close, replace = open) => (input2) => {
-    let string = "" + input2, index = string.indexOf(close, open.length);
-    return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close;
-  };
-  var replaceClose = (string, close, replace, index) => {
-    let result = "", cursor = 0;
-    do {
-      result += string.substring(cursor, index) + replace;
-      cursor = index + close.length;
-      index = string.indexOf(close, cursor);
-    } while (~index);
-    return result + string.substring(cursor);
-  };
-  var createColors = (enabled = isColorSupported) => {
-    let f = enabled ? formatter : () => String;
-    return {
-      isColorSupported: enabled,
-      reset: f("\x1B[0m", "\x1B[0m"),
-      bold: f("\x1B[1m", "\x1B[22m", "\x1B[22m\x1B[1m"),
-      dim: f("\x1B[2m", "\x1B[22m", "\x1B[22m\x1B[2m"),
-      italic: f("\x1B[3m", "\x1B[23m"),
-      underline: f("\x1B[4m", "\x1B[24m"),
-      inverse: f("\x1B[7m", "\x1B[27m"),
-      hidden: f("\x1B[8m", "\x1B[28m"),
-      strikethrough: f("\x1B[9m", "\x1B[29m"),
-      black: f("\x1B[30m", "\x1B[39m"),
-      red: f("\x1B[31m", "\x1B[39m"),
-      green: f("\x1B[32m", "\x1B[39m"),
-      yellow: f("\x1B[33m", "\x1B[39m"),
-      blue: f("\x1B[34m", "\x1B[39m"),
-      magenta: f("\x1B[35m", "\x1B[39m"),
-      cyan: f("\x1B[36m", "\x1B[39m"),
-      white: f("\x1B[37m", "\x1B[39m"),
-      gray: f("\x1B[90m", "\x1B[39m"),
-      bgBlack: f("\x1B[40m", "\x1B[49m"),
-      bgRed: f("\x1B[41m", "\x1B[49m"),
-      bgGreen: f("\x1B[42m", "\x1B[49m"),
-      bgYellow: f("\x1B[43m", "\x1B[49m"),
-      bgBlue: f("\x1B[44m", "\x1B[49m"),
-      bgMagenta: f("\x1B[45m", "\x1B[49m"),
-      bgCyan: f("\x1B[46m", "\x1B[49m"),
-      bgWhite: f("\x1B[47m", "\x1B[49m"),
-      blackBright: f("\x1B[90m", "\x1B[39m"),
-      redBright: f("\x1B[91m", "\x1B[39m"),
-      greenBright: f("\x1B[92m", "\x1B[39m"),
-      yellowBright: f("\x1B[93m", "\x1B[39m"),
-      blueBright: f("\x1B[94m", "\x1B[39m"),
-      magentaBright: f("\x1B[95m", "\x1B[39m"),
-      cyanBright: f("\x1B[96m", "\x1B[39m"),
-      whiteBright: f("\x1B[97m", "\x1B[39m"),
-      bgBlackBright: f("\x1B[100m", "\x1B[49m"),
-      bgRedBright: f("\x1B[101m", "\x1B[49m"),
-      bgGreenBright: f("\x1B[102m", "\x1B[49m"),
-      bgYellowBright: f("\x1B[103m", "\x1B[49m"),
-      bgBlueBright: f("\x1B[104m", "\x1B[49m"),
-      bgMagentaBright: f("\x1B[105m", "\x1B[49m"),
-      bgCyanBright: f("\x1B[106m", "\x1B[49m"),
-      bgWhiteBright: f("\x1B[107m", "\x1B[49m")
+var require_picocolors = __commonJS({
+  "node_modules/picocolors/picocolors.js"(exports, module) {
+    var p = process || {};
+    var argv = p.argv || [];
+    var env = p.env || {};
+    var isColorSupported = !(!!env.NO_COLOR || argv.includes("--no-color")) && (!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || (p.stdout || {}).isTTY && env.TERM !== "dumb" || !!env.CI);
+    var formatter = (open, close, replace = open) => (input3) => {
+      let string = "" + input3, index = string.indexOf(close, open.length);
+      return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close;
     };
-  };
-  module.exports = createColors();
-  module.exports.createColors = createColors;
+    var replaceClose = (string, close, replace, index) => {
+      let result = "", cursor = 0;
+      do {
+        result += string.substring(cursor, index) + replace;
+        cursor = index + close.length;
+        index = string.indexOf(close, cursor);
+      } while (~index);
+      return result + string.substring(cursor);
+    };
+    var createColors = (enabled = isColorSupported) => {
+      let f = enabled ? formatter : () => String;
+      return {
+        isColorSupported: enabled,
+        reset: f("\x1B[0m", "\x1B[0m"),
+        bold: f("\x1B[1m", "\x1B[22m", "\x1B[22m\x1B[1m"),
+        dim: f("\x1B[2m", "\x1B[22m", "\x1B[22m\x1B[2m"),
+        italic: f("\x1B[3m", "\x1B[23m"),
+        underline: f("\x1B[4m", "\x1B[24m"),
+        inverse: f("\x1B[7m", "\x1B[27m"),
+        hidden: f("\x1B[8m", "\x1B[28m"),
+        strikethrough: f("\x1B[9m", "\x1B[29m"),
+        black: f("\x1B[30m", "\x1B[39m"),
+        red: f("\x1B[31m", "\x1B[39m"),
+        green: f("\x1B[32m", "\x1B[39m"),
+        yellow: f("\x1B[33m", "\x1B[39m"),
+        blue: f("\x1B[34m", "\x1B[39m"),
+        magenta: f("\x1B[35m", "\x1B[39m"),
+        cyan: f("\x1B[36m", "\x1B[39m"),
+        white: f("\x1B[37m", "\x1B[39m"),
+        gray: f("\x1B[90m", "\x1B[39m"),
+        bgBlack: f("\x1B[40m", "\x1B[49m"),
+        bgRed: f("\x1B[41m", "\x1B[49m"),
+        bgGreen: f("\x1B[42m", "\x1B[49m"),
+        bgYellow: f("\x1B[43m", "\x1B[49m"),
+        bgBlue: f("\x1B[44m", "\x1B[49m"),
+        bgMagenta: f("\x1B[45m", "\x1B[49m"),
+        bgCyan: f("\x1B[46m", "\x1B[49m"),
+        bgWhite: f("\x1B[47m", "\x1B[49m"),
+        blackBright: f("\x1B[90m", "\x1B[39m"),
+        redBright: f("\x1B[91m", "\x1B[39m"),
+        greenBright: f("\x1B[92m", "\x1B[39m"),
+        yellowBright: f("\x1B[93m", "\x1B[39m"),
+        blueBright: f("\x1B[94m", "\x1B[39m"),
+        magentaBright: f("\x1B[95m", "\x1B[39m"),
+        cyanBright: f("\x1B[96m", "\x1B[39m"),
+        whiteBright: f("\x1B[97m", "\x1B[39m"),
+        bgBlackBright: f("\x1B[100m", "\x1B[49m"),
+        bgRedBright: f("\x1B[101m", "\x1B[49m"),
+        bgGreenBright: f("\x1B[102m", "\x1B[49m"),
+        bgYellowBright: f("\x1B[103m", "\x1B[49m"),
+        bgBlueBright: f("\x1B[104m", "\x1B[49m"),
+        bgMagentaBright: f("\x1B[105m", "\x1B[49m"),
+        bgCyanBright: f("\x1B[106m", "\x1B[49m"),
+        bgWhiteBright: f("\x1B[107m", "\x1B[49m")
+      };
+    };
+    module.exports = createColors();
+    module.exports.createColors = createColors;
+  }
 });
 
 // node_modules/is-dark/dist/index.js
-var require_dist = __commonJS((exports) => {
-  exports.__esModule = true;
-  var DarkModeHandler = function() {
-    function DarkModeHandler2() {
-      var _this = this;
-      this.isNode = false;
-      this.state = "light";
-      this.subscribers = [];
-      this.isDarkMode = function() {
-        if (_this.isNode)
-          return false;
-        return _this.state === "dark";
-      };
-      this.subscribeToColorScheme = function(method) {
-        _this.subscribers.push(method);
-      };
-      this.clearSubscribers = function() {
-        _this.subscribers = [];
-      };
-      this.handleUiChange = function(e) {
-        _this.state = e.matches ? "dark" : "light";
-        if (_this.subscribers.length > 0) {
-          _this.subscribers.forEach(function(subscriber) {
-            subscriber(_this.state);
-          });
+var require_dist = __commonJS({
+  "node_modules/is-dark/dist/index.js"(exports) {
+    "use strict";
+    exports.__esModule = true;
+    var DarkModeHandler = (
+      /** @class */
+      /* @__PURE__ */ (function() {
+        function DarkModeHandler2() {
+          var _this = this;
+          this.isNode = false;
+          this.state = "light";
+          this.subscribers = [];
+          this.isDarkMode = function() {
+            if (_this.isNode)
+              return false;
+            return _this.state === "dark";
+          };
+          this.subscribeToColorScheme = function(method) {
+            _this.subscribers.push(method);
+          };
+          this.clearSubscribers = function() {
+            _this.subscribers = [];
+          };
+          this.handleUiChange = function(e) {
+            _this.state = e.matches ? "dark" : "light";
+            if (_this.subscribers.length > 0) {
+              _this.subscribers.forEach(function(subscriber) {
+                subscriber(_this.state);
+              });
+            }
+          };
+          if (typeof window === "undefined") {
+            this.isNode = true;
+            return;
+          }
+          this.media = window.matchMedia("(prefers-color-scheme: dark)");
+          this.media.addListener(this.handleUiChange);
+          this.handleUiChange(this.media);
         }
-      };
-      if (typeof window === "undefined") {
-        this.isNode = true;
-        return;
-      }
-      this.media = window.matchMedia("(prefers-color-scheme: dark)");
-      this.media.addListener(this.handleUiChange);
-      this.handleUiChange(this.media);
-    }
-    return DarkModeHandler2;
-  }();
-  var dm = new DarkModeHandler;
-  exports.default = dm.isDarkMode;
-  exports.subscribeToColorScheme = dm.subscribeToColorScheme;
+        return DarkModeHandler2;
+      })()
+    );
+    var dm = new DarkModeHandler();
+    exports["default"] = dm.isDarkMode;
+    exports.subscribeToColorScheme = dm.subscribeToColorScheme;
+  }
 });
 
 // app/main.ts
@@ -171,60 +171,62 @@ function createInitialAppState() {
 // storage/transcript.ts
 import { appendFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
-function getTranscriptPath(cwd, sessionId) {
-  return join(cwd, ".claude-code-lite", "transcripts", `${sessionId}.jsonl`);
+function getTranscriptPath(cwd2, sessionId) {
+  return join(cwd2, ".claude-code-lite", "transcripts", `${sessionId}.jsonl`);
 }
-async function appendTranscript(cwd, sessionId, messages) {
-  const filePath = getTranscriptPath(cwd, sessionId);
-  await mkdir(join(cwd, ".claude-code-lite", "transcripts"), {
+async function appendTranscript(cwd2, sessionId, messages) {
+  const filePath = getTranscriptPath(cwd2, sessionId);
+  await mkdir(join(cwd2, ".claude-code-lite", "transcripts"), {
     recursive: true
   });
-  const lines = messages.map((message) => JSON.stringify(message)).join(`
-`);
+  const lines = messages.map((message) => JSON.stringify(message)).join("\n");
   await appendFile(filePath, `${lines}
 `, "utf8");
 }
-async function readTranscriptMessages(cwd, sessionId) {
-  const { readFile } = await import("fs/promises");
-  const filePath = getTranscriptPath(cwd, sessionId);
-  const content = await readFile(filePath, "utf8");
-  return content.split(`
-`).map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
+async function readTranscriptMessages(cwd2, sessionId) {
+  const { readFile: readFile3 } = await import("fs/promises");
+  const filePath = getTranscriptPath(cwd2, sessionId);
+  const content = await readFile3(filePath, "utf8");
+  return content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
-async function deleteTranscript(cwd, sessionId) {
-  await rm(getTranscriptPath(cwd, sessionId), { force: true });
+async function deleteTranscript(cwd2, sessionId) {
+  await rm(getTranscriptPath(cwd2, sessionId), { force: true });
 }
 
 // storage/sessionIndex.ts
 import { mkdir as mkdir2, readFile, readdir, rm as rm2, stat, writeFile } from "fs/promises";
 import { join as join2 } from "path";
-function getSessionsDir(cwd) {
-  return join2(cwd, ".claude-code-lite", "sessions");
+function getSessionsDir(cwd2) {
+  return join2(cwd2, ".claude-code-lite", "sessions");
 }
-function getTranscriptsDir(cwd) {
-  return join2(cwd, ".claude-code-lite", "transcripts");
+function getTranscriptsDir(cwd2) {
+  return join2(cwd2, ".claude-code-lite", "transcripts");
 }
-function getSessionInfoPath(cwd, sessionId) {
-  return join2(getSessionsDir(cwd), `${sessionId}.json`);
+function getSessionInfoPath(cwd2, sessionId) {
+  return join2(getSessionsDir(cwd2), `${sessionId}.json`);
 }
-function getTranscriptPath2(cwd, sessionId) {
-  return join2(getTranscriptsDir(cwd), `${sessionId}.jsonl`);
+function getTranscriptPath2(cwd2, sessionId) {
+  return join2(getTranscriptsDir(cwd2), `${sessionId}.jsonl`);
 }
-function getSessionInfoFilePath(cwd, sessionId) {
-  return getSessionInfoPath(cwd, sessionId);
+function getSessionInfoFilePath(cwd2, sessionId) {
+  return getSessionInfoPath(cwd2, sessionId);
 }
 function summarizeText(text, maxLength = 80) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
     return normalized;
   }
-  return `${normalized.slice(0, maxLength - 1)}…`;
+  return `${normalized.slice(0, maxLength - 1)}\u2026`;
 }
 function extractUserPrompts(messages) {
-  return messages.filter((message) => message.type === "user").map((message) => summarizeText(message.content, 120));
+  return messages.filter(
+    (message) => message.type === "user"
+  ).map((message) => summarizeText(message.content, 120));
 }
 function deriveSessionTitle(messages, sessionId) {
-  const firstUser = messages.find((message) => message.type === "user");
+  const firstUser = messages.find(
+    (message) => message.type === "user"
+  );
   if (firstUser) {
     return summarizeText(firstUser.content, 72);
   }
@@ -233,18 +235,18 @@ function deriveSessionTitle(messages, sessionId) {
 function deriveSessionSummary(messages, status, lastTool, errorCount) {
   const prompts = extractUserPrompts(messages);
   const latestPrompt = prompts[prompts.length - 1];
-  const errorSuffix = errorCount && errorCount > 0 ? ` · ${errorCount} error${errorCount > 1 ? "s" : ""}` : "";
+  const errorSuffix = errorCount && errorCount > 0 ? ` \xB7 ${errorCount} error${errorCount > 1 ? "s" : ""}` : "";
   const prefix = status === "needs_attention" ? `needs attention${errorSuffix}` : `ready${errorSuffix}`;
   if (lastTool && latestPrompt) {
-    return summarizeText(`${prefix} · ${lastTool} · ${latestPrompt}`, 120);
+    return summarizeText(`${prefix} \xB7 ${lastTool} \xB7 ${latestPrompt}`, 120);
   }
   if (lastTool) {
-    return summarizeText(`${prefix} · ${lastTool}`, 120);
+    return summarizeText(`${prefix} \xB7 ${lastTool}`, 120);
   }
   if (latestPrompt) {
-    return summarizeText(`${prefix} · ${latestPrompt}`, 120);
+    return summarizeText(`${prefix} \xB7 ${latestPrompt}`, 120);
   }
-  return status ? prefix : undefined;
+  return status ? prefix : void 0;
 }
 function getSessionStatus(messages) {
   let lastTool;
@@ -275,23 +277,23 @@ function getSessionStatus(messages) {
   };
 }
 function getConfiguredProvider() {
-  return process.env.CCL_LLM_PROVIDER?.trim() || undefined;
+  return process.env.CCL_LLM_PROVIDER?.trim() || void 0;
 }
 function getConfiguredModel() {
-  return process.env.CCL_LLM_MODEL?.trim() || undefined;
+  return process.env.CCL_LLM_MODEL?.trim() || void 0;
 }
-async function readSessionInfo(cwd, sessionId) {
+async function readSessionInfo(cwd2, sessionId) {
   try {
-    const content = await readFile(getSessionInfoPath(cwd, sessionId), "utf8");
+    const content = await readFile(getSessionInfoPath(cwd2, sessionId), "utf8");
     return JSON.parse(content);
   } catch {
     return null;
   }
 }
-async function updateSessionInfo(cwd, sessionId, messages) {
-  const previous = await readSessionInfo(cwd, sessionId);
+async function updateSessionInfo(cwd2, sessionId, messages) {
+  const previous = await readSessionInfo(cwd2, sessionId);
   const prompts = extractUserPrompts(messages);
-  const now = new Date().toISOString();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
   const sessionStatus = getSessionStatus(messages);
   const next = {
     id: sessionId,
@@ -299,35 +301,45 @@ async function updateSessionInfo(cwd, sessionId, messages) {
     updatedAt: now,
     messageCount: messages.length,
     title: previous?.title || deriveSessionTitle(messages, sessionId),
-    summary: deriveSessionSummary(messages, sessionStatus.status, sessionStatus.lastTool, sessionStatus.errorCount) || previous?.summary,
+    summary: deriveSessionSummary(
+      messages,
+      sessionStatus.status,
+      sessionStatus.lastTool,
+      sessionStatus.errorCount
+    ) || previous?.summary,
     firstPrompt: prompts[0],
     lastPrompt: prompts[prompts.length - 1],
     provider: getConfiguredProvider() || previous?.provider,
     model: getConfiguredModel() || previous?.model,
     ...sessionStatus
   };
-  await mkdir2(getSessionsDir(cwd), { recursive: true });
-  await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}
-`, "utf8");
+  await mkdir2(getSessionsDir(cwd2), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd2, sessionId),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf8"
+  );
   return next;
 }
-async function listSessions(cwd) {
-  const infos = new Map;
+async function listSessions(cwd2) {
+  const infos = /* @__PURE__ */ new Map();
   try {
-    const entries = await readdir(getSessionsDir(cwd));
+    const entries = await readdir(getSessionsDir(cwd2));
     for (const entry of entries) {
       if (!entry.endsWith(".json")) {
         continue;
       }
       const sessionId = entry.replace(/\.json$/, "");
-      const info = await readSessionInfo(cwd, sessionId);
+      const info = await readSessionInfo(cwd2, sessionId);
       if (info) {
         infos.set(sessionId, info);
       }
     }
-  } catch {}
+  } catch {
+  }
   try {
-    const entries = await readdir(getTranscriptsDir(cwd));
+    const entries = await readdir(getTranscriptsDir(cwd2));
     for (const entry of entries) {
       if (!entry.endsWith(".jsonl")) {
         continue;
@@ -339,25 +351,34 @@ async function listSessions(cwd) {
       const current = infos.get(sessionId);
       if (current && !current.title && !current.updatedAt) {
         try {
-          const content = await readFile(getTranscriptPath2(cwd, sessionId), "utf8");
-          const messages = content.split(`
-`).map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
+          const content = await readFile(
+            getTranscriptPath2(cwd2, sessionId),
+            "utf8"
+          );
+          const messages = content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
           const prompts = extractUserPrompts(messages);
           const sessionStatus = getSessionStatus(messages);
           infos.set(sessionId, {
             ...current,
             title: deriveSessionTitle(messages, sessionId),
-            summary: deriveSessionSummary(messages, sessionStatus.status, sessionStatus.lastTool, sessionStatus.errorCount),
+            summary: deriveSessionSummary(
+              messages,
+              sessionStatus.status,
+              sessionStatus.lastTool,
+              sessionStatus.errorCount
+            ),
             firstPrompt: prompts[0],
             lastPrompt: prompts[prompts.length - 1],
             messageCount: messages.length,
-            updatedAt: (await stat(getTranscriptPath2(cwd, sessionId)).catch(() => null))?.mtime.toISOString() || current.updatedAt,
+            updatedAt: (await stat(getTranscriptPath2(cwd2, sessionId)).catch(() => null))?.mtime.toISOString() || current.updatedAt,
             ...sessionStatus
           });
-        } catch {}
+        } catch {
+        }
       }
     }
-  } catch {}
+  } catch {
+  }
   return [...infos.values()].sort((left, right) => {
     const leftRank = left.status === "needs_attention" ? 0 : 1;
     const rightRank = right.status === "needs_attention" ? 0 : 1;
@@ -369,8 +390,8 @@ async function listSessions(cwd) {
     return rightTime.localeCompare(leftTime);
   });
 }
-async function deleteSessionInfo(cwd, sessionId) {
-  await rm2(getSessionInfoPath(cwd, sessionId), { force: true });
+async function deleteSessionInfo(cwd2, sessionId) {
+  await rm2(getSessionInfoPath(cwd2, sessionId), { force: true });
 }
 
 // runtime/usage.ts
@@ -382,13 +403,13 @@ function emptyUsage() {
 }
 
 // runtime/session.ts
-class SessionEngine {
-  config;
-  messages = [];
-  usage = emptyUsage();
+var SessionEngine = class {
   constructor(config) {
     this.config = config;
   }
+  config;
+  messages = [];
+  usage = emptyUsage();
   get sessionId() {
     return this.config.id;
   }
@@ -415,43 +436,45 @@ class SessionEngine {
   getUsage() {
     return { ...this.usage };
   }
-}
+};
 
 // permissions/engine.ts
-function getInputPattern(input) {
-  if (typeof input !== "object" || input === null) {
-    return;
+function getInputPattern(input3) {
+  if (typeof input3 !== "object" || input3 === null) {
+    return void 0;
   }
-  if ("path" in input && typeof input.path === "string" && input.path.trim()) {
-    return input.path.trim();
+  if ("path" in input3 && typeof input3.path === "string" && input3.path.trim()) {
+    return input3.path.trim();
   }
-  if ("command" in input && typeof input.command === "string" && input.command.trim()) {
-    return input.command.trim();
+  if ("command" in input3 && typeof input3.command === "string" && input3.command.trim()) {
+    return input3.command.trim();
   }
-  if ("url" in input && typeof input.url === "string" && input.url.trim()) {
-    return input.url.trim();
+  if ("url" in input3 && typeof input3.url === "string" && input3.url.trim()) {
+    return input3.url.trim();
   }
-  if ("description" in input && typeof input.description === "string" && input.description.trim()) {
-    return input.description.trim();
+  if ("description" in input3 && typeof input3.description === "string" && input3.description.trim()) {
+    return input3.description.trim();
   }
-  return;
+  return void 0;
 }
-function matchesRule(rule, tool, input) {
+function matchesRule(rule, tool, input3) {
   if (rule.toolName !== tool.name) {
     return false;
   }
   if (!rule.pattern) {
     return true;
   }
-  return getInputPattern(input) === rule.pattern;
+  return getInputPattern(input3) === rule.pattern;
 }
-function rememberPermissionRule(context, tool, input) {
+function rememberPermissionRule(context, tool, input3) {
   const rule = {
     toolName: tool.name,
-    pattern: getInputPattern(input)
+    pattern: getInputPattern(input3)
   };
   context.setAppState((prev) => {
-    const exists = prev.permissionContext.allowRules.some((existing) => existing.toolName === rule.toolName && existing.pattern === rule.pattern);
+    const exists = prev.permissionContext.allowRules.some(
+      (existing) => existing.toolName === rule.toolName && existing.pattern === rule.pattern
+    );
     if (exists) {
       return prev;
     }
@@ -465,8 +488,8 @@ function rememberPermissionRule(context, tool, input) {
   });
   return rule;
 }
-var canUseTool = async (tool, input, context, _parentMessage, _toolUseId) => {
-  const validation = await tool.validateInput?.(input, context);
+var canUseTool = async (tool, input3, context, _parentMessage, _toolUseId) => {
+  const validation = await tool.validateInput?.(input3, context);
   if (validation && !validation.result) {
     return {
       behavior: "deny",
@@ -478,42 +501,42 @@ var canUseTool = async (tool, input, context, _parentMessage, _toolUseId) => {
   if (mode === "bypassPermissions" || mode === "acceptEdits") {
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   }
-  if (permissionContext.denyRules.some((rule) => matchesRule(rule, tool, input))) {
+  if (permissionContext.denyRules.some((rule) => matchesRule(rule, tool, input3))) {
     return {
       behavior: "deny",
       message: `Tool ${tool.name} is blocked by a session rule`
     };
   }
-  if (permissionContext.allowRules.some((rule) => matchesRule(rule, tool, input))) {
+  if (permissionContext.allowRules.some((rule) => matchesRule(rule, tool, input3))) {
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   }
-  if (permissionContext.askRules.some((rule) => matchesRule(rule, tool, input))) {
+  if (permissionContext.askRules.some((rule) => matchesRule(rule, tool, input3))) {
     return {
       behavior: "ask",
       message: `Tool ${tool.name} requires confirmation by a session rule`,
-      updatedInput: input
+      updatedInput: input3
     };
   }
-  const toolDecision = await tool.checkPermissions?.(input, context);
+  const toolDecision = await tool.checkPermissions?.(input3, context);
   if (toolDecision) {
     return toolDecision;
   }
-  if (tool.isReadOnly(input)) {
+  if (tool.isReadOnly(input3)) {
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   }
   return {
     behavior: "ask",
     message: `Tool ${tool.name} requires confirmation`,
-    updatedInput: input
+    updatedInput: input3
   };
 };
 
@@ -525,8 +548,7 @@ async function runAgent(params) {
     `Description: ${params.description}`,
     `Prompt length: ${params.prompt.length} characters`,
     "This educational runtime does not call a model yet; it only exercises the delegation path."
-  ].join(`
-`);
+  ].join("\n");
 }
 
 // shared/ids.ts
@@ -542,8 +564,9 @@ function createSubagentContext(parent, overrides) {
     messages: overrides?.messages ?? parent.messages,
     agentId: overrides?.agentId ?? parent.agentId ?? createId("agent"),
     agentType: overrides?.agentType,
-    abortController: overrides?.abortController ?? (overrides?.shareAbortController ? parent.abortController : new AbortController),
-    setAppState: overrides?.shareSetAppState ? parent.setAppState : () => {}
+    abortController: overrides?.abortController ?? (overrides?.shareAbortController ? parent.abortController : new AbortController()),
+    setAppState: overrides?.shareSetAppState ? parent.setAppState : () => {
+    }
   };
 }
 
@@ -571,25 +594,25 @@ var AgentTool = {
       }
     };
   },
-  async validateInput(input) {
-    if (!input.description.trim()) {
+  async validateInput(input3) {
+    if (!input3.description.trim()) {
       return { result: false, message: "Description is required" };
     }
-    if (!input.prompt.trim()) {
+    if (!input3.prompt.trim()) {
       return { result: false, message: "Prompt is required" };
     }
     return { result: true };
   },
-  async checkPermissions(input, context) {
+  async checkPermissions(input3, context) {
     if (context.getAppState().permissionContext.mode === "default") {
       return {
         behavior: "ask",
-        message: `Agent launch requires confirmation for "${input.description}"`
+        message: `Agent launch requires confirmation for "${input3.description}"`
       };
     }
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -603,8 +626,8 @@ var AgentTool = {
 // shared/fs.ts
 import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
 import { dirname, resolve } from "path";
-function resolvePathFromCwd(cwd, inputPath) {
-  return resolve(cwd, inputPath);
+function resolvePathFromCwd(cwd2, inputPath) {
+  return resolve(cwd2, inputPath);
 }
 async function readTextFile(path) {
   return readFile2(path, "utf8");
@@ -637,31 +660,31 @@ var EditTool = {
       }
     };
   },
-  async validateInput(input) {
-    if (!input?.path || typeof input.path !== "string" || !input.path.trim()) {
+  async validateInput(input3) {
+    if (!input3?.path || typeof input3.path !== "string" || !input3.path.trim()) {
       return { result: false, message: "Path is required" };
     }
-    if (typeof input.oldString !== "string") {
+    if (typeof input3.oldString !== "string") {
       return { result: false, message: "oldString must be a string" };
     }
-    if (typeof input.newString !== "string") {
+    if (typeof input3.newString !== "string") {
       return { result: false, message: "newString must be a string" };
     }
-    if (input.oldString === input.newString) {
+    if (input3.oldString === input3.newString) {
       return { result: false, message: "oldString and newString must differ" };
     }
     return { result: true };
   },
-  async checkPermissions(input, context) {
+  async checkPermissions(input3, context) {
     if (context.getAppState().permissionContext.mode === "default") {
       return {
         behavior: "ask",
-        message: `Edit requires confirmation for ${input.path}`
+        message: `Edit requires confirmation for ${input3.path}`
       };
     }
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -689,16 +712,16 @@ var ReadTool = {
       }
     };
   },
-  async validateInput(input) {
-    if (!input?.path || typeof input.path !== "string" || !input.path.trim()) {
+  async validateInput(input3) {
+    if (!input3?.path || typeof input3.path !== "string" || !input3.path.trim()) {
       return { result: false, message: "Path is required" };
     }
     return { result: true };
   },
-  async checkPermissions(input) {
+  async checkPermissions(input3) {
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -726,25 +749,25 @@ var WriteTool = {
       }
     };
   },
-  async validateInput(input) {
-    if (!input?.path || typeof input.path !== "string" || !input.path.trim()) {
+  async validateInput(input3) {
+    if (!input3?.path || typeof input3.path !== "string" || !input3.path.trim()) {
       return { result: false, message: "Path is required" };
     }
-    if (typeof input.content !== "string") {
+    if (typeof input3.content !== "string") {
       return { result: false, message: "Content must be a string" };
     }
     return { result: true };
   },
-  async checkPermissions(input, context) {
+  async checkPermissions(input3, context) {
     if (context.getAppState().permissionContext.mode === "default") {
       return {
         behavior: "ask",
-        message: `Write requires confirmation for ${input.path}`
+        message: `Write requires confirmation for ${input3.path}`
       };
     }
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -792,22 +815,22 @@ var ShellTool = {
       data
     };
   },
-  async validateInput(input) {
-    if (!input?.command || !String(input.command).trim()) {
+  async validateInput(input3) {
+    if (!input3?.command || !String(input3.command).trim()) {
       return { result: false, message: "Command is required" };
     }
     return { result: true };
   },
-  async checkPermissions(input, context) {
+  async checkPermissions(input3, context) {
     if (context.getAppState().permissionContext.mode === "default") {
       return {
         behavior: "ask",
-        message: `Shell requires confirmation for "${input.command}"`
+        message: `Shell requires confirmation for "${input3.command}"`
       };
     }
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -819,6 +842,19 @@ var ShellTool = {
 };
 
 // tools/web/fetchTool.ts
+import { firefox } from "playwright";
+async function web_fetch(url) {
+  const browser = await firefox.launch({ headless: true });
+  const page = await browser.newPage();
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForLoadState("domcontentloaded");
+  await page.evaluate(`
+    window.scrollTo(0, document.body.scrollHeight);
+  `);
+  const html = await page.content();
+  await browser.close();
+  return html;
+}
 var WebFetchTool = {
   name: "WebFetch",
   inputSchema: null,
@@ -827,8 +863,7 @@ var WebFetchTool = {
     return "Fetch and process a URL";
   },
   async call(args, _context, _canUseTool, _parentMessage) {
-    const response = await fetch(args.url);
-    const content = await response.text();
+    const content = await web_fetch(args.url);
     const snippet = content.slice(0, 1200);
     const result = args.prompt.trim() ? `Prompt: ${args.prompt}
 
@@ -840,18 +875,18 @@ ${snippet}` : snippet;
       }
     };
   },
-  async validateInput(input) {
+  async validateInput(input3) {
     try {
-      new URL(input.url);
+      new URL(input3.url);
     } catch {
       return { result: false, message: "A valid URL is required" };
     }
     return { result: true };
   },
-  async checkPermissions(input) {
+  async checkPermissions(input3) {
     return {
       behavior: "allow",
-      updatedInput: input
+      updatedInput: input3
     };
   },
   isReadOnly() {
@@ -890,7 +925,9 @@ function getLlmConfigFromEnv() {
     provider,
     apiKey,
     model,
-    baseUrl: stripTrailingSlash(process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider)),
+    baseUrl: stripTrailingSlash(
+      process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider)
+    ),
     systemPrompt: process.env.CCL_LLM_SYSTEM_PROMPT?.trim(),
     anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01"
   };
@@ -911,13 +948,12 @@ function extractOpenAiText(content) {
         return part.text;
       }
       return "";
-    }).filter(Boolean).join(`
-`);
+    }).filter(Boolean).join("\n");
   }
   return "";
 }
 function parseToolArguments(raw) {
-  if (raw === null || raw === undefined) {
+  if (raw === null || raw === void 0) {
     return {};
   }
   const rawType = typeof raw;
@@ -943,9 +979,7 @@ function toOpenAiMessages(messages, systemPrompt, config) {
   if (allSystem.length > 0) {
     apiMessages.push({
       role: "system",
-      content: allSystem.join(`
-
-`)
+      content: allSystem.join("\n\n")
     });
   }
   for (const message of messages) {
@@ -962,12 +996,12 @@ function toOpenAiMessages(messages, systemPrompt, config) {
       continue;
     }
     const textBlocks = message.content.filter((block) => block.type === "text").map((block) => block.text);
-    const toolBlocks = message.content.filter((block) => block.type === "tool_use");
+    const toolBlocks = message.content.filter(
+      (block) => block.type === "tool_use"
+    );
     apiMessages.push({
       role: "assistant",
-      content: textBlocks.length > 0 ? textBlocks.join(`
-
-`) : null,
+      content: textBlocks.length > 0 ? textBlocks.join("\n\n") : null,
       tool_calls: toolBlocks.length > 0 ? toolBlocks.map((block) => ({
         id: block.id,
         type: "function",
@@ -975,7 +1009,7 @@ function toOpenAiMessages(messages, systemPrompt, config) {
           name: block.name,
           arguments: JSON.stringify(block.input ?? {})
         }
-      })) : undefined
+      })) : void 0
     });
   }
   return apiMessages;
@@ -1006,12 +1040,14 @@ function toAnthropicMessages(messages) {
     }
     apiMessages.push({
       role: "assistant",
-      content: message.content.map((block) => block.type === "text" ? { type: "text", text: block.text } : {
-        type: "tool_use",
-        id: block.id,
-        name: block.name,
-        input: block.input
-      })
+      content: message.content.map(
+        (block) => block.type === "text" ? { type: "text", text: block.text } : {
+          type: "tool_use",
+          id: block.id,
+          name: block.name,
+          input: block.input
+        }
+      )
     });
   }
   return apiMessages;
@@ -1021,7 +1057,7 @@ async function readSseEvents(response, onEvent) {
     throw new Error("Streaming response body is missing");
   }
   const reader = response.body.getReader();
-  const decoder = new TextDecoder;
+  const decoder = new TextDecoder();
   let buffer = "";
   while (true) {
     const { done, value } = await reader.read();
@@ -1029,14 +1065,11 @@ async function readSseEvents(response, onEvent) {
       break;
     }
     buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split(`
-
-`);
+    const frames = buffer.split("\n\n");
     buffer = frames.pop() ?? "";
     for (const frame of frames) {
       let eventName = null;
-      for (const line of frame.split(`
-`)) {
+      for (const line of frame.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) {
           continue;
@@ -1059,7 +1092,7 @@ async function readSseEvents(response, onEvent) {
 }
 var openAiProvider = {
   async runTurn(params, config) {
-    const toolCallsByIndex = new Map;
+    const toolCallsByIndex = /* @__PURE__ */ new Map();
     let accumulatedText = "";
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
@@ -1071,7 +1104,11 @@ var openAiProvider = {
         model: config.model,
         temperature: 0.2,
         stream: true,
-        messages: toOpenAiMessages(params.messages, params.systemPrompt, config),
+        messages: toOpenAiMessages(
+          params.messages,
+          params.systemPrompt,
+          config
+        ),
         tools: params.tools.map((tool) => ({
           type: "function",
           function: {
@@ -1084,7 +1121,9 @@ var openAiProvider = {
     });
     if (!response.ok) {
       const payload = await response.json();
-      throw new Error(payload.error?.message || `LLM request failed with status ${response.status}`);
+      throw new Error(
+        payload.error?.message || `LLM request failed with status ${response.status}`
+      );
     }
     await readSseEvents(response, (_event, data) => {
       const payload = JSON.parse(data);
@@ -1092,7 +1131,7 @@ var openAiProvider = {
       if (!delta) {
         return;
       }
-      if (delta.content !== undefined && delta.content !== null) {
+      if (delta.content !== void 0 && delta.content !== null) {
         const textContent = extractOpenAiText(delta.content);
         if (textContent.length > 0) {
           accumulatedText += textContent;
@@ -1144,9 +1183,7 @@ var anthropicProvider = {
         model: config.model,
         max_tokens: 2048,
         stream: true,
-        system: systemParts.join(`
-
-`),
+        system: systemParts.join("\n\n"),
         messages: toAnthropicMessages(params.messages),
         tools: params.tools.map((tool) => ({
           name: tool.name,
@@ -1157,10 +1194,12 @@ var anthropicProvider = {
     });
     if (!response.ok) {
       const payload = await response.json();
-      throw new Error(payload.error?.message || `LLM request failed with status ${response.status}`);
+      throw new Error(
+        payload.error?.message || `LLM request failed with status ${response.status}`
+      );
     }
     let accumulatedText = "";
-    const toolCallsByIndex = new Map;
+    const toolCallsByIndex = /* @__PURE__ */ new Map();
     await readSseEvents(response, (event, data) => {
       if (event === "error") {
         const payload2 = JSON.parse(data);
@@ -1205,7 +1244,7 @@ var anthropicProvider = {
       toolCalls: [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, toolCall]) => ({
         id: toolCall.id,
         name: toolCall.name,
-        input: toolCall.input !== undefined ? toolCall.input : parseToolArguments(toolCall.inputJson)
+        input: toolCall.input !== void 0 ? toolCall.input : parseToolArguments(toolCall.inputJson)
       }))
     };
   }
@@ -1261,7 +1300,7 @@ function createToolResultMessage(toolUseId, content, isError = false) {
 }
 function summarizeReadResult(result) {
   const content = typeof result === "object" && result !== null && "content" in result && typeof result.content === "string" ? result.content : stringify(result);
-  return `我已经读取了目标内容。下面是预览：
+  return `\u6211\u5DF2\u7ECF\u8BFB\u53D6\u4E86\u76EE\u6807\u5185\u5BB9\u3002\u4E0B\u9762\u662F\u9884\u89C8\uFF1A
 
 ${truncate(content, 1200)}`;
 }
@@ -1271,16 +1310,14 @@ function summarizeShellResult(result) {
     const stderr = typeof result.stderr === "string" ? truncate(result.stderr, 400) : "";
     const exitCode = typeof result.exitCode === "number" ? result.exitCode : "unknown";
     return [
-      `命令已执行，退出码：${exitCode}。`,
+      `\u547D\u4EE4\u5DF2\u6267\u884C\uFF0C\u9000\u51FA\u7801\uFF1A${exitCode}\u3002`,
       stdout ? `stdout:
 ${stdout}` : "",
       stderr ? `stderr:
 ${stderr}` : ""
-    ].filter(Boolean).join(`
-
-`);
+    ].filter(Boolean).join("\n\n");
   }
-  return `命令已执行。
+  return `\u547D\u4EE4\u5DF2\u6267\u884C\u3002
 
 ${truncate(stringify(result), 1200)}`;
 }
@@ -1293,9 +1330,9 @@ function planPrompt(prompt) {
       kind: "tool",
       toolName: "Read",
       input: { path },
-      intro: `我会先读取 \`${path}\`。`,
+      intro: `\u6211\u4F1A\u5148\u8BFB\u53D6 \`${path}\`\u3002`,
       summarizeResult: summarizeReadResult,
-      summarizeError: (message) => `读取 \`${path}\` 失败：${message}`
+      summarizeError: (message) => `\u8BFB\u53D6 \`${path}\` \u5931\u8D25\uFF1A${message}`
     };
   }
   const shellMatch = trimmed.match(/^(?:run|exec|execute|shell|bash)\s+(.+)$/i) ?? trimmed.match(/^(?:执行|运行命令)\s+(.+)$/);
@@ -1305,12 +1342,14 @@ function planPrompt(prompt) {
       kind: "tool",
       toolName: "Shell",
       input: { command },
-      intro: `我会执行命令：\`${command}\`。`,
+      intro: `\u6211\u4F1A\u6267\u884C\u547D\u4EE4\uFF1A\`${command}\`\u3002`,
       summarizeResult: summarizeShellResult,
-      summarizeError: (message) => `命令执行失败：${message}`
+      summarizeError: (message) => `\u547D\u4EE4\u6267\u884C\u5931\u8D25\uFF1A${message}`
     };
   }
-  const fetchMatch = trimmed.match(/^(?:fetch|visit|open-url)\s+(https?:\/\/\S+)(?:\s+(.+))?$/i) ?? trimmed.match(/^(?:抓取|访问)\s+(https?:\/\/\S+)(?:\s+(.+))?$/);
+  const fetchMatch = trimmed.match(
+    /^(?:fetch|visit|open-url)\s+(https?:\/\/\S+)(?:\s+(.+))?$/i
+  ) ?? trimmed.match(/^(?:抓取|访问)\s+(https?:\/\/\S+)(?:\s+(.+))?$/);
   if (fetchMatch) {
     const url = fetchMatch[1];
     const fetchPrompt = fetchMatch[2]?.trim() ?? "";
@@ -1318,11 +1357,11 @@ function planPrompt(prompt) {
       kind: "tool",
       toolName: "WebFetch",
       input: { url, prompt: fetchPrompt },
-      intro: `我会抓取 ${url}。`,
-      summarizeResult: (result) => `网页抓取完成。以下是结果预览：
+      intro: `\u6211\u4F1A\u6293\u53D6 ${url}\u3002`,
+      summarizeResult: (result) => `\u7F51\u9875\u6293\u53D6\u5B8C\u6210\u3002\u4EE5\u4E0B\u662F\u7ED3\u679C\u9884\u89C8\uFF1A
 
 ${truncate(stringify(result), 1200)}`,
-      summarizeError: (message) => `抓取 ${url} 失败：${message}`
+      summarizeError: (message) => `\u6293\u53D6 ${url} \u5931\u8D25\uFF1A${message}`
     };
   }
   const writeMatch = trimmed.match(/^(?:write|create|save)\s+(\S+)\s+(.+)$/i) ?? trimmed.match(/^(?:写入|创建文件)\s+(\S+)\s+(.+)$/);
@@ -1333,11 +1372,11 @@ ${truncate(stringify(result), 1200)}`,
       kind: "tool",
       toolName: "Write",
       input: { path, content },
-      intro: `我会把内容写入 \`${path}\`。`,
-      summarizeResult: (result) => `写入完成：\`${path}\`。
+      intro: `\u6211\u4F1A\u628A\u5185\u5BB9\u5199\u5165 \`${path}\`\u3002`,
+      summarizeResult: (result) => `\u5199\u5165\u5B8C\u6210\uFF1A\`${path}\`\u3002
 
 ${stringify(result)}`,
-      summarizeError: (message) => `写入 \`${path}\` 失败：${message}`
+      summarizeError: (message) => `\u5199\u5165 \`${path}\` \u5931\u8D25\uFF1A${message}`
     };
   }
   const editMatch = trimmed.match(/^(?:edit|replace)\s+(\S+)\s+(.+?)\s*(?:=>|->)\s*(.+)$/i) ?? trimmed.match(/^(?:编辑|替换)\s+(\S+)\s+(.+?)\s*(?:=>|->|为)\s*(.+)$/);
@@ -1349,28 +1388,27 @@ ${stringify(result)}`,
       kind: "tool",
       toolName: "Edit",
       input: { path, oldString, newString },
-      intro: `我会编辑 \`${path}\`，替换指定内容。`,
-      summarizeResult: () => `编辑完成：\`${path}\` 已更新。`,
-      summarizeError: (message) => `编辑 \`${path}\` 失败：${message}`
+      intro: `\u6211\u4F1A\u7F16\u8F91 \`${path}\`\uFF0C\u66FF\u6362\u6307\u5B9A\u5185\u5BB9\u3002`,
+      summarizeResult: () => `\u7F16\u8F91\u5B8C\u6210\uFF1A\`${path}\` \u5DF2\u66F4\u65B0\u3002`,
+      summarizeError: (message) => `\u7F16\u8F91 \`${path}\` \u5931\u8D25\uFF1A${message}`
     };
   }
   return {
     kind: "text",
     text: [
-      "我现在支持一组本地 agent 动作，但当前没有可用的远程 LLM 配置。",
-      "你可以设置这些环境变量来接入兼容 OpenAI Chat Completions 的模型：",
+      "\u6211\u73B0\u5728\u652F\u6301\u4E00\u7EC4\u672C\u5730 agent \u52A8\u4F5C\uFF0C\u4F46\u5F53\u524D\u6CA1\u6709\u53EF\u7528\u7684\u8FDC\u7A0B LLM \u914D\u7F6E\u3002",
+      "\u4F60\u53EF\u4EE5\u8BBE\u7F6E\u8FD9\u4E9B\u73AF\u5883\u53D8\u91CF\u6765\u63A5\u5165\u517C\u5BB9 OpenAI Chat Completions \u7684\u6A21\u578B\uFF1A",
       "- `CCL_LLM_API_KEY`",
       "- `CCL_LLM_MODEL`",
-      "- `CCL_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
-      "在未配置 LLM 时，也可以直接给我这些格式的提示：",
+      "- `CCL_LLM_BASE_URL` \u53EF\u9009\uFF0C\u9ED8\u8BA4 `https://api.openai.com/v1`",
+      "\u5728\u672A\u914D\u7F6E LLM \u65F6\uFF0C\u4E5F\u53EF\u4EE5\u76F4\u63A5\u7ED9\u6211\u8FD9\u4E9B\u683C\u5F0F\u7684\u63D0\u793A\uFF1A",
       "- `read README.md`",
       "- `run pwd`",
       "- `fetch https://example.com`",
       "- `write notes.txt hello world`",
       "- `edit notes.txt hello => hi`",
-      "也可以输入 `/help` 查看 TUI 内建命令。"
-    ].join(`
-`)
+      "\u4E5F\u53EF\u4EE5\u8F93\u5165 `/help` \u67E5\u770B TUI \u5185\u5EFA\u547D\u4EE4\u3002"
+    ].join("\n")
   };
 }
 function getDefaultSystemPrompt() {
@@ -1485,13 +1523,27 @@ function getToolDefinitions() {
 async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
   const tool = findToolByName(getTools(), toolUseBlock.name);
   if (!tool) {
-    yield createToolResultMessage(toolUseBlock.id, stringify({ error: `Unknown tool ${toolUseBlock.name}` }), true);
+    yield createToolResultMessage(
+      toolUseBlock.id,
+      stringify({ error: `Unknown tool ${toolUseBlock.name}` }),
+      true
+    );
     return;
   }
   let effectiveInput = toolUseBlock.input;
-  const permission = await params.canUseTool(tool, effectiveInput, params.toolUseContext, toolUseMessage, toolUseBlock.id);
+  const permission = await params.canUseTool(
+    tool,
+    effectiveInput,
+    params.toolUseContext,
+    toolUseMessage,
+    toolUseBlock.id
+  );
   if (permission.behavior === "deny") {
-    yield createToolResultMessage(toolUseBlock.id, stringify({ error: permission.message }), true);
+    yield createToolResultMessage(
+      toolUseBlock.id,
+      stringify({ error: permission.message }),
+      true
+    );
     return;
   }
   if (permission.behavior === "ask") {
@@ -1501,7 +1553,11 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
       message: permission.message
     });
     if (!allowed) {
-      yield createToolResultMessage(toolUseBlock.id, stringify({ error: `User rejected ${toolUseBlock.name}` }), true);
+      yield createToolResultMessage(
+        toolUseBlock.id,
+        stringify({ error: `User rejected ${toolUseBlock.name}` }),
+        true
+      );
       return;
     }
     if (permission.updatedInput) {
@@ -1511,7 +1567,12 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
     effectiveInput = permission.updatedInput;
   }
   try {
-    const result = await tool.call(effectiveInput, params.toolUseContext, params.canUseTool, toolUseMessage);
+    const result = await tool.call(
+      effectiveInput,
+      params.toolUseContext,
+      params.canUseTool,
+      toolUseMessage
+    );
     yield createToolResultMessage(toolUseBlock.id, stringify(result.data));
     if (result.extraMessages) {
       for (const extraMessage of result.extraMessages) {
@@ -1520,7 +1581,11 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    yield createToolResultMessage(toolUseBlock.id, stringify({ error: message }), true);
+    yield createToolResultMessage(
+      toolUseBlock.id,
+      stringify({ error: message }),
+      true
+    );
   }
 }
 async function* queryWithPlanner(params) {
@@ -1542,21 +1607,29 @@ async function* queryWithPlanner(params) {
   yield toolUseMessage;
   const toolUseBlock = toolUseMessage.content[0];
   if (toolUseBlock.type !== "tool_use") {
-    yield createAssistantTextMessage("内部错误：tool_use block 缺失。");
+    yield createAssistantTextMessage("\u5185\u90E8\u9519\u8BEF\uFF1Atool_use block \u7F3A\u5931\u3002");
     return;
   }
   let toolResultMessage = null;
-  for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
+  for await (const message of executeToolCall(
+    params,
+    toolUseMessage,
+    toolUseBlock
+  )) {
     toolResultMessage = message.type === "tool_result" ? message : toolResultMessage;
     yield message;
   }
   if (!toolResultMessage) {
-    yield createAssistantTextMessage(`执行 ${planned.toolName} 时没有产生结果。`);
+    yield createAssistantTextMessage(
+      `\u6267\u884C ${planned.toolName} \u65F6\u6CA1\u6709\u4EA7\u751F\u7ED3\u679C\u3002`
+    );
     return;
   }
   if (toolResultMessage.isError) {
     const content = JSON.parse(toolResultMessage.content);
-    yield createAssistantTextMessage(planned.summarizeError(content.error ?? "Unknown error"));
+    yield createAssistantTextMessage(
+      planned.summarizeError(content.error ?? "Unknown error")
+    );
     return;
   }
   const result = JSON.parse(toolResultMessage.content);
@@ -1566,7 +1639,7 @@ async function* queryWithLlm(params) {
   const conversation = [...params.messages];
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
-  for (let turn = 0;turn < maxTurns; turn += 1) {
+  for (let turn = 0; turn < maxTurns; turn += 1) {
     const llmResponse = await runLlmTurn({
       messages: conversation,
       systemPrompt,
@@ -1574,7 +1647,7 @@ async function* queryWithLlm(params) {
       onTextDelta: params.onAssistantTextDelta
     });
     if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
-      yield createAssistantTextMessage("模型没有返回任何内容。");
+      yield createAssistantTextMessage("\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u4EFB\u4F55\u5185\u5BB9\u3002");
       return;
     }
     const assistantBlocks = [];
@@ -1595,18 +1668,24 @@ async function* queryWithLlm(params) {
     const assistantMessage = createAssistantMessage(assistantBlocks);
     conversation.push(assistantMessage);
     yield assistantMessage;
-    const toolCalls = assistantBlocks.filter((block) => block.type === "tool_use");
+    const toolCalls = assistantBlocks.filter(
+      (block) => block.type === "tool_use"
+    );
     if (toolCalls.length === 0) {
       return;
     }
     for (const toolCall of toolCalls) {
-      for await (const message of executeToolCall(params, assistantMessage, toolCall)) {
+      for await (const message of executeToolCall(
+        params,
+        assistantMessage,
+        toolCall
+      )) {
         conversation.push(message);
         yield message;
       }
     }
   }
-  yield createAssistantTextMessage("达到最大工具轮次限制，已停止继续执行。");
+  yield createAssistantTextMessage("\u8FBE\u5230\u6700\u5927\u5DE5\u5177\u8F6E\u6B21\u9650\u5236\uFF0C\u5DF2\u505C\u6B62\u7EE7\u7EED\u6267\u884C\u3002");
 }
 async function* query(params) {
   if (!getLlmConfigFromEnv()) {
@@ -1617,17 +1696,18 @@ async function* query(params) {
     yield* queryWithLlm(params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    yield createAssistantTextMessage(`LLM 调用失败，已回退到本地 planner。
+    yield createAssistantTextMessage(
+      `LLM \u8C03\u7528\u5931\u8D25\uFF0C\u5DF2\u56DE\u9000\u5230\u672C\u5730 planner\u3002
 
-${message}`);
+${message}`
+    );
     yield* queryWithPlanner(params);
   }
 }
 
 // app/headless.ts
 function parseTranscript(text) {
-  return text.split(`
-`).map((line) => line.trim()).filter(Boolean).map((line) => {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
     try {
       return JSON.parse(line);
     } catch {
@@ -1643,10 +1723,10 @@ function formatSessionList(sessions, options) {
     const marker = session.status === "needs_attention" ? "!" : "-";
     const updated = session.updatedAt || session.createdAt || "-";
     const title = session.title || session.id;
-    const model = session.provider || session.model ? ` · ${session.provider || "?"}/${session.model || "?"}` : "";
-    const count = session.messageCount !== undefined ? ` · ${session.messageCount} msg` : "";
-    const stats = session.toolUseCount !== undefined || session.errorCount !== undefined ? ` · tools:${session.toolUseCount ?? 0} · errors:${session.errorCount ?? 0}` : "";
-    const status = session.status ? ` · ${session.status}` : "";
+    const model = session.provider || session.model ? ` \xB7 ${session.provider || "?"}/${session.model || "?"}` : "";
+    const count = session.messageCount !== void 0 ? ` \xB7 ${session.messageCount} msg` : "";
+    const stats = session.toolUseCount !== void 0 || session.errorCount !== void 0 ? ` \xB7 tools:${session.toolUseCount ?? 0} \xB7 errors:${session.errorCount ?? 0}` : "";
+    const status = session.status ? ` \xB7 ${session.status}` : "";
     const lastTool = session.lastTool ? `
     last tool: ${session.lastTool}` : "";
     const lastError = session.lastError ? `
@@ -1655,13 +1735,12 @@ function formatSessionList(sessions, options) {
     summary: ${session.summary}` : "";
     const prompt = session.lastPrompt ? `
     ${session.lastPrompt}` : "";
-    return `${marker} ${session.id} · ${updated}${count}${stats}${model}${status}
+    return `${marker} ${session.id} \xB7 ${updated}${count}${stats}${model}${status}
     ${title}${summary}${prompt}${lastTool}${lastError}`;
-  }).join(`
-`);
+  }).join("\n");
   const filters = [
     options?.status ? `status=${options.status}` : "",
-    options?.limit !== undefined ? `limit=${options.limit}` : ""
+    options?.limit !== void 0 ? `limit=${options.limit}` : ""
   ].filter(Boolean);
   return filters.length > 0 ? `[${filters.join(", ")}]
 ${lines}` : lines;
@@ -1681,15 +1760,14 @@ function formatSessionMetadata(session) {
     `last prompt: ${session.lastPrompt || "-"}`,
     `last tool: ${session.lastTool || "-"}`,
     `last error: ${session.lastError || "-"}`
-  ].join(`
-`);
+  ].join("\n");
 }
 function clipText(text, maxLength) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
     return normalized;
   }
-  return `${normalized.slice(0, maxLength - 1)}…`;
+  return `${normalized.slice(0, maxLength - 1)}\u2026`;
 }
 function formatExportMessageEntry(message) {
   if (message.type === "user") {
@@ -1699,11 +1777,15 @@ function formatExportMessageEntry(message) {
     const status = message.isError ? "tool_error" : "tool_result";
     return `${status}(${message.toolUseId}): ${summarizeUnknown(message.content, 400)}`;
   }
-  return message.content.map((block) => block.type === "text" ? `assistant: ${clipText(block.text, 400)}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`).join(" | ");
+  return message.content.map(
+    (block) => block.type === "text" ? `assistant: ${clipText(block.text, 400)}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`
+  ).join(" | ");
 }
-function formatInspectView(cwd, session, messages, recentCount = 8) {
+function formatInspectView(cwd2, session, messages, recentCount = 8) {
   const recentMessages = messages.slice(-recentCount);
-  const errors = messages.filter((message) => message.type === "tool_result" && Boolean(message.isError));
+  const errors = messages.filter(
+    (message) => message.type === "tool_result" && Boolean(message.isError)
+  );
   const recentErrors = errors.slice(-3);
   return [
     "Session Inspect",
@@ -1714,13 +1796,13 @@ function formatInspectView(cwd, session, messages, recentCount = 8) {
     recentMessages.length > 0 ? formatTranscriptMessages(recentMessages, true) : "(none)",
     "",
     "recent errors:",
-    recentErrors.length > 0 ? recentErrors.map((message, index) => `${index + 1}. ${summarizeUnknown(message.content, 200)}`).join(`
-`) : "(none)",
+    recentErrors.length > 0 ? recentErrors.map(
+      (message, index) => `${index + 1}. ${summarizeUnknown(message.content, 200)}`
+    ).join("\n") : "(none)",
     "",
-    `metadata file: ${getSessionInfoFilePath(cwd, session.id)}`,
-    `transcript file: ${getTranscriptPath(cwd, session.id)}`
-  ].join(`
-`);
+    `metadata file: ${getSessionInfoFilePath(cwd2, session.id)}`,
+    `transcript file: ${getTranscriptPath(cwd2, session.id)}`
+  ].join("\n");
 }
 function formatCleanupSummary(removed, skippedCount, dryRun = false) {
   if (removed.length === 0) {
@@ -1730,11 +1812,10 @@ function formatCleanupSummary(removed, skippedCount, dryRun = false) {
     `${dryRun ? "Would remove" : "Removed"} ${removed.length} session(s):`,
     ...removed.map((session) => {
       const updated = session.updatedAt || session.createdAt || "-";
-      return `- ${session.id} · ${updated} · ${session.title || session.id}`;
+      return `- ${session.id} \xB7 ${updated} \xB7 ${session.title || session.id}`;
     }),
     skippedCount > 0 ? `Kept ${skippedCount} session(s).` : ""
-  ].filter(Boolean).join(`
-`);
+  ].filter(Boolean).join("\n");
 }
 function formatMarkdownExport(session, messages) {
   return [
@@ -1757,24 +1838,31 @@ function formatMarkdownExport(session, messages) {
     "",
     "## Transcript",
     "",
-    ...messages.map((message, index) => `${index + 1}. ${formatExportMessageEntry(message)}`),
+    ...messages.map(
+      (message, index) => `${index + 1}. ${formatExportMessageEntry(message)}`
+    ),
     ""
-  ].join(`
-`);
+  ].join("\n");
 }
 function formatJsonExport(session, messages) {
-  return JSON.stringify({
-    session,
-    messages: messages.map((message) => ({
-      ...message,
-      ...message.type === "user" ? { content: clipText(message.content, 240) } : message.type === "tool_result" ? { content: summarizeUnknown(message.content, 400) } : {
-        content: message.content.map((block) => block.type === "text" ? {
-          ...block,
-          text: clipText(block.text, 400)
-        } : block)
-      }
-    }))
-  }, null, 2);
+  return JSON.stringify(
+    {
+      session,
+      messages: messages.map((message) => ({
+        ...message,
+        ...message.type === "user" ? { content: clipText(message.content, 240) } : message.type === "tool_result" ? { content: summarizeUnknown(message.content, 400) } : {
+          content: message.content.map(
+            (block) => block.type === "text" ? {
+              ...block,
+              text: clipText(block.text, 400)
+            } : block
+          )
+        }
+      }))
+    },
+    null,
+    2
+  );
 }
 function formatTranscriptEntry(message) {
   if (message.type === "user") {
@@ -1784,8 +1872,9 @@ function formatTranscriptEntry(message) {
     const status = message.isError ? "tool_error" : "tool_result";
     return `${status}(${message.toolUseId}): ${summarizeUnknown(message.content, 240)}`;
   }
-  return message.content.map((block) => block.type === "text" ? `assistant: ${block.text}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`).join(`
-`);
+  return message.content.map(
+    (block) => block.type === "text" ? `assistant: ${block.text}` : `tool_use(${block.id}): ${block.name} ${summarizeToolInput(block.input)}`
+  ).join("\n");
 }
 function formatTranscriptMessages(messages, compact = false) {
   if (messages.length === 0) {
@@ -1800,14 +1889,13 @@ function formatTranscriptMessages(messages, compact = false) {
         const status = message.isError ? "tool_error" : "tool_result";
         return `${index + 1}. ${status}: ${summarizeUnknown(message.content, 120)}`;
       }
-      const summary = message.content.map((block) => block.type === "text" ? summarizeUnknown(block.text, 120) : `${block.name} ${summarizeToolInput(block.input)}`).join(" | ");
+      const summary = message.content.map(
+        (block) => block.type === "text" ? summarizeUnknown(block.text, 120) : `${block.name} ${summarizeToolInput(block.input)}`
+      ).join(" | ");
       return `${index + 1}. assistant: ${summary}`;
-    }).join(`
-`);
+    }).join("\n");
   }
-  return messages.map((message, index) => `${index + 1}. ${formatTranscriptEntry(message)}`).join(`
-
-`);
+  return messages.map((message, index) => `${index + 1}. ${formatTranscriptEntry(message)}`).join("\n\n");
 }
 function parseCommand(argv) {
   const [command, ...rest] = argv;
@@ -1970,8 +2058,7 @@ function formatHelp() {
     "  CCL_LLM_BASE_URL   Optional, defaults to https://api.openai.com/v1",
     "  CCL_LLM_SYSTEM_PROMPT   Optional extra system prompt",
     "  CCL_ANTHROPIC_VERSION   Optional, defaults to 2023-06-01"
-  ].join(`
-`);
+  ].join("\n");
 }
 function summarizeUnknown(value, maxLength = 120) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? "";
@@ -1979,25 +2066,25 @@ function summarizeUnknown(value, maxLength = 120) {
   if (normalized.length <= maxLength) {
     return normalized;
   }
-  return `${normalized.slice(0, maxLength - 1)}…`;
+  return `${normalized.slice(0, maxLength - 1)}\u2026`;
 }
-function summarizeToolInput(input2) {
-  if (typeof input2 !== "object" || input2 === null) {
-    return summarizeUnknown(input2, 60);
+function summarizeToolInput(input3) {
+  if (typeof input3 !== "object" || input3 === null) {
+    return summarizeUnknown(input3, 60);
   }
-  if ("path" in input2 && typeof input2.path === "string") {
-    return input2.path;
+  if ("path" in input3 && typeof input3.path === "string") {
+    return input3.path;
   }
-  if ("command" in input2 && typeof input2.command === "string") {
-    return summarizeUnknown(input2.command, 60);
+  if ("command" in input3 && typeof input3.command === "string") {
+    return summarizeUnknown(input3.command, 60);
   }
-  if ("url" in input2 && typeof input2.url === "string") {
-    return input2.url;
+  if ("url" in input3 && typeof input3.url === "string") {
+    return input3.url;
   }
-  if ("description" in input2 && typeof input2.description === "string") {
-    return summarizeUnknown(input2.description, 60);
+  if ("description" in input3 && typeof input3.description === "string") {
+    return summarizeUnknown(input3.description, 60);
   }
-  return summarizeUnknown(input2, 60);
+  return summarizeUnknown(input3, 60);
 }
 function summarizeToolResult(message) {
   if (message.type !== "tool_result") {
@@ -2005,27 +2092,27 @@ function summarizeToolResult(message) {
   }
   return summarizeUnknown(message.content, 80);
 }
-async function resolveSessionIdArg(cwd, rawSession) {
+async function resolveSessionIdArg(cwd2, rawSession) {
   if (!rawSession) {
-    return;
+    return void 0;
   }
   if (rawSession === "latest") {
-    const sessions = await listSessions(cwd);
+    const sessions = await listSessions(cwd2);
     return sessions[0]?.id;
   }
   if (rawSession === "failed") {
-    const sessions = await listSessions(cwd);
+    const sessions = await listSessions(cwd2);
     return sessions.find((session) => session.status === "needs_attention")?.id;
   }
   return rawSession;
 }
-async function resolveSessionIdForChat(cwd, rawSession) {
-  return resolveSessionIdArg(cwd, rawSession);
+async function resolveSessionIdForChat(cwd2, rawSession) {
+  return resolveSessionIdArg(cwd2, rawSession);
 }
-async function parseChatCommandOptions(cwd, args) {
+async function parseChatCommandOptions(cwd2, args) {
   let sessionRef;
   const promptParts = [];
-  for (let index = 0;index < args.length; index += 1) {
+  for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--resume" || arg === "--session") {
       sessionRef = args[index + 1];
@@ -2042,7 +2129,7 @@ async function parseChatCommandOptions(cwd, args) {
   if (!prompt) {
     throw new Error("chat requires a prompt");
   }
-  const sessionId = await resolveSessionIdForChat(cwd, sessionRef);
+  const sessionId = await resolveSessionIdForChat(cwd2, sessionRef);
   if (sessionRef && !sessionId) {
     throw new Error("No resumable session found");
   }
@@ -2051,19 +2138,21 @@ async function parseChatCommandOptions(cwd, args) {
     sessionId
   };
 }
-async function parseExportCommandOptions(cwd, args) {
+async function parseExportCommandOptions(cwd2, args) {
   const rawSession = args[0];
   if (!rawSession) {
     throw new Error("export-session requires a sessionId");
   }
   let format = "markdown";
   let outputPath;
-  for (let index = 1;index < args.length; index += 1) {
+  for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--format") {
       const value = args[index + 1];
       if (value !== "markdown" && value !== "json") {
-        throw new Error('export-session --format requires "markdown" or "json"');
+        throw new Error(
+          'export-session --format requires "markdown" or "json"'
+        );
       }
       format = value;
       index += 1;
@@ -2079,7 +2168,7 @@ async function parseExportCommandOptions(cwd, args) {
     }
     throw new Error(`Unknown export-session option "${arg}"`);
   }
-  const sessionId = await resolveSessionIdArg(cwd, rawSession);
+  const sessionId = await resolveSessionIdArg(cwd2, rawSession);
   if (!sessionId) {
     throw new Error("No exportable session found");
   }
@@ -2100,8 +2189,7 @@ function buildSyntheticAssistant(toolName, toolInput) {
   };
 }
 async function confirmOrThrow(message, autoApprove) {
-  if (autoApprove)
-    return;
+  if (autoApprove) return;
   if (!input.isTTY || !output.isTTY) {
     throw new Error(`${message}. Re-run with --yes to auto-approve.`);
   }
@@ -2120,12 +2208,14 @@ function parseCleanupCommandOptions(args) {
   let olderThanDays;
   let dryRun = false;
   let status;
-  for (let index = 0;index < args.length; index += 1) {
+  for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--keep") {
       const value = Number(args[index + 1]);
       if (!Number.isFinite(value) || value < 0) {
-        throw new Error("cleanup-sessions --keep requires a non-negative number");
+        throw new Error(
+          "cleanup-sessions --keep requires a non-negative number"
+        );
       }
       keep = value;
       index += 1;
@@ -2134,7 +2224,9 @@ function parseCleanupCommandOptions(args) {
     if (arg === "--older-than") {
       const value = Number(args[index + 1]);
       if (!Number.isFinite(value) || value < 0) {
-        throw new Error("cleanup-sessions --older-than requires a non-negative number");
+        throw new Error(
+          "cleanup-sessions --older-than requires a non-negative number"
+        );
       }
       olderThanDays = value;
       index += 1;
@@ -2143,7 +2235,9 @@ function parseCleanupCommandOptions(args) {
     if (arg === "--status") {
       const value = args[index + 1];
       if (value !== "ready" && value !== "needs_attention") {
-        throw new Error('cleanup-sessions --status requires "ready" or "needs_attention"');
+        throw new Error(
+          'cleanup-sessions --status requires "ready" or "needs_attention"'
+        );
       }
       status = value;
       index += 1;
@@ -2155,7 +2249,7 @@ function parseCleanupCommandOptions(args) {
     }
     throw new Error(`Unknown cleanup-sessions option "${arg}"`);
   }
-  if (keep === undefined && olderThanDays === undefined) {
+  if (keep === void 0 && olderThanDays === void 0) {
     throw new Error("cleanup-sessions requires --keep N or --older-than DAYS");
   }
   return { keep, olderThanDays, dryRun, status };
@@ -2163,7 +2257,7 @@ function parseCleanupCommandOptions(args) {
 function parseSessionsCommandOptions(args) {
   let limit;
   let status;
-  for (let index = 0;index < args.length; index += 1) {
+  for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--limit") {
       const value = Number(args[index + 1]);
@@ -2177,7 +2271,9 @@ function parseSessionsCommandOptions(args) {
     if (arg === "--status") {
       const value = args[index + 1];
       if (value !== "ready" && value !== "needs_attention") {
-        throw new Error('sessions --status requires "ready" or "needs_attention"');
+        throw new Error(
+          'sessions --status requires "ready" or "needs_attention"'
+        );
       }
       status = value;
       index += 1;
@@ -2187,21 +2283,22 @@ function parseSessionsCommandOptions(args) {
   }
   return { limit, status };
 }
-async function deleteSessionArtifacts(cwd, sessionId) {
+async function deleteSessionArtifacts(cwd2, sessionId) {
   await Promise.all([
-    deleteSessionInfo(cwd, sessionId),
-    deleteTranscript(cwd, sessionId)
+    deleteSessionInfo(cwd2, sessionId),
+    deleteTranscript(cwd2, sessionId)
   ]);
 }
 async function confirmWithSessionRule(message, autoApprove, tool, inputValue, context) {
-  if (autoApprove)
-    return;
+  if (autoApprove) return;
   if (!input.isTTY || !output.isTTY) {
     throw new Error(`${message}. Re-run with --yes to auto-approve.`);
   }
   const rl = readline.createInterface({ input, output });
   try {
-    const answer = await rl.question(`${message} [y] once / [a] session / [N] `);
+    const answer = await rl.question(
+      `${message} [y] once / [a] session / [N] `
+    );
     const normalized = answer.trim().toLowerCase();
     if (normalized === "a" || normalized === "always") {
       rememberPermissionRule(context, tool, inputValue);
@@ -2215,10 +2312,10 @@ async function confirmWithSessionRule(message, autoApprove, tool, inputValue, co
     rl.close();
   }
 }
-function createToolContext(cwd, appStateRef, session, abortController) {
+function createToolContext(cwd2, appStateRef, session, abortController) {
   return {
-    cwd,
-    abortController: abortController ?? new AbortController,
+    cwd: cwd2,
+    abortController: abortController ?? new AbortController(),
     messages: session.getMessages(),
     getAppState: () => appStateRef.current,
     setAppState: (updater) => {
@@ -2226,7 +2323,7 @@ function createToolContext(cwd, appStateRef, session, abortController) {
     }
   };
 }
-async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
+async function executeCliCommand(cwd2, argv, autoApprove = false, hooks) {
   const parsed = parseCommand(argv);
   if (parsed.kind === "meta") {
     return parsed;
@@ -2234,11 +2331,13 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
   if (parsed.kind === "utility") {
     if (parsed.utilityName === "sessions") {
       const options = parseSessionsCommandOptions(parsed.args);
-      let sessions = await listSessions(cwd);
+      let sessions = await listSessions(cwd2);
       if (options.status) {
-        sessions = sessions.filter((session3) => session3.status === options.status);
+        sessions = sessions.filter(
+          (session3) => session3.status === options.status
+        );
       }
-      if (options.limit !== undefined) {
+      if (options.limit !== void 0) {
         sessions = sessions.slice(0, options.limit);
       }
       return {
@@ -2256,29 +2355,41 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
       return {
         kind: "utility",
         utilityName: "transcript",
-        output: formatTranscriptMessages(parseTranscript(await readTextFile(getTranscriptPath(cwd, sessionId))), compact)
+        output: formatTranscriptMessages(
+          parseTranscript(
+            await readTextFile(getTranscriptPath(cwd2, sessionId))
+          ),
+          compact
+        )
       };
     }
     if (parsed.utilityName === "inspect") {
-      const sessionId = await resolveSessionIdArg(cwd, parsed.args[0]);
+      const sessionId = await resolveSessionIdArg(cwd2, parsed.args[0]);
       if (!sessionId) {
         throw new Error("inspect requires a sessionId");
       }
-      const messages = await readTranscriptMessages(cwd, sessionId).catch(() => []);
-      const info = await readSessionInfo(cwd, sessionId) || (await listSessions(cwd)).find((session3) => session3.id === sessionId);
+      const messages = await readTranscriptMessages(cwd2, sessionId).catch(
+        () => []
+      );
+      const info = await readSessionInfo(cwd2, sessionId) || (await listSessions(cwd2)).find((session3) => session3.id === sessionId);
       if (!info) {
         throw new Error(`Session "${sessionId}" not found`);
       }
       return {
         kind: "utility",
         utilityName: "inspect",
-        output: formatInspectView(cwd, info, messages)
+        output: formatInspectView(cwd2, info, messages)
       };
     }
     if (parsed.utilityName === "export-session") {
-      const options = await parseExportCommandOptions(cwd, parsed.args);
-      const messages = await readTranscriptMessages(cwd, options.sessionId).catch(() => []);
-      const info = await readSessionInfo(cwd, options.sessionId) || (await listSessions(cwd)).find((session3) => session3.id === options.sessionId);
+      const options = await parseExportCommandOptions(cwd2, parsed.args);
+      const messages = await readTranscriptMessages(
+        cwd2,
+        options.sessionId
+      ).catch(() => []);
+      const info = await readSessionInfo(cwd2, options.sessionId) || (await listSessions(cwd2)).find(
+        (session3) => session3.id === options.sessionId
+      );
       if (!info) {
         throw new Error(`Session "${options.sessionId}" not found`);
       }
@@ -2294,31 +2405,34 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
       };
     }
     if (parsed.utilityName === "rm-session") {
-      const sessionId = await resolveSessionIdArg(cwd, parsed.args[0]);
+      const sessionId = await resolveSessionIdArg(cwd2, parsed.args[0]);
       if (!sessionId) {
         throw new Error("rm-session requires a sessionId");
       }
-      await confirmOrThrow(`Delete session ${sessionId} and its transcript`, autoApprove);
-      const info = await readSessionInfo(cwd, sessionId) || (await listSessions(cwd)).find((session3) => session3.id === sessionId) || { id: sessionId };
-      await deleteSessionArtifacts(cwd, sessionId);
+      await confirmOrThrow(
+        `Delete session ${sessionId} and its transcript`,
+        autoApprove
+      );
+      const info = await readSessionInfo(cwd2, sessionId) || (await listSessions(cwd2)).find((session3) => session3.id === sessionId) || { id: sessionId };
+      await deleteSessionArtifacts(cwd2, sessionId);
       return {
         kind: "utility",
         utilityName: "rm-session",
-        output: `Removed session ${sessionId}${info.title ? ` · ${info.title}` : ""}`
+        output: `Removed session ${sessionId}${info.title ? ` \xB7 ${info.title}` : ""}`
       };
     }
     if (parsed.utilityName === "cleanup-sessions") {
       const options = parseCleanupCommandOptions(parsed.args);
-      const sessions = await listSessions(cwd);
+      const sessions = await listSessions(cwd2);
       const now = Date.now();
       const candidates = sessions.filter((session3, index) => {
         if (options.status && session3.status !== options.status) {
           return false;
         }
-        const byKeep = options.keep !== undefined ? index >= options.keep : false;
+        const byKeep = options.keep !== void 0 ? index >= options.keep : false;
         const timestamp = session3.updatedAt || session3.createdAt;
         const ageMs = timestamp ? now - Date.parse(timestamp) : 0;
-        const byAge = options.olderThanDays !== undefined ? ageMs >= options.olderThanDays * 24 * 60 * 60 * 1000 : false;
+        const byAge = options.olderThanDays !== void 0 ? ageMs >= options.olderThanDays * 24 * 60 * 60 * 1e3 : false;
         return byKeep || byAge;
       });
       if (candidates.length === 0) {
@@ -2329,27 +2443,41 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
         };
       }
       if (!options.dryRun) {
-        await confirmOrThrow(`Remove ${candidates.length} session(s) matching cleanup rule`, autoApprove);
+        await confirmOrThrow(
+          `Remove ${candidates.length} session(s) matching cleanup rule`,
+          autoApprove
+        );
         for (const candidate of candidates) {
-          await deleteSessionArtifacts(cwd, candidate.id);
+          await deleteSessionArtifacts(cwd2, candidate.id);
         }
       }
       return {
         kind: "utility",
         utilityName: "cleanup-sessions",
-        output: formatCleanupSummary(candidates, Math.max(sessions.length - candidates.length, 0), options.dryRun)
+        output: formatCleanupSummary(
+          candidates,
+          Math.max(sessions.length - candidates.length, 0),
+          options.dryRun
+        )
       };
     }
-    const chat = await parseChatCommandOptions(cwd, parsed.args);
+    const chat = await parseChatCommandOptions(cwd2, parsed.args);
     const session2 = new SessionEngine({
       id: chat.sessionId ?? createId("session"),
-      cwd
+      cwd: cwd2
     });
     if (chat.sessionId) {
-      session2.hydrateMessages(await readTranscriptMessages(cwd, chat.sessionId));
+      session2.hydrateMessages(
+        await readTranscriptMessages(cwd2, chat.sessionId)
+      );
     }
     const appStateRef2 = { current: createInitialAppState() };
-    const context2 = createToolContext(cwd, appStateRef2, session2, hooks?.abortController);
+    const context2 = createToolContext(
+      cwd2,
+      appStateRef2,
+      session2,
+      hooks?.abortController
+    );
     const userMessage = {
       id: createId("user"),
       type: "user",
@@ -2372,7 +2500,13 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
         if (!tool2) {
           throw new Error(`Unknown tool "${request.toolName}"`);
         }
-        await confirmWithSessionRule(request.message, autoApprove, tool2, request.input, context2);
+        await confirmWithSessionRule(
+          request.message,
+          autoApprove,
+          tool2,
+          request.input,
+          context2
+        );
         return true;
       }
     })) {
@@ -2398,22 +2532,44 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
   }
   const session = new SessionEngine({
     id: createId("session"),
-    cwd
+    cwd: cwd2
   });
   const appStateRef = { current: createInitialAppState() };
-  const context = createToolContext(cwd, appStateRef, session, hooks?.abortController);
+  const context = createToolContext(
+    cwd2,
+    appStateRef,
+    session,
+    hooks?.abortController
+  );
   const assistantMessage = buildSyntheticAssistant(toolName, toolInput);
   const toolUseId = assistantMessage.content[0].id;
   await session.recordMessages([assistantMessage]);
-  const permissionDecision = await canUseTool(tool, toolInput, context, assistantMessage, toolUseId);
+  const permissionDecision = await canUseTool(
+    tool,
+    toolInput,
+    context,
+    assistantMessage,
+    toolUseId
+  );
   if (permissionDecision.behavior === "deny") {
     throw new Error(permissionDecision.message);
   }
   if (permissionDecision.behavior === "ask") {
-    await confirmWithSessionRule(permissionDecision.message, autoApprove, tool, toolInput, context);
+    await confirmWithSessionRule(
+      permissionDecision.message,
+      autoApprove,
+      tool,
+      toolInput,
+      context
+    );
   }
   const effectiveInput = permissionDecision.behavior === "allow" && permissionDecision.updatedInput ? permissionDecision.updatedInput : toolInput;
-  const result = await tool.call(effectiveInput, context, canUseTool, assistantMessage);
+  const result = await tool.call(
+    effectiveInput,
+    context,
+    canUseTool,
+    assistantMessage
+  );
   await session.recordMessages([
     {
       id: createId("tool-result"),
@@ -2434,8 +2590,8 @@ async function executeCliCommand(cwd, argv, autoApprove = false, hooks) {
 async function runHeadless(options) {
   const shouldStream = options.streamOutput ?? (options.args[0] === "chat" && output.isTTY);
   let lastAssistantText = "";
-  const toolSummaries = new Map;
-  const abortController = new AbortController;
+  const toolSummaries = /* @__PURE__ */ new Map();
+  const abortController = new AbortController();
   let interrupted = false;
   const onSigint = () => {
     interrupted = true;
@@ -2443,49 +2599,59 @@ async function runHeadless(options) {
   };
   process.on("SIGINT", onSigint);
   try {
-    const result = await executeCliCommand(options.cwd, options.args, options.autoApprove ?? false, shouldStream ? {
-      abortController,
-      onAssistantTextDelta: (text) => {
-        const delta = text.slice(lastAssistantText.length);
-        if (delta) {
-          output.write(delta);
-          lastAssistantText = text;
-        }
-      },
-      onMessage: (message) => {
-        if (message.type === "assistant") {
-          const toolUses = message.content.filter((block) => block.type === "tool_use");
-          if (toolUses.length > 0) {
-            if (lastAssistantText) {
-              output.write(`
-`);
-            }
-            for (const toolUse of toolUses) {
-              const summary = `${toolUse.name} ${summarizeToolInput(toolUse.input)}`.trim();
-              toolSummaries.set(toolUse.id, summary);
-              output.write(`[tool:start] ${summary}
-`);
-            }
-            lastAssistantText = "";
+    const result = await executeCliCommand(
+      options.cwd,
+      options.args,
+      options.autoApprove ?? false,
+      shouldStream ? {
+        abortController,
+        onAssistantTextDelta: (text) => {
+          const delta = text.slice(lastAssistantText.length);
+          if (delta) {
+            output.write(delta);
+            lastAssistantText = text;
           }
-          return;
-        }
-        if (message.type === "tool_result" && message.isError) {
-          const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
-          output.write(`[tool:error] ${summary} · ${summarizeToolResult(message)}
+        },
+        onMessage: (message) => {
+          if (message.type === "assistant") {
+            const toolUses = message.content.filter(
+              (block) => block.type === "tool_use"
+            );
+            if (toolUses.length > 0) {
+              if (lastAssistantText) {
+                output.write("\n");
+              }
+              for (const toolUse of toolUses) {
+                const summary = `${toolUse.name} ${summarizeToolInput(toolUse.input)}`.trim();
+                toolSummaries.set(toolUse.id, summary);
+                output.write(`[tool:start] ${summary}
 `);
-          toolSummaries.delete(message.toolUseId);
-          return;
+              }
+              lastAssistantText = "";
+            }
+            return;
+          }
+          if (message.type === "tool_result" && message.isError) {
+            const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
+            output.write(
+              `[tool:error] ${summary} \xB7 ${summarizeToolResult(message)}
+`
+            );
+            toolSummaries.delete(message.toolUseId);
+            return;
+          }
+          if (message.type === "tool_result") {
+            const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
+            output.write(
+              `[tool:done] ${summary} \xB7 ${summarizeToolResult(message)}
+`
+            );
+            toolSummaries.delete(message.toolUseId);
+            return;
+          }
         }
-        if (message.type === "tool_result") {
-          const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
-          output.write(`[tool:done] ${summary} · ${summarizeToolResult(message)}
-`);
-          toolSummaries.delete(message.toolUseId);
-          return;
-        }
-      }
-    } : { abortController });
+      } : { abortController }
+    );
     if (result.kind === "meta") {
       output.write(`${result.output}
 `);
@@ -2493,14 +2659,12 @@ async function runHeadless(options) {
     }
     if (result.kind === "utility") {
       if (shouldStream && result.utilityName === "chat") {
-        const transcriptPath = typeof result.output === "object" && result.output !== null && "transcriptPath" in result.output && typeof result.output.transcriptPath === "string" ? result.output.transcriptPath : undefined;
+        const transcriptPath = typeof result.output === "object" && result.output !== null && "transcriptPath" in result.output && typeof result.output.transcriptPath === "string" ? result.output.transcriptPath : void 0;
         if (lastAssistantText) {
-          output.write(`
-`);
+          output.write("\n");
         }
         if (interrupted) {
-          output.write(`[interrupt] current turn aborted
-`);
+          output.write("[interrupt] current turn aborted\n");
         }
         if (transcriptPath) {
           output.write(`[transcript] ${transcriptPath}
@@ -2522,11 +2686,9 @@ async function runHeadless(options) {
   } catch (error) {
     if (abortController.signal.aborted) {
       if (lastAssistantText) {
-        output.write(`
-`);
+        output.write("\n");
       }
-      output.write(`[interrupt] current turn aborted
-`);
+      output.write("[interrupt] current turn aborted\n");
       return;
     }
     throw error;
@@ -2545,29 +2707,29 @@ function summarizeUnknown2(value, maxLength = 120) {
   if (normalized.length <= maxLength) {
     return normalized;
   }
-  return `${normalized.slice(0, maxLength - 1)}…`;
+  return `${normalized.slice(0, maxLength - 1)}\u2026`;
 }
-function summarizeToolInput2(input2) {
-  if (typeof input2 !== "object" || input2 === null) {
-    return summarizeUnknown2(input2, 60);
+function summarizeToolInput2(input3) {
+  if (typeof input3 !== "object" || input3 === null) {
+    return summarizeUnknown2(input3, 60);
   }
-  if ("path" in input2 && typeof input2.path === "string") {
-    return input2.path;
+  if ("path" in input3 && typeof input3.path === "string") {
+    return input3.path;
   }
-  if ("command" in input2 && typeof input2.command === "string") {
-    return summarizeUnknown2(input2.command, 60);
+  if ("command" in input3 && typeof input3.command === "string") {
+    return summarizeUnknown2(input3.command, 60);
   }
-  if ("url" in input2 && typeof input2.url === "string") {
-    return input2.url;
+  if ("url" in input3 && typeof input3.url === "string") {
+    return input3.url;
   }
-  if ("description" in input2 && typeof input2.description === "string") {
-    return summarizeUnknown2(input2.description, 60);
+  if ("description" in input3 && typeof input3.description === "string") {
+    return summarizeUnknown2(input3.description, 60);
   }
-  return summarizeUnknown2(input2, 60);
+  return summarizeUnknown2(input3, 60);
 }
-function createContext(cwd, session, appStateRef, abortController) {
+function createContext(cwd2, session, appStateRef, abortController) {
   return {
-    cwd,
+    cwd: cwd2,
     abortController,
     messages: session.getMessages(),
     getAppState: () => appStateRef.current,
@@ -2576,12 +2738,12 @@ function createContext(cwd, session, appStateRef, abortController) {
     }
   };
 }
-async function resolveResumeTarget(cwd, raw) {
+async function resolveResumeTarget(cwd2, raw) {
   if (!raw) {
-    return;
+    return void 0;
   }
   if (raw === "latest") {
-    const sessions = await listSessions(cwd);
+    const sessions = await listSessions(cwd2);
     return sessions[0]?.id;
   }
   return raw;
@@ -2598,60 +2760,59 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
   stdout.write(`${formatHelp()}
 
 `);
-  stdout.write([
-    "REPL commands:",
-    "  /help",
-    "  /new",
-    "  /sessions [--limit N] [--status ready|needs_attention]",
-    "  /inspect <sessionId>",
-    "  /export-session <sessionId> [--format markdown|json] [--output path]",
-    "  /rm-session <sessionId>",
-    "  /cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]",
-    "  /resume latest",
-    "  /resume failed",
-    "  /resume <sessionId>",
-    "  /quit",
-    ""
-  ].join(`
-`));
+  stdout.write(
+    [
+      "REPL commands:",
+      "  /help",
+      "  /new",
+      "  /sessions [--limit N] [--status ready|needs_attention]",
+      "  /inspect <sessionId>",
+      "  /export-session <sessionId> [--format markdown|json] [--output path]",
+      "  /rm-session <sessionId>",
+      "  /cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]",
+      "  /resume latest",
+      "  /resume failed",
+      "  /resume <sessionId>",
+      "  /quit",
+      ""
+    ].join("\n")
+  );
   const onSigint = () => {
     if (activeAbortController) {
       interrupted = true;
       activeAbortController.abort(new Error("User interrupted current turn"));
-      stdout.write(`
-[interrupt] abort requested
-`);
+      stdout.write("\n[interrupt] abort requested\n");
       return;
     }
     rl.close();
   };
   process.on("SIGINT", onSigint);
   try {
-    for (;; ) {
+    for (; ; ) {
       const line = await rl.question(`cc-lite:${session.sessionId}> `);
       const trimmed = line.trim();
-      if (!trimmed)
-        continue;
+      if (!trimmed) continue;
       if (trimmed === "exit" || trimmed === "quit" || trimmed === "/quit") {
         break;
       }
       if (trimmed === "/help") {
-        stdout.write([
-          "REPL commands:",
-          "  /help",
-          "  /new",
-          "  /sessions [--limit N] [--status ready|needs_attention]",
-          "  /inspect <sessionId>",
-          "  /export-session <sessionId> [--format markdown|json] [--output path]",
-          "  /rm-session <sessionId>",
-          "  /cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]",
-          "  /resume latest",
-          "  /resume failed",
-          "  /resume <sessionId>",
-          "  /quit",
-          ""
-        ].join(`
-`));
+        stdout.write(
+          [
+            "REPL commands:",
+            "  /help",
+            "  /new",
+            "  /sessions [--limit N] [--status ready|needs_attention]",
+            "  /inspect <sessionId>",
+            "  /export-session <sessionId> [--format markdown|json] [--output path]",
+            "  /rm-session <sessionId>",
+            "  /cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]",
+            "  /resume latest",
+            "  /resume failed",
+            "  /resume <sessionId>",
+            "  /quit",
+            ""
+          ].join("\n")
+        );
         continue;
       }
       if (trimmed === "/new") {
@@ -2665,17 +2826,22 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
         continue;
       }
       if (trimmed === "/sessions") {
-        const result = await executeCliCommand(options.cwd, ["sessions"], options.autoApprove ?? false);
-        stdout.write(`${typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2)}
-`);
+        const result = await executeCliCommand(
+          options.cwd,
+          ["sessions"],
+          options.autoApprove ?? false
+        );
+        stdout.write(
+          `${typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2)}
+`
+        );
         continue;
       }
       if (trimmed.startsWith("/resume")) {
         const [, rawTarget] = trimmed.split(/\s+/, 2);
         const target = await resolveResumeTarget(options.cwd, rawTarget);
         if (!target) {
-          stdout.write(`no resumable session found
-`);
+          stdout.write("no resumable session found\n");
           continue;
         }
         appStateRef.current = createInitialAppState();
@@ -2683,14 +2849,20 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
           id: target,
           cwd: options.cwd
         });
-        session.hydrateMessages(await readTranscriptMessages(options.cwd, target));
+        session.hydrateMessages(
+          await readTranscriptMessages(options.cwd, target)
+        );
         stdout.write(`resumed ${target}
 `);
         continue;
       }
       try {
         if (trimmed.startsWith("/")) {
-          const result = await executeCliCommand(options.cwd, trimmed.slice(1).trim().split(/\s+/), options.autoApprove ?? false);
+          const result = await executeCliCommand(
+            options.cwd,
+            trimmed.slice(1).trim().split(/\s+/),
+            options.autoApprove ?? false
+          );
           stdout.write(`${JSON.stringify(result, null, 2)}
 `);
           continue;
@@ -2702,14 +2874,19 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
         };
         await session.recordMessages([userMessage]);
         let lastAssistantText = "";
-        const toolSummaries = new Map;
-        activeAbortController = new AbortController;
+        const toolSummaries = /* @__PURE__ */ new Map();
+        activeAbortController = new AbortController();
         interrupted = false;
         for await (const message of query({
           prompt: trimmed,
           messages: session.getMessages(),
           systemPrompt: [],
-          toolUseContext: createContext(options.cwd, session, appStateRef, activeAbortController),
+          toolUseContext: createContext(
+            options.cwd,
+            session,
+            appStateRef,
+            activeAbortController
+          ),
           canUseTool,
           onAssistantTextDelta: (text) => {
             const delta = text.slice(lastAssistantText.length);
@@ -2726,10 +2903,21 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
             if (!tool) {
               return false;
             }
-            const answer = await rl.question(`${request.message} [y] once / [a] session / [N] `);
+            const answer = await rl.question(
+              `${request.message} [y] once / [a] session / [N] `
+            );
             const normalized = answer.trim().toLowerCase();
             if (normalized === "a" || normalized === "always") {
-              rememberPermissionRule(createContext(options.cwd, session, appStateRef, activeAbortController ?? new AbortController), tool, request.input);
+              rememberPermissionRule(
+                createContext(
+                  options.cwd,
+                  session,
+                  appStateRef,
+                  activeAbortController ?? new AbortController()
+                ),
+                tool,
+                request.input
+              );
               return true;
             }
             return normalized === "y" || normalized === "yes";
@@ -2737,11 +2925,12 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
         })) {
           await session.recordMessages([message]);
           if (message.type === "assistant") {
-            const toolUses = message.content.filter((block) => block.type === "tool_use");
+            const toolUses = message.content.filter(
+              (block) => block.type === "tool_use"
+            );
             if (toolUses.length > 0) {
               if (lastAssistantText) {
-                stdout.write(`
-`);
+                stdout.write("\n");
               }
               for (const toolUse of toolUses) {
                 const summary = `${toolUse.name} ${summarizeToolInput2(toolUse.input)}`.trim();
@@ -2755,31 +2944,34 @@ async function startRepl(options, { stdin = processStdin, stdout = processStdout
           if (message.type === "tool_result") {
             const summary = toolSummaries.get(message.toolUseId) || message.toolUseId;
             if (message.isError) {
-              stdout.write(`[tool:error] ${summary} · ${summarizeUnknown2(message.content, 80)}
-`);
+              stdout.write(
+                `[tool:error] ${summary} \xB7 ${summarizeUnknown2(message.content, 80)}
+`
+              );
             } else {
-              stdout.write(`[tool:done] ${summary} · ${summarizeUnknown2(message.content, 80)}
-`);
+              stdout.write(
+                `[tool:done] ${summary} \xB7 ${summarizeUnknown2(message.content, 80)}
+`
+              );
             }
             toolSummaries.delete(message.toolUseId);
           }
         }
         if (lastAssistantText) {
-          stdout.write(`
-`);
+          stdout.write("\n");
         }
         if (interrupted) {
-          stdout.write(`[interrupt] current turn aborted
-`);
+          stdout.write("[interrupt] current turn aborted\n");
         }
         stdout.write(`[transcript] ${session.getTranscriptPath()}
 `);
       } catch (error) {
         const interruptedNow = activeAbortController?.signal.aborted ?? false;
         const message = error instanceof Error ? error.message : String(error);
-        stdout.write(interruptedNow ? `[interrupt] current turn aborted
-` : `${message}
-`);
+        stdout.write(
+          interruptedNow ? "[interrupt] current turn aborted\n" : `${message}
+`
+        );
       } finally {
         activeAbortController = null;
       }
@@ -2795,12 +2987,12 @@ import readline3 from "readline";
 import { stdin as input2, stdout as output2 } from "process";
 
 // shared/cli.ts
-function tokenizeCommandLine(input2) {
+function tokenizeCommandLine(input3) {
   const tokens = [];
   let current = "";
   let quote = null;
   let escaped = false;
-  for (const char of input2) {
+  for (const char of input3) {
     if (escaped) {
       current += char;
       escaped = false;
@@ -2846,31 +3038,28 @@ function tokenizeCommandLine(input2) {
 // app/tui.ts
 var import_picocolors = __toESM(require_picocolors(), 1);
 var import_is_dark = __toESM(require_dist(), 1);
-var SLASH_COMMANDS = [
-  { name: "help", description: "显示帮助信息", example: "/help" },
-  { name: "tools", description: "显示可用工具", example: "/tools" },
-  { name: "sessions", description: "显示会话列表", example: "/sessions" },
-  { name: "inspect", description: "检查会话详情", example: "/inspect <id>" },
-  { name: "export-session", description: "导出会话记录", example: "/export-session <id> [--format markdown|json] [--output path]" },
-  { name: "rm-session", description: "删除会话", example: "/rm-session <id>" },
-  { name: "cleanup-sessions", description: "清理旧会话", example: "/cleanup-sessions --keep N | --older-than DAYS [--status ...] [--dry-run]" },
-  { name: "expand", description: "展开结果块", example: "/expand [n|all]" },
-  { name: "collapse", description: "折叠结果块", example: "/collapse [n|all]" },
-  { name: "filter", description: "筛选显示", example: "/filter [all|failed|tools]" },
-  { name: "resume", description: "恢复会话", example: "/resume [id|latest|failed]" },
-  { name: "new", description: "创建新会话", example: "/new" },
-  { name: "clear", description: "清空当前会话", example: "/clear" },
-  { name: "quit", description: "退出 TUI", example: "/quit" },
-  { name: "exit", description: "退出 TUI", example: "/exit" }
+var helpMessagesAll = [
+  "  /help",
+  "  /tools",
+  "  /sessions",
+  "  /inspect <id>",
+  "  /export-session <id>",
+  "  /rm-session <id>",
+  "  /cleanup-sessions --keep N [--dry-run]",
+  "  /expand [n|all]",
+  "  /collapse [n|all]",
+  "  /filter [all|failed|tools]",
+  "  /resume latest|failed",
+  "  /new",
+  "  /clear",
+  "  /quit"
 ];
 function getPermissionMode(state, runtimeRef) {
   return runtimeRef.current.toolContext.getAppState().permissionContext.mode;
 }
 function wrapText(text, width) {
-  const normalized = text.replace(/\r\n/g, `
-`);
-  const rawLines = normalized.split(`
-`);
+  const normalized = text.replace(/\r\n/g, "\n");
+  const rawLines = normalized.split("\n");
   const wrapped = [];
   for (const rawLine of rawLines) {
     if (!rawLine) {
@@ -2903,7 +3092,7 @@ function trimTextPlain(text, width) {
   if (text.length <= width) {
     return text.padEnd(width, " ");
   }
-  return `${text.slice(0, Math.max(0, width - 1))}…`;
+  return `${text.slice(0, Math.max(0, width - 1))}\u2026`;
 }
 function formatUnknown(value) {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -2913,11 +3102,10 @@ function summarizeText2(text, maxLength = 48) {
   if (normalized.length <= maxLength) {
     return normalized || "(empty)";
   }
-  return `${normalized.slice(0, maxLength - 1)}…`;
+  return `${normalized.slice(0, maxLength - 1)}\u2026`;
 }
 function shouldCollapse(text) {
-  return text.includes(`
-`) || text.length > 160;
+  return text.includes("\n") || text.length > 160;
 }
 function makeConversationEntries(state, message) {
   if (message.type === "user") {
@@ -2932,8 +3120,8 @@ function makeConversationEntries(state, message) {
         text,
         collapsible,
         expanded: !collapsible,
-        collapseKey: collapsible ? state.nextCollapseKey++ : undefined,
-        summary: collapsible ? summarizeText2(text) : undefined
+        collapseKey: collapsible ? state.nextCollapseKey++ : void 0,
+        summary: collapsible ? summarizeText2(text) : void 0
       }
     ];
   }
@@ -2947,14 +3135,14 @@ function makeConversationEntries(state, message) {
     };
   });
 }
-function createRuntime(cwd, appStateRef, sessionId) {
+function createRuntime(cwd2, appStateRef, sessionId) {
   const session = new SessionEngine({
     id: sessionId ?? createId("session"),
-    cwd
+    cwd: cwd2
   });
   const toolContext = {
-    cwd,
-    abortController: new AbortController,
+    cwd: cwd2,
+    abortController: new AbortController(),
     messages: session.getMessages(),
     getAppState: () => appStateRef.current,
     setAppState: (updater) => {
@@ -2967,7 +3155,7 @@ function createRuntime(cwd, appStateRef, sessionId) {
 function addToolStep(state, step) {
   state.toolSteps.push({
     seq: state.nextStepSeq++,
-    at: new Date().toTimeString().slice(0, 8),
+    at: (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8),
     label: step,
     summary: summarizeText2(step, 28),
     kind: "session",
@@ -2981,7 +3169,7 @@ function setCurrentActivity(state, activity) {
 function addActivityStep(state, label, kind, status, durationMs) {
   state.toolSteps.push({
     seq: state.nextStepSeq++,
-    at: new Date().toTimeString().slice(0, 8),
+    at: (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8),
     durationMs,
     label,
     summary: summarizeText2(label, 28),
@@ -3003,7 +3191,7 @@ function cycleTimelineFilter(filter) {
 function updateFoldState(state, target, expanded) {
   let affected = 0;
   for (const entry of state.entries) {
-    if (!entry.collapsible || entry.collapseKey === undefined) {
+    if (!entry.collapsible || entry.collapseKey === void 0) {
       continue;
     }
     if (target !== "all" && entry.collapseKey !== target) {
@@ -3021,18 +3209,18 @@ function applyModalOverlay(lines, modal, width, height) {
   const RESET = "\x1B[0m";
   const BOLD = "\x1B[1m";
   const boxLines = [
-    `${BOLD}${YELLOW}┌${"─".repeat(boxWidth - 2)}┐${RESET}`,
-    `${BOLD}${YELLOW}│ ${trimTextPlain(modal.title, boxWidth - 4)} │${RESET}`,
-    `├${"─".repeat(boxWidth - 2)}┤`,
-    ...contentLines.map((line) => `│ ${trimTextPlain(line, boxWidth - 4)} │`),
-    `├${"─".repeat(boxWidth - 2)}┤`,
-    `${YELLOW}│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │${RESET}`,
-    `└${"─".repeat(boxWidth - 2)}┘`
+    `${BOLD}${YELLOW}\u250C${"\u2500".repeat(boxWidth - 2)}\u2510${RESET}`,
+    `${BOLD}${YELLOW}\u2502 ${trimTextPlain(modal.title, boxWidth - 4)} \u2502${RESET}`,
+    `\u251C${"\u2500".repeat(boxWidth - 2)}\u2524`,
+    ...contentLines.map((line) => `\u2502 ${trimTextPlain(line, boxWidth - 4)} \u2502`),
+    `\u251C${"\u2500".repeat(boxWidth - 2)}\u2524`,
+    `${YELLOW}\u2502 ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} \u2502${RESET}`,
+    `\u2514${"\u2500".repeat(boxWidth - 2)}\u2518`
   ];
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
   const startX = Math.max(0, Math.floor((width - boxWidth) / 2));
   const next = [...lines];
-  for (let i = 0;i < boxLines.length; i += 1) {
+  for (let i = 0; i < boxLines.length; i += 1) {
     const targetIndex = startY + i;
     if (targetIndex >= next.length) {
       break;
@@ -3055,9 +3243,9 @@ function renderScreen(state, runtimeRef) {
     const leftPad = " ".repeat(Math.floor(spaces / 2));
     process.stdout.write(`\x1B]0;${leftPad}${title}\x07`);
   }
-  setCenteredTerminalTitle("\uD83D\uDE80 Siok Cli");
+  setCenteredTerminalTitle("\u{1F680} Siok Cli");
   const header = [
-    `${import_picocolors.default.bold(import_picocolors.default.magenta(`Mode: ${mode}`) + `  ·  ` + import_picocolors.default.blue(`Session: ${state.currentSessionId}`))}`,
+    `${import_picocolors.default.bold(import_picocolors.default.magenta(`Mode: ${mode}`) + `  \xB7  ` + import_picocolors.default.blue(`Session: ${state.currentSessionId}`))}`,
     ""
   ];
   const messageLines = state.entries.flatMap((entry) => {
@@ -3089,37 +3277,51 @@ function renderScreen(state, runtimeRef) {
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
   });
   if (state.streamingAssistantText.trim()) {
-    const streamingText = `${state.streamingAssistantText}▌`;
-    messageLines.push(...wrapText(`${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("SLI")) + import_picocolors.default.black(` ${streamingText}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("SLI")) + import_picocolors.default.white(` ${streamingText}`)}`, Math.max(20, mainWidth - 4)));
+    const streamingText = `${state.streamingAssistantText}\u258C`;
+    messageLines.push(
+      ...wrapText(
+        `${state.theme === "dark" ? import_picocolors.default.bgBlack(import_picocolors.default.white("SLI")) + import_picocolors.default.black(` ${streamingText}`) : import_picocolors.default.bgWhite(import_picocolors.default.black("SLI")) + import_picocolors.default.white(` ${streamingText}`)}`,
+        Math.max(20, mainWidth - 4)
+      )
+    );
   }
   const maxScroll = Math.max(0, messageLines.length - contentHeight);
   if (state.scrollOffset > maxScroll) {
     state.scrollOffset = maxScroll;
   }
-  const start = Math.max(0, messageLines.length - contentHeight - state.scrollOffset);
+  const start = Math.max(
+    0,
+    messageLines.length - contentHeight - state.scrollOffset
+  );
   const visibleMessages = messageLines.slice(start, start + contentHeight);
+  let helpMessages = [];
   let lines = [
     ...header,
     ...visibleMessages,
     "",
-    `${state.theme === "dark" ? import_picocolors.default.gray("─".repeat(width)) : import_picocolors.default.gray("─".repeat(width))}`,
+    `${state.theme === "dark" ? import_picocolors.default.gray("\u2500".repeat(width)) : import_picocolors.default.gray("\u2500".repeat(width))}`,
     state.status.includes("Error") || state.status.includes("failed") ? `${state.theme === "dark" ? import_picocolors.default.red(`Status: ${state.status}`) : import_picocolors.default.redBright(`Status: ${state.status}`)}` : state.busy ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Status: ${state.status}`) : import_picocolors.default.yellowBright(`Status: ${state.status}`)}` : `${state.theme === "dark" ? import_picocolors.default.green(`Status: ${state.status}`) : import_picocolors.default.greenBright(`Status: ${state.status}`)}`,
-    `${import_picocolors.default.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
-    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`
+    `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
+    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
+    // 渲染搜索匹配的命令，并高亮当前选中的命令
+    ...state.searchMatches.map(
+      (match, index) => index === state.selectedMatchIndex ? `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black(match)) : import_picocolors.default.bgCyan(import_picocolors.default.black(match))}` : match
+    )
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
   }
   output2.write("\x1B[2J\x1B[H");
-  output2.write(lines.join(`
-`));
+  output2.write(lines.join("\n"));
 }
-async function restoreSession(cwd, appStateRef, state, runtimeRef, sessionId) {
-  const messages = await readTranscriptMessages(cwd, sessionId);
-  const runtime = createRuntime(cwd, appStateRef, sessionId);
+async function restoreSession(cwd2, appStateRef, state, runtimeRef, sessionId) {
+  const messages = await readTranscriptMessages(cwd2, sessionId);
+  const runtime = createRuntime(cwd2, appStateRef, sessionId);
   runtime.session.hydrateMessages(messages);
   runtimeRef.current = runtime;
-  state.entries = messages.flatMap((message) => makeConversationEntries(state, message));
+  state.entries = messages.flatMap(
+    (message) => makeConversationEntries(state, message)
+  );
   state.currentSessionId = sessionId;
   state.scrollOffset = 0;
   state.status = `Resumed ${sessionId}`;
@@ -3130,7 +3332,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
   if (!commandLine) {
     state.entries.push({
       kind: "system",
-      text: "可用命令：/help /tools /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
+      text: "\u53EF\u7528\u547D\u4EE4\uFF1A/help /tools /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
     });
     return;
   }
@@ -3145,7 +3347,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
     state.entries = [
       {
         kind: "system",
-        text: "已创建新会话。"
+        text: "\u5DF2\u521B\u5EFA\u65B0\u4F1A\u8BDD\u3002"
       }
     ];
     state.scrollOffset = 0;
@@ -3171,22 +3373,29 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
         "  /new",
         "  /clear",
         "  /quit"
-      ].join(`
-`)
+      ].join("\n")
     });
     return;
   }
   if (commandLine.startsWith("expand")) {
     const [, rawTarget] = commandLine.split(/\s+/, 2);
     const target = !rawTarget || rawTarget === "all" ? "all" : Number(rawTarget);
-    const count = updateFoldState(state, target === "all" || Number.isNaN(target) ? "all" : target, true);
+    const count = updateFoldState(
+      state,
+      target === "all" || Number.isNaN(target) ? "all" : target,
+      true
+    );
     state.status = `Expanded ${count} result block(s)`;
     return;
   }
   if (commandLine.startsWith("collapse")) {
     const [, rawTarget] = commandLine.split(/\s+/, 2);
     const target = !rawTarget || rawTarget === "all" ? "all" : Number(rawTarget);
-    const count = updateFoldState(state, target === "all" || Number.isNaN(target) ? "all" : target, false);
+    const count = updateFoldState(
+      state,
+      target === "all" || Number.isNaN(target) ? "all" : target,
+      false
+    );
     state.status = `Collapsed ${count} result block(s)`;
     return;
   }
@@ -3195,7 +3404,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
     if (rawTarget !== "all" && rawTarget !== "failed" && rawTarget !== "tools") {
       state.entries.push({
         kind: "error",
-        text: "filter 只支持 all、failed、tools。"
+        text: "filter \u53EA\u652F\u6301 all\u3001failed\u3001tools\u3002"
       });
       return;
     }
@@ -3210,14 +3419,18 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
     if (!target) {
       state.entries.push({
         kind: "error",
-        text: "没有可恢复的会话。"
+        text: "\u6CA1\u6709\u53EF\u6062\u590D\u7684\u4F1A\u8BDD\u3002"
       });
       return;
     }
     await restoreSession(options.cwd, appStateRef, state, runtimeRef, target);
     return;
   }
-  const result = await executeCliCommand(options.cwd, tokenizeCommandLine(commandLine), options.autoApprove ?? false);
+  const result = await executeCliCommand(
+    options.cwd,
+    tokenizeCommandLine(commandLine),
+    options.autoApprove ?? false
+  );
   if (result.kind === "meta") {
     state.entries.push({ kind: "system", text: result.output });
     return;
@@ -3231,7 +3444,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
   }
   state.entries.push({
     kind: "system",
-    text: `直接执行工具 ${result.tool} 完成。
+    text: `\u76F4\u63A5\u6267\u884C\u5DE5\u5177 ${result.tool} \u5B8C\u6210\u3002
 ${formatUnknown(result.output)}`
   });
   addToolStep(state, `slash tool ${result.tool}`);
@@ -3242,15 +3455,17 @@ function autoCompleteSlashCommand(input3) {
     return null;
   }
   const command = normalized.slice(1);
-  const matches = SLASH_COMMANDS.filter((c) => c.name.startsWith(command));
+  const matches = helpMessagesAll.filter(
+    (msg) => msg.toLowerCase().includes(command)
+  ).slice(0, 5);
   return matches.length > 0 ? matches : null;
 }
 async function getTerminalTheme() {
   try {
-    const systemDark = await import_is_dark.default();
-    if (systemDark)
-      return "dark";
-  } catch (e) {}
+    const systemDark = await (0, import_is_dark.default)();
+    if (systemDark) return "dark";
+  } catch (e) {
+  }
   const colorFgBg = process.env.COLORFGBG;
   if (colorFgBg) {
     const [fg, bg] = colorFgBg.split(";");
@@ -3267,7 +3482,7 @@ async function getTerminalTheme() {
 }
 async function startTui(options) {
   if (!input2.isTTY || !output2.isTTY) {
-    throw new Error("TUI 模式需要在交互式终端中运行。");
+    throw new Error("TUI \u6A21\u5F0F\u9700\u8981\u5728\u4EA4\u4E92\u5F0F\u7EC8\u7AEF\u4E2D\u8FD0\u884C\u3002");
   }
   const appStateRef = { current: createInitialAppState() };
   const runtimeRef = { current: createRuntime(options.cwd, appStateRef) };
@@ -3276,7 +3491,7 @@ async function startTui(options) {
     entries: [
       {
         kind: "system",
-        text: "输入自然语言让我执行本地动作，或输入 /help 查看命令。"
+        text: "\u8F93\u5165\u81EA\u7136\u8BED\u8A00\u8BA9\u6211\u6267\u884C\u672C\u5730\u52A8\u4F5C\uFF0C\u6216\u8F93\u5165 /help \u67E5\u770B\u547D\u4EE4\u3002"
       }
     ],
     inputBuffer: "",
@@ -3306,7 +3521,7 @@ async function startTui(options) {
   if (availableSessions.length > 0) {
     state.entries.push({
       kind: "system",
-      text: `发现最近会话 ${availableSessions[0].id}。输入 /resume latest 可恢复；若要回到异常会话，使用 /resume failed。`
+      text: `\u53D1\u73B0\u6700\u8FD1\u4F1A\u8BDD ${availableSessions[0].id}\u3002\u8F93\u5165 /resume latest \u53EF\u6062\u590D\uFF1B\u82E5\u8981\u56DE\u5230\u5F02\u5E38\u4F1A\u8BDD\uFF0C\u4F7F\u7528 /resume failed\u3002`
     });
   }
   let exiting = false;
@@ -3329,7 +3544,12 @@ async function startTui(options) {
         detail: "auto-approved",
         lastResult: "approved"
       });
-      addActivityStep(state, `auto-approved ${request.toolName}`, "permission", "done");
+      addActivityStep(
+        state,
+        `auto-approved ${request.toolName}`,
+        "permission",
+        "done"
+      );
       return true;
     }
     state.status = `Waiting for permission: ${request.toolName}`;
@@ -3338,11 +3558,16 @@ async function startTui(options) {
       toolName: request.toolName,
       detail: request.message
     });
-    addActivityStep(state, `permission ${request.toolName}`, "permission", "info");
+    addActivityStep(
+      state,
+      `permission ${request.toolName}`,
+      "permission",
+      "info"
+    );
     renderScreen(state, runtimeRef);
     return new Promise((resolve2) => {
       state.modal = {
-        title: `Permission · ${request.toolName}`,
+        title: `Permission \xB7 ${request.toolName}`,
         message: request.message,
         toolName: request.toolName,
         inputValue: request.input,
@@ -3352,7 +3577,11 @@ async function startTui(options) {
           if (decision === "allow-session") {
             const tool = findToolByName(getTools(), request.toolName);
             if (tool) {
-              rememberPermissionRule(runtimeRef.current.toolContext, tool, request.input);
+              rememberPermissionRule(
+                runtimeRef.current.toolContext,
+                tool,
+                request.input
+              );
             }
           }
           state.status = allowed ? `Approved ${request.toolName}` : `Rejected ${request.toolName}`;
@@ -3362,7 +3591,12 @@ async function startTui(options) {
             detail: allowed ? "permission granted" : "permission denied",
             lastResult: allowed ? "approved" : "rejected"
           });
-          addActivityStep(state, `${allowed ? "approved" : "rejected"} ${request.toolName}`, "permission", allowed ? "done" : "failed");
+          addActivityStep(
+            state,
+            `${allowed ? "approved" : "rejected"} ${request.toolName}`,
+            "permission",
+            allowed ? "done" : "failed"
+          );
           resolve2(allowed);
         }
       };
@@ -3382,21 +3616,29 @@ async function startTui(options) {
     state.status = "Processing";
     state.streamingAssistantText = "";
     state.activityStartedAt = Date.now();
-    runtimeRef.current.toolContext.abortController = new AbortController;
-    setCurrentActivity(state, trimmed.startsWith("/") ? {
-      phase: "planning",
-      detail: "running slash command"
-    } : {
-      phase: "planning",
-      detail: "planning response"
-    });
+    runtimeRef.current.toolContext.abortController = new AbortController();
+    setCurrentActivity(
+      state,
+      trimmed.startsWith("/") ? {
+        phase: "planning",
+        detail: "running slash command"
+      } : {
+        phase: "planning",
+        detail: "planning response"
+      }
+    );
     state.entries.push({
       kind: trimmed.startsWith("/") ? "system" : "user",
       text: trimmed
     });
     state.scrollOffset = 0;
     if (!trimmed.startsWith("/")) {
-      addActivityStep(state, `prompt ${trimmed.slice(0, 32)}`, "prompt", "info");
+      addActivityStep(
+        state,
+        `prompt ${trimmed.slice(0, 32)}`,
+        "prompt",
+        "info"
+      );
     }
     renderScreen(state, runtimeRef);
     try {
@@ -3428,7 +3670,9 @@ async function startTui(options) {
           const wasAtBottom = state.scrollOffset === 0;
           state.entries.push(...makeConversationEntries(state, message));
           if (message.type === "assistant") {
-            const toolUse = message.content.find((block) => block.type === "tool_use");
+            const toolUse = message.content.find(
+              (block) => block.type === "tool_use"
+            );
             if (toolUse && toolUse.type === "tool_use") {
               setCurrentActivity(state, {
                 phase: "running",
@@ -3440,14 +3684,20 @@ async function startTui(options) {
           }
           if (message.type === "tool_result") {
             const previousToolName = state.currentActivity?.toolName;
-            const durationMs = state.activityStartedAt === null ? undefined : Date.now() - state.activityStartedAt;
+            const durationMs = state.activityStartedAt === null ? void 0 : Date.now() - state.activityStartedAt;
             setCurrentActivity(state, {
               phase: message.isError ? "failed" : "done",
               toolName: previousToolName,
               detail: message.isError ? "tool returned error" : "tool completed",
               lastResult: message.isError ? "error" : "ok"
             });
-            addActivityStep(state, `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`, message.isError ? "error" : "tool", message.isError ? "failed" : "done", durationMs);
+            addActivityStep(
+              state,
+              `${message.isError ? "error" : "done"} ${previousToolName ?? (message.toolUseId?.slice(0, 10) ?? "unknown-tool")}`,
+              message.isError ? "error" : "tool",
+              message.isError ? "failed" : "done",
+              durationMs
+            );
           }
           if (wasAtBottom) {
             state.scrollOffset = 0;
@@ -3455,7 +3705,7 @@ async function startTui(options) {
           renderScreen(state, runtimeRef);
         }
       }
-      state.status = `Ready · transcript: ${runtimeRef.current.session.getTranscriptPath()}`;
+      state.status = `Ready \xB7 transcript: ${runtimeRef.current.session.getTranscriptPath()}`;
       state.currentSessionId = runtimeRef.current.session.sessionId;
       state.activityStartedAt = null;
       state.streamingAssistantText = "";
@@ -3472,17 +3722,23 @@ async function startTui(options) {
       const interrupted = runtimeRef.current.toolContext.abortController.signal.aborted;
       state.entries.push({
         kind: interrupted ? "system" : "error",
-        text: interrupted ? "当前 turn 已中断。" : message
+        text: interrupted ? "\u5F53\u524D turn \u5DF2\u4E2D\u65AD\u3002" : message
       });
       state.status = interrupted ? "Interrupted" : "Error";
       state.streamingAssistantText = "";
-      const durationMs = state.activityStartedAt === null ? undefined : Date.now() - state.activityStartedAt;
+      const durationMs = state.activityStartedAt === null ? void 0 : Date.now() - state.activityStartedAt;
       setCurrentActivity(state, {
         phase: "failed",
         detail: interrupted ? "interrupted by user" : message,
         lastResult: interrupted ? "interrupted" : "error"
       });
-      addActivityStep(state, interrupted ? "interrupted current turn" : `error ${message.slice(0, 24)}`, interrupted ? "session" : "error", "failed", durationMs);
+      addActivityStep(
+        state,
+        interrupted ? "interrupted current turn" : `error ${message.slice(0, 24)}`,
+        interrupted ? "session" : "error",
+        "failed",
+        durationMs
+      );
     } finally {
       state.busy = false;
       state.activityStartedAt = null;
@@ -3508,13 +3764,23 @@ async function startTui(options) {
     if (str === "/") {
       state.inputBuffer += "/";
       state.isSearching = true;
-      state.status = `可用命令: ${SLASH_COMMANDS.map((c) => c.name).join(", ")}`;
+      state.status = "\u6B63\u5728\u5339\u914D\u547D\u4EE4";
+      const matches = autoCompleteSlashCommand(state.inputBuffer);
+      if (matches) {
+        state.searchMatches = matches;
+        state.selectedMatchIndex = 0;
+      } else {
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+      }
       renderScreen(state, runtimeRef);
       return;
     }
     if (key.ctrl && key.name === "c") {
       if (state.busy) {
-        runtimeRef.current.toolContext.abortController.abort(new Error("User interrupted current turn"));
+        runtimeRef.current.toolContext.abortController.abort(
+          new Error("User interrupted current turn")
+        );
         state.status = "Interrupting current turn";
         renderScreen(state, runtimeRef);
         return;
@@ -3554,7 +3820,7 @@ async function startTui(options) {
       state.searchMatches = [];
       state.selectedMatchIndex = -1;
       state.inputBuffer = "";
-      submitPrompt(current);
+      void submitPrompt(current);
       state.history.push(current);
       state.historyIndex = state.history.length;
       return;
@@ -3571,11 +3837,11 @@ async function startTui(options) {
         if (matches) {
           state.searchMatches = matches;
           state.selectedMatchIndex = 0;
-          state.status = `搜索结果: ${matches.map((m) => m.name).join(", ")}`;
+          state.status = `\u6B63\u5728\u5339\u914D\u547D\u4EE4: ${matches.join(", ")}`;
         } else {
           state.searchMatches = [];
           state.selectedMatchIndex = -1;
-          state.status = "无匹配命令";
+          state.status = "\u65E0\u5339\u914D\u547D\u4EE4";
         }
       }
       renderScreen(state, runtimeRef);
@@ -3592,16 +3858,12 @@ async function startTui(options) {
     }
     if (state.isSearching && state.searchMatches.length > 0) {
       if (key.name === "up") {
-        state.selectedMatchIndex = Math.max(0, state.selectedMatchIndex - 1);
-        const selected = state.searchMatches[state.selectedMatchIndex];
-        state.status = `选中: /${selected.name} (${selected.description})`;
+        state.selectedMatchIndex = state.selectedMatchIndex - 1 < 0 ? state.searchMatches.length - 1 : state.selectedMatchIndex - 1;
         renderScreen(state, runtimeRef);
         return;
       }
       if (key.name === "down") {
-        state.selectedMatchIndex = Math.min(state.searchMatches.length - 1, state.selectedMatchIndex + 1);
-        const selected = state.searchMatches[state.selectedMatchIndex];
-        state.status = `选中: /${selected.name} (${selected.description})`;
+        state.selectedMatchIndex = state.selectedMatchIndex + 1 >= state.searchMatches.length ? 0 : state.selectedMatchIndex + 1;
         renderScreen(state, runtimeRef);
         return;
       }
@@ -3632,7 +3894,8 @@ async function startTui(options) {
     if (key.name === "tab" && state.isSearching && state.searchMatches.length > 0) {
       const selected = state.searchMatches[state.selectedMatchIndex];
       if (selected) {
-        state.inputBuffer = `/${selected.name}`;
+        const command = selected.trim().slice(1);
+        state.inputBuffer = `/${command}`;
         state.isSearching = false;
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
@@ -3651,11 +3914,11 @@ async function startTui(options) {
       if (matches) {
         state.searchMatches = matches;
         state.selectedMatchIndex = 0;
-        state.status = `搜索结果: ${matches.map((m) => m.name).join(", ")}`;
+        state.status = "\u6B63\u5728\u5339\u914D\u547D\u4EE4";
       } else {
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
-        state.status = "无匹配命令";
+        state.status = "\u65E0\u5339\u914D\u547D\u4EE4";
       }
     } else {
       state.isSearching = false;
@@ -3681,8 +3944,10 @@ async function startTui(options) {
 // app/main.ts
 async function main(argv = process.argv.slice(2)) {
   const autoApprove = argv.includes("--yes");
-  const streamOutput = argv.includes("--stream") ? true : argv.includes("--no-stream") ? false : undefined;
-  const filteredArgs = argv.filter((arg) => arg !== "--yes" && arg !== "--stream" && arg !== "--no-stream");
+  const streamOutput = argv.includes("--stream") ? true : argv.includes("--no-stream") ? false : void 0;
+  const filteredArgs = argv.filter(
+    (arg) => arg !== "--yes" && arg !== "--stream" && arg !== "--no-stream"
+  );
   if (filteredArgs.length === 0 || filteredArgs[0] === "tui") {
     await startTui({
       cwd: cwd(),
@@ -3704,9 +3969,9 @@ async function main(argv = process.argv.slice(2)) {
     streamOutput
   });
 }
-var isDirectExecution = typeof process !== "undefined" && process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+var isDirectExecution = typeof process !== "undefined" && process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectExecution) {
-  main().catch((error) => {
+  void main().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}
 `);
@@ -3716,6 +3981,3 @@ if (isDirectExecution) {
 export {
   main
 };
-
-//# debugId=76DB868CCF756E9664756E2164756E21
-//# sourceMappingURL=main.js.map

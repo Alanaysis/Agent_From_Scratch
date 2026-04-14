@@ -10,9 +10,9 @@ async function web_fetch(url: string) {
   await page.waitForLoadState('domcontentloaded');
 
   // 自动滚动加载懒加载内容
-  await page.evaluate(() => {
+  await page.evaluate(`
     window.scrollTo(0, document.body.scrollHeight);
-  });
+  `);
 
   const html = await page.content();
   await browser.close();
