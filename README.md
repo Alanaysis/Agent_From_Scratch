@@ -8,7 +8,7 @@
 
 ## 项目背景
 
-这个 `claude-code-lite`。它不是源码搬运，而是一个最小可用的参考实现，目前已经实现了：
+这个 `claude-code-lite`，它的最小实现来自于这个仓库[goozi/claude-code-lite](https://github.com/goozi/claude-code-lite)，目前已经实现了：
 
 - 可安装、可打包、可运行的 CLI 结构
 - TUI、REPL、headless chat 三种交互入口
