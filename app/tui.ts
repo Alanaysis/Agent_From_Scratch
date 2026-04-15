@@ -1,5 +1,5 @@
 import readline from "readline";
-import { stdin as input, stdout as output } from "process";
+import { electron, stdin as input, stdout as output } from "process";
 import { executeCliCommand, formatHelp } from "./headless";
 import { tokenizeCommandLine } from "../shared/cli";
 import { createInitialAppState, type AppState } from "../runtime/state";
@@ -570,7 +570,7 @@ function renderScreen(
   setCenteredTerminalTitle("🚀 Siok Cli");
 
   const header = [
-    `${pc.bold(pc.magenta(`Mode: ${mode}`) + `  ·  ` +  pc.blue(`Session: ${state.currentSessionId}`))}`,
+    `${pc.bold(pc.magenta(`Mode: ${mode}`) + `  ·  ` + pc.blue(`Session: ${state.currentSessionId}`))}`,
     "",
   ];
 
@@ -583,22 +583,22 @@ function renderScreen(
     let coloredText = text;
     switch (entry.kind) {
       case "user":
-        coloredText = `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok'))  + pc.cyan(` ${text}`) : pc.bgCyan(pc.white('Siok'))  + pc.cyan(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok')) + pc.cyan(` ${text}`) : pc.bgCyan(pc.white('Siok')) + pc.cyan(` ${text}`)}`;
         break;
       case "assistant":
-        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('SLI'))  + pc.white(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI')) + pc.black(` ${text}`) : pc.bgWhite(pc.black('SLI')) + pc.white(` ${text}`)}`;
         break;
       case "tool":
-        coloredText = `${state.theme === 'dark' ? pc.bgYellow(pc.black('Tool'))  + pc.yellow(` ${text}`) : pc.bgYellow(pc.white('Tool'))  + pc.yellow(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgYellow(pc.black('Tool')) + pc.yellow(` ${text}`) : pc.bgYellow(pc.white('Tool')) + pc.yellow(` ${text}`)}`;
         break;
       case "result":
-        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Out'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('Out'))  + pc.white(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Out')) + pc.black(` ${text}`) : pc.bgWhite(pc.black('Out')) + pc.white(` ${text}`)}`;
         break;
       case "error":
-        coloredText = `${state.theme === 'dark' ? pc.bgRed(pc.black('Err'))  + pc.red(` ${text}`) : pc.bgRed(pc.white('Err'))  + pc.red(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgRed(pc.black('Err')) + pc.red(` ${text}`) : pc.bgRed(pc.white('Err')) + pc.red(` ${text}`)}`;
         break;
       case "system":
-        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Sys'))  + pc.black(` ${text}`) : pc.bgWhite(pc.black('Sys'))  + pc.white(` ${text}`)}`;
+        coloredText = `${state.theme === 'dark' ? pc.bgBlack(pc.white('Sys')) + pc.black(` ${text}`) : pc.bgWhite(pc.black('Sys')) + pc.white(` ${text}`)}`;
         break;
     }
     return wrapText(coloredText, Math.max(20, mainWidth - 4));
@@ -608,7 +608,7 @@ function renderScreen(
     const streamingText = `${state.streamingAssistantText}▌`;
     messageLines.push(
       ...wrapText(
-        `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI'))  + pc.black(` ${streamingText}`) : pc.bgWhite(pc.black('SLI'))  + pc.white(` ${streamingText}`)}`,
+        `${state.theme === 'dark' ? pc.bgBlack(pc.white('SLI')) + pc.black(` ${streamingText}`) : pc.bgWhite(pc.black('SLI')) + pc.white(` ${streamingText}`)}`,
         Math.max(20, mainWidth - 4),
       ),
     );
@@ -625,6 +625,16 @@ function renderScreen(
   const visibleMessages = messageLines.slice(start, start + contentHeight);
 
   let helpMessages: string[] = [];
+  if (state.isSearching && state.searchMatches.length > 0) {
+    for (let i = state.selectedMatchIndex - 2; i < state.selectedMatchIndex + 3; i++) {
+      const actualIndex = ((i % state.searchMatches.length) + state.searchMatches.length) % state.searchMatches.length;
+      if (actualIndex === state.selectedMatchIndex) {
+        helpMessages.push(`${state.theme === 'dark' ? pc.bgCyan(pc.black(state.searchMatches[actualIndex])) : pc.bgCyan(pc.white(state.searchMatches[actualIndex]))}`);
+      }
+      else
+        helpMessages.push(state.searchMatches[actualIndex]);
+    }
+  }
   // 极简风格，没有边框
   let lines = [
     ...header,
@@ -638,14 +648,12 @@ function renderScreen(
         : `${state.theme === 'dark' ? pc.green(`Status: ${state.status}`) : pc.greenBright(`Status: ${state.status}`)}`,
     `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
     state.modal
-      ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`  
-      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>'))  + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
+      ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`
+      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
-    ...state.searchMatches.map((match, index) => 
-      index === state.selectedMatchIndex 
-        ? `${state.theme === 'dark' ? pc.bgCyan(pc.black(match)) : pc.bgCyan(pc.black(match))}` 
-        : match
-    ),
+    ...helpMessages.length > 0 ? helpMessages : "",
+    "",
+    ""
   ].slice(0, height);
 
   if (state.modal) {
@@ -834,10 +842,9 @@ function autoCompleteSlashCommand(input: string): string[] | null {
     return null;
   }
   const command = normalized.slice(1);
-  // 从helpMessagesAll中搜索全字符串匹配，取前5个
-  const matches = helpMessagesAll.filter(msg => 
+  const matches = helpMessagesAll.filter(msg =>
     msg.toLowerCase().includes(command)
-  ).slice(0, 5);
+  )
   return matches.length > 0 ? matches : null;
 }
 
@@ -1294,7 +1301,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
         if (matches) {
           state.searchMatches = matches;
           state.selectedMatchIndex = 0;
-          state.status = `正在匹配命令: ${matches.join(", ")}`;
+          state.status = `正在匹配命令`;
         } else {
           state.searchMatches = [];
           state.selectedMatchIndex = -1;
@@ -1320,22 +1327,20 @@ export async function startTui(options: TuiOptions): Promise<void> {
       // 在搜索模式下，使用箭头键导航搜索结果
       if (key.name === "up") {
         // 实现循环列表：向上到顶时跳到底部
-        state.selectedMatchIndex = 
-          state.selectedMatchIndex - 1 < 0 
-            ? state.searchMatches.length - 1 
+        state.selectedMatchIndex =
+          state.selectedMatchIndex - 1 < 0
+            ? state.searchMatches.length - 1
             : state.selectedMatchIndex - 1;
-
         renderScreen(state, runtimeRef);
         return;
       }
 
       if (key.name === "down") {
         // 实现循环列表：向下到底时跳到顶部
-        state.selectedMatchIndex = 
-          state.selectedMatchIndex + 1 >= state.searchMatches.length 
-            ? 0 
+        state.selectedMatchIndex =
+          state.selectedMatchIndex + 1 >= state.searchMatches.length
+            ? 0
             : state.selectedMatchIndex + 1;
-
         renderScreen(state, runtimeRef);
         return;
       }
@@ -1349,7 +1354,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
       }
 
       if (key.name === "down") {
-        state.historyIndex =  state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
+        state.historyIndex = state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
         state.inputBuffer = state.historyIndex < state.history.length ? state.history[state.historyIndex] : "";
         renderScreen(state, runtimeRef);
         return;
@@ -1374,7 +1379,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
       if (selected) {
         // 提取命令部分（去掉前面的空格和斜杠）
         const command = selected.trim().slice(1);
-        state.inputBuffer = `/${command}`;
+        state.inputBuffer = `/${command.split(" ")[0]}`;
 
         // 补全后退出搜索状态
         state.isSearching = false;

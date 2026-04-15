@@ -4,6 +4,7 @@ node_modules/
 .DS_Store
 .claude-code-lite/
 bin/claude-code-lite.js
+.vscode/
 
 # Claude-related settings and agent memory
 .claude/

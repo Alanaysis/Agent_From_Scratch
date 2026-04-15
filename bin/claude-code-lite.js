@@ -3295,6 +3295,15 @@ function renderScreen(state, runtimeRef) {
   );
   const visibleMessages = messageLines.slice(start, start + contentHeight);
   let helpMessages = [];
+  if (state.isSearching && state.searchMatches.length > 0) {
+    for (let i = state.selectedMatchIndex - 2; i < state.selectedMatchIndex + 3; i++) {
+      const actualIndex = (i % state.searchMatches.length + state.searchMatches.length) % state.searchMatches.length;
+      if (actualIndex === state.selectedMatchIndex) {
+        helpMessages.push(`${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black(state.searchMatches[actualIndex])) : import_picocolors.default.bgCyan(import_picocolors.default.white(state.searchMatches[actualIndex]))}`);
+      } else
+        helpMessages.push(state.searchMatches[actualIndex]);
+    }
+  }
   let lines = [
     ...header,
     ...visibleMessages,
@@ -3304,9 +3313,9 @@ function renderScreen(state, runtimeRef) {
     `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
     state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
-    ...state.searchMatches.map(
-      (match, index) => index === state.selectedMatchIndex ? `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black(match)) : import_picocolors.default.bgCyan(import_picocolors.default.black(match))}` : match
-    )
+    ...helpMessages.length > 0 ? helpMessages : "",
+    "",
+    ""
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
@@ -3457,7 +3466,7 @@ function autoCompleteSlashCommand(input3) {
   const command = normalized.slice(1);
   const matches = helpMessagesAll.filter(
     (msg) => msg.toLowerCase().includes(command)
-  ).slice(0, 5);
+  );
   return matches.length > 0 ? matches : null;
 }
 async function getTerminalTheme() {
@@ -3837,7 +3846,7 @@ async function startTui(options) {
         if (matches) {
           state.searchMatches = matches;
           state.selectedMatchIndex = 0;
-          state.status = `\u6B63\u5728\u5339\u914D\u547D\u4EE4: ${matches.join(", ")}`;
+          state.status = `\u6B63\u5728\u5339\u914D\u547D\u4EE4`;
         } else {
           state.searchMatches = [];
           state.selectedMatchIndex = -1;
@@ -3895,7 +3904,7 @@ async function startTui(options) {
       const selected = state.searchMatches[state.selectedMatchIndex];
       if (selected) {
         const command = selected.trim().slice(1);
-        state.inputBuffer = `/${command}`;
+        state.inputBuffer = `/${command.split(" ")[0]}`;
         state.isSearching = false;
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
