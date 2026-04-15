@@ -3237,10 +3237,10 @@ function renderScreen(state, runtimeRef) {
   const mainWidth = width - 4;
   const contentHeight = Math.max(8, height - 10);
   const mode = getPermissionMode(state, runtimeRef);
-  function setCenteredTerminalTitle(title, totalWidth = 24) {
+  function setCenteredTerminalTitle(title, totalWidth = 10) {
     const titleLength = [...title].length;
     const spaces = Math.max(0, totalWidth - titleLength);
-    const leftPad = " ".repeat(Math.floor(spaces / 2));
+    const leftPad = " ".repeat(Math.min(Math.floor(spaces / 2), totalWidth > titleLength ? spaces : 0));
     process.stdout.write(`\x1B]0;${leftPad}${title}\x07`);
   }
   setCenteredTerminalTitle("\u{1F680} Siok Cli");
@@ -3293,7 +3293,7 @@ function renderScreen(state, runtimeRef) {
     0,
     messageLines.length - contentHeight - state.scrollOffset
   );
-  const visibleMessages = messageLines.slice(start, start + contentHeight);
+  const visibleMessages = messageLines.slice(start, start + contentHeight - 2);
   let helpMessages = [];
   if (state.isSearching && state.searchMatches.length > 0) {
     for (let i = state.selectedMatchIndex - 2; i < state.selectedMatchIndex + 3; i++) {
@@ -3313,9 +3313,7 @@ function renderScreen(state, runtimeRef) {
     `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
     state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
-    ...helpMessages.length > 0 ? helpMessages : "",
-    "",
-    ""
+    ...helpMessages.length > 0 ? helpMessages : ""
   ].slice(0, height);
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
@@ -3842,7 +3840,9 @@ async function startTui(options) {
       return;
     }
     if (key.name === "backspace") {
-      state.inputBuffer = state.inputBuffer.slice(0, -1);
+      const chars = Array.from(state.inputBuffer);
+      chars.pop();
+      state.inputBuffer = chars.join("");
       if (!state.inputBuffer.startsWith("/")) {
         state.isSearching = false;
         state.searchMatches = [];

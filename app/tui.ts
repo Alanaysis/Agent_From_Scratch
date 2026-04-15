@@ -558,11 +558,11 @@ function renderScreen(
   const mode = getPermissionMode(state, runtimeRef);
 
 
-  function setCenteredTerminalTitle(title: string, totalWidth = 24) {
+  function setCenteredTerminalTitle(title: string, totalWidth = 10) {
     // 计算需要填充的空格
     const titleLength = [...title].length; // 支持 Emoji 正确计算长度
     const spaces = Math.max(0, totalWidth - titleLength);
-    const leftPad = " ".repeat(Math.floor(spaces / 2));
+    const leftPad = " ".repeat(Math.min(Math.floor(spaces / 2), totalWidth > titleLength ? spaces : 0));
 
     // 输出到终端标签
     process.stdout.write(`\x1b]0;${leftPad}${title}\x07`);
@@ -622,7 +622,7 @@ function renderScreen(
     0,
     messageLines.length - contentHeight - state.scrollOffset,
   );
-  const visibleMessages = messageLines.slice(start, start + contentHeight);
+  const visibleMessages = messageLines.slice(start, start + contentHeight - 2);
 
   let helpMessages: string[] = [];
   if (state.isSearching && state.searchMatches.length > 0) {
@@ -651,9 +651,7 @@ function renderScreen(
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`
       : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
-    ...helpMessages.length > 0 ? helpMessages : "",
-    "",
-    ""
+    ...helpMessages.length > 0 ? helpMessages : ""
   ].slice(0, height);
 
   if (state.modal) {
@@ -1295,7 +1293,10 @@ export async function startTui(options: TuiOptions): Promise<void> {
     }
 
     if (key.name === "backspace") {
-      state.inputBuffer = state.inputBuffer.slice(0, -1);
+      // 使用Array.from处理Unicode字符，确保每次删除一个完整的字符
+      const chars = Array.from(state.inputBuffer);
+      chars.pop();
+      state.inputBuffer = chars.join("");
 
       // 如果删除后不再以斜杠开头，退出搜索状态
       if (!state.inputBuffer.startsWith("/")) {
