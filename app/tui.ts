@@ -622,7 +622,7 @@ function renderScreen(
     0,
     messageLines.length - contentHeight - state.scrollOffset,
   );
-  const visibleMessages = messageLines.slice(start, start + contentHeight - 2);
+  const visibleMessages = messageLines.slice(start + 2, start + contentHeight);
 
   let helpMessages: string[] = [];
   if (state.isSearching && state.searchMatches.length > 0) {
@@ -649,7 +649,7 @@ function renderScreen(
     `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
     state.modal
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`
-      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.black('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
+      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.white('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
   ].slice(0, height);

@@ -843,17 +843,73 @@ var ShellTool = {
 
 // tools/web/fetchTool.ts
 import { firefox } from "playwright";
+function cleanHtml(html) {
+  const tagsToRemove = [
+    "script",
+    "style",
+    "noscript",
+    "iframe",
+    "object",
+    "embed",
+    "svg",
+    "math",
+    "nav",
+    "footer",
+    "header",
+    "aside"
+  ];
+  let cleaned = html;
+  for (const tag of tagsToRemove) {
+    const regex = new RegExp(`<${tag}[^>]*>.*?</${tag}>`, "gis");
+    cleaned = cleaned.replace(regex, "");
+  }
+  const contentSelectors = ["article", "main", ".content", "#content", ".post"];
+  for (const selector of contentSelectors) {
+    try {
+      const regex = new RegExp(`<${selector}[^>]*>([\\s\\S]*?)</${selector}>`, "gis");
+      const match = cleaned.match(regex);
+      if (match && match[1].length > cleaned.length * 0.3) {
+        cleaned = match[1];
+        break;
+      }
+    } catch {
+    }
+  }
+  const textOnly = cleaned.replace(/<[^>]*>/g, "");
+  const normalized = textOnly.replace(/\s+/g, " ").trim();
+  return normalized;
+}
 async function web_fetch(url) {
-  const browser = await firefox.launch({ headless: true });
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
-  await page.waitForLoadState("domcontentloaded");
-  await page.evaluate(`
-    window.scrollTo(0, document.body.scrollHeight);
-  `);
-  const html = await page.content();
-  await browser.close();
-  return html;
+  let browser;
+  try {
+    browser = await firefox.launch({ headless: true });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(3e4);
+    console.log(`[WebFetch] Fetching URL: ${url}`);
+    await page.goto(url, { waitUntil: "networkidle", timeout: 3e4 });
+    await page.waitForLoadState("domcontentloaded");
+    await page.evaluate(`
+      window.scrollTo(0, document.body.scrollHeight);
+    `);
+    const html = await page.content();
+    console.log(`[WebFetch] Successfully fetched ${html.length} bytes from ${url}`);
+    return html;
+  } catch (error) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+      }
+    }
+    throw new Error(`WebFetch failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+async function cleanAndExtract(html, maxLen = 5e4) {
+  const cleaned = cleanHtml(html);
+  if (cleaned.length > maxLen) {
+    return cleaned.substring(0, maxLen) + "\n\n... [truncated] ...";
+  }
+  return cleaned;
 }
 var WebFetchTool = {
   name: "WebFetch",
@@ -863,17 +919,29 @@ var WebFetchTool = {
     return "Fetch and process a URL";
   },
   async call(args, _context, _canUseTool, _parentMessage) {
-    const content = await web_fetch(args.url);
-    const snippet = content.slice(0, 1200);
-    const result = args.prompt.trim() ? `Prompt: ${args.prompt}
+    try {
+      const html = await web_fetch(args.url);
+      const cleanedContent = await cleanAndExtract(html);
+      console.log(`[WebFetch] Cleaned content: ${cleanedContent.length} characters`);
+      const result = args.prompt.trim() ? `Prompt: ${args.prompt}
 
-Fetched snippet:
-${snippet}` : snippet;
-    return {
-      data: {
-        result
-      }
-    };
+Fetched and cleaned content:
+${cleanedContent}` : cleanedContent;
+      return {
+        data: {
+          result
+        }
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[WebFetch] Call failed for ${args.url}: ${errorMsg}`);
+      return {
+        data: {
+          result: `Error fetching URL:
+${errorMsg}`
+        }
+      };
+    }
   },
   async validateInput(input3) {
     try {
@@ -3293,7 +3361,7 @@ function renderScreen(state, runtimeRef) {
     0,
     messageLines.length - contentHeight - state.scrollOffset
   );
-  const visibleMessages = messageLines.slice(start, start + contentHeight - 2);
+  const visibleMessages = messageLines.slice(start + 2, start + contentHeight);
   let helpMessages = [];
   if (state.isSearching && state.searchMatches.length > 0) {
     for (let i = state.selectedMatchIndex - 2; i < state.selectedMatchIndex + 3; i++) {
@@ -3311,7 +3379,7 @@ function renderScreen(state, runtimeRef) {
     `${state.theme === "dark" ? import_picocolors.default.gray("\u2500".repeat(width)) : import_picocolors.default.gray("\u2500".repeat(width))}`,
     state.status.includes("Error") || state.status.includes("failed") ? `${state.theme === "dark" ? import_picocolors.default.red(`Status: ${state.status}`) : import_picocolors.default.redBright(`Status: ${state.status}`)}` : state.busy ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Status: ${state.status}`) : import_picocolors.default.yellowBright(`Status: ${state.status}`)}` : `${state.theme === "dark" ? import_picocolors.default.green(`Status: ${state.status}`) : import_picocolors.default.greenBright(`Status: ${state.status}`)}`,
     `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
-    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
+    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.white("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
   ].slice(0, height);
