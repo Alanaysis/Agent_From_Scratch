@@ -3653,6 +3653,10 @@ async function startTui(options) {
     try {
       if (trimmed.startsWith("/")) {
         await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef);
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        renderScreen(state, runtimeRef);
       } else {
         const userMessage = {
           id: createId("user"),
@@ -3735,6 +3739,9 @@ async function startTui(options) {
       });
       state.status = interrupted ? "Interrupted" : "Error";
       state.streamingAssistantText = "";
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
       const durationMs = state.activityStartedAt === null ? void 0 : Date.now() - state.activityStartedAt;
       setCurrentActivity(state, {
         phase: "failed",
@@ -3770,7 +3777,7 @@ async function startTui(options) {
       renderScreen(state, runtimeRef);
       return;
     }
-    if (str === "/") {
+    if (str === "/" && state.busy === false) {
       state.inputBuffer += "/";
       state.isSearching = true;
       state.status = "\u6B63\u5728\u5339\u914D\u547D\u4EE4";

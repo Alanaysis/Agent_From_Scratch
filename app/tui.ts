@@ -1066,6 +1066,11 @@ export async function startTui(options: TuiOptions): Promise<void> {
     try {
       if (trimmed.startsWith("/")) {
         await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef);
+        // 重置搜索状态
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        renderScreen(state, runtimeRef);
       } else {
         const userMessage: Message = {
           id: createId("user"),
@@ -1163,6 +1168,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
       });
       state.status = interrupted ? "Interrupted" : "Error";
       state.streamingAssistantText = "";
+      state.isSearching = false;
+      state.searchMatches = [];
+      state.selectedMatchIndex = -1;
       const durationMs =
         state.activityStartedAt === null
           ? undefined
@@ -1207,7 +1215,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
     }
 
     // 检查是否是斜杠字符（readline可能不会将斜杠识别为key.name === "slash"）
-    if (str === "/") {
+    if (str === "/" && state.busy === false) {
       // 处理斜杠字符输入
       state.inputBuffer += "/";
       state.isSearching = true;
