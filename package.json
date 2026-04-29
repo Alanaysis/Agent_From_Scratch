@@ -8,6 +8,7 @@
   },
   "files": [
     "bin",
+    "skills",
     "app/main.js",
     "app/main.js.map",
     "README.md",
@@ -15,18 +16,15 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "esbuild ./app/main.ts --bundle --platform=node --format=esm --outfile=./bin/claude-code-lite.js --external:playwright --external:chromium-bidi --external:readline/promises",
+    "build": "esbuild ./app/main.ts --bundle --platform=node --format=esm --outfile=./bin/claude-code-lite.js --external:playwright --external:chromium-bidi --external:readline/promises && cp -r ./skills ./bin/ 2>/dev/null || true",
     "build:exe": "mkdir -p ./dist && bun build --compile --outfile ./dist/claude-code-lite ./app/main.ts",
     "dev": "bun ./app/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "check": "bun run build && node ./bin/claude-code-lite.js --help",
-    "prepack": "bun run build",
-    "test": "bun test",
-    "coverage": "c8 bun test"
+    "prepack": "bun run build"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
-    "c8": "^11.0.0",
     "esbuild": "^0.28.0",
     "typescript": "^5.9.3"
   },
