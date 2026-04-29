@@ -6,6 +6,7 @@ describe('runtime/usage.ts', () => {
     expect(usage).toEqual({
       inputTokens: 0,
       outputTokens: 0,
+      totalTokens: 0,
     });
   });
 });

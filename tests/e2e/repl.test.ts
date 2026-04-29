@@ -108,7 +108,7 @@ describe('REPL E2E', () => {
       const { getTools } = await import('../../tools/registry');
       const tools = getTools();
 
-      expect(tools).toHaveLength(6); // Read, Write, Edit, Shell, WebFetch, Agent
+      expect(tools).toHaveLength(12); // Read, Write, Edit, Shell, WebFetch, Agent, plus new tools
       expect(tools.map(t => t.name)).toContain('Read');
       expect(tools.map(t => t.name)).toContain('Write');
       expect(tools.map(t => t.name)).toContain('Shell');
