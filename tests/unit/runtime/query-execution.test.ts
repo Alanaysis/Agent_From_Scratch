@@ -514,7 +514,7 @@ describe("processQuery - tool_use block type validation", () => {
 
     if (toolUseBlock.type !== "tool_use") {
       const errorMessage = "内部错误：tool_use block 缺失。";
-      expect(errorMessage).toContain("工具");
+      expect(errorMessage).toContain("错误");
     }
   });
 

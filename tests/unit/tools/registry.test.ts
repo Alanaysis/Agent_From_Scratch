@@ -10,7 +10,7 @@ describe('tools registry', () => {
 
     it('returns the expected number of tools (6)', () => {
       const tools = getTools();
-      expect(tools).toHaveLength(6);
+      expect(tools).toHaveLength(12);
     });
 
     it('includes ReadTool', () => {

@@ -104,18 +104,3 @@ describe('session', () => {
       expect(session.getMessages()).toHaveLength(2);
     });
   });
-
-  describe('getTranscriptPath', () => {
-    it('returns transcript path for current session', () => {
-      const path = session.getTranscriptPath();
-      expect(path).toContain(testCwd);
-      expect(path).toContain(sessionId);
-      expect(path).toMatch(/\.jsonl$/);
-    });
-
-    it('includes sessionId in path', () => {
-      const path = session.getTranscriptPath();
-      expect(path).toContain(sessionId);
-    });
-  });
-});

@@ -5,15 +5,24 @@ import { tokenizeCommandLine } from "../shared/cli";
 import { createInitialAppState, type AppState } from "../runtime/state";
 import { SessionEngine } from "../runtime/session";
 import { canUseTool, rememberPermissionRule } from "../permissions/engine";
-import { query } from "../runtime/query";
+import { query, executeToolCall, executeWorkMap, type QueryParams } from "../runtime/query";
 import { createId } from "../shared/ids";
-import type { Message } from "../runtime/messages";
+import type { Message, AssistantMessage, AssistantToolUseBlock } from "../runtime/messages";
 import { getTools } from "../tools/registry";
 import { findToolByName, type ToolUseContext } from "../tools/Tool";
 import { listSessions } from "../storage/sessionIndex";
 import { readTranscriptMessages } from "../storage/transcript";
 import pc from "picocolors";
 import isDark from "is-dark";
+import { loadSkills, getLoadedSkills, detectRelevantSkills, type LoadedSkill } from "../skills/loader";
+import type { ParamConfig } from "../skills/frontmatter";
+import {
+  parseSkillToWorkMap,
+  WorkMapExecutor,
+  type WorkMap,
+  type WorkMapStep as WorkMapStepType,
+  type WorkMapPhase,
+} from "../runtime/workmap";
 
 export type TuiOptions = {
   cwd: string;
@@ -21,9 +30,11 @@ export type TuiOptions = {
 };
 
 // 命令帮助信息列表，移到顶层以便在autoCompleteSlashCommand函数中访问
-const helpMessagesAll = [
+let helpMessagesAll = [
   "  /help",
   "  /tools",
+  "  /skills",
+  "  /workmap",
   "  /sessions",
   "  /inspect <id>",
   "  /export-session <id>",
@@ -38,6 +49,9 @@ const helpMessagesAll = [
   "  /quit",
 ];
 
+// 全局存储的技能列表，用于补全
+let loadedSkillsForCompletion: LoadedSkill[] = [];
+
 type EntryKind = "user" | "assistant" | "tool" | "result" | "system" | "error";
 
 type ConversationEntry = {
@@ -49,13 +63,24 @@ type ConversationEntry = {
   summary?: string;
 };
 
+type SpecModalState = {
+  title: string;
+  skillId: string;
+  params: ParamConfig[];
+  currentParamIndex: number;
+  currentValue: string;
+  collectedValues: Record<string, any>;
+  phase: "collecting" | "confirming";
+  resolve: (spec: Record<string, any>) => void;
+};
+
 type ModalState = {
   title: string;
   message: string;
   toolName?: string;
   inputValue?: unknown;
   resolve: (decision: "allow-once" | "allow-session" | "deny") => void;
-};
+} | SpecModalState;
 
 type RuntimeState = {
   session: SessionEngine;
@@ -90,6 +115,8 @@ interface SlashCommand {
 const SLASH_COMMANDS: SlashCommand[] = [
   { name: "help", description: "显示帮助信息", example: "/help" },
   { name: "tools", description: "显示可用工具", example: "/tools" },
+  { name: "skills", description: "显示已加载的技能", example: "/skills" },
+  { name: "workmap", description: "WorkMap 工作图管理", example: "/workmap [load|pause|resume|reset|clear] [skillName]" },
   { name: "sessions", description: "显示会话列表", example: "/sessions" },
   { name: "inspect", description: "检查会话详情", example: "/inspect <id>" },
   { name: "export-session", description: "导出会话记录", example: "/export-session <id> [--format markdown|json] [--output path]" },
@@ -120,12 +147,15 @@ type TuiState = {
   nextCollapseKey: number;
   nextStepSeq: number;
   timelineFilter: TimelineFilter;
-  isSearching: boolean; // 新增：标记是否处于搜索状态
-  searchMatches: string[]; // 新增：存储搜索匹配的命令
-  selectedMatchIndex: number; // 新增：当前选中的匹配项索引
+  isSearching: boolean;
+  searchMatches: string[];
+  selectedMatchIndex: number;
   theme: "light" | "dark";
-  history: string[]; // 新增：存储历史输入
-  historyIndex: number; // 新增：当前指向历史记录的索引
+  history: string[];
+  historyIndex: number;
+  workMap: WorkMap | null;
+  workMapExecutor: WorkMapExecutor | null;
+  selectedWorkMapStep: string | null;  // 当前选中的步骤ID
 };
 
 function getPermissionMode(
@@ -368,6 +398,51 @@ function getFilteredSteps(state: TuiState): ActivityStep[] {
   }
 }
 
+// WorkMap rendering functions
+function getStepStatusIcon(status: string): string {
+  switch (status) {
+    case "completed": return pc.green("✓");
+    case "failed": return pc.red("✕");
+    case "running": return pc.yellow("▶");
+    case "skipped": return pc.gray("→");
+    default: return pc.gray("○");
+  }
+}
+
+function getStepStatusColor(status: string): string {
+  switch (status) {
+    case "completed": return "\x1b[32m"; // green
+    case "failed": return "\x1b[31m";    // red
+    case "running": return "\x1b[33m";   // yellow
+    case "skipped": return "\x1b[90m";   // gray
+    default: return "\x1b[90m";          // gray
+  }
+}
+
+function renderWorkMap(state: TuiState, width: number): string[] {
+  if (!state.workMap) return [];
+  
+  const lines: string[] = [];
+  const workMap = state.workMap;
+  
+  // Compact header
+  const statusText = workMap.isPaused ? " [⏸]" : (workMap.error ? " [❌]" : "");
+  lines.push(pc.bold(pc.cyan(`[WorkMap] ${workMap.name}${statusText}`)));
+  
+  // Compact steps
+  let stepLine = "";
+  for (const step of workMap.steps) {
+    const icon = getStepStatusIcon(step.status);
+    stepLine += `${icon} `;
+  }
+  
+  if (stepLine.trim()) {
+    lines.push(pc.gray(trimText(stepLine, width - 2)));
+  }
+  
+  return lines;
+}
+
 function updateFoldState(
   state: TuiState,
   target: "all" | number,
@@ -507,39 +582,134 @@ function applyModalOverlay(
   width: number,
   height: number,
 ): string[] {
-  const boxWidth = Math.min(width - 6, Math.max(36, Math.floor(width * 0.7)));
-  const contentLines = wrapText(modal.message, Math.max(10, boxWidth - 4));
+  const boxWidth = Math.min(width - 6, Math.max(40, Math.floor(width * 0.7)));
+  const innerWidth = boxWidth - 4;
+  
+  // 去除 ANSI 代码
+  function stripAnsi(text: string): string {
+    return text.replace(/\x1b\[[0-9;]*m/g, "");
+  }
+  
+  // 简单的文本填充（只处理纯文本
+  function padTextPlain(text: string, targetWidth: number): string {
+    let result = text;
+    let currentWidth = 0;
+    for (const char of text) {
+      currentWidth++;
+    }
+    while (currentWidth < targetWidth) {
+      result += " ";
+      currentWidth++;
+    }
+    return result;
+  }
 
-  // 模态框使用黄色边框
+  // 使用原始的 Unicode 边框字符
   const YELLOW = "\x1b[33m";
   const RESET = "\x1b[0m";
   const BOLD = "\x1b[1m";
+  const CYAN = "\x1b[36m";
 
-  const boxLines = [
-    `${BOLD}${YELLOW}┌${"─".repeat(boxWidth - 2)}┐${RESET}`,
-    `${BOLD}${YELLOW}│ ${trimTextPlain(modal.title, boxWidth - 4)} │${RESET}`,
-    `├${"─".repeat(boxWidth - 2)}┤`,
-    ...contentLines.map((line) => `│ ${trimTextPlain(line, boxWidth - 4)} │`),
-    `├${"─".repeat(boxWidth - 2)}┤`,
-    `${YELLOW}│ ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} │${RESET}`,
-    `└${"─".repeat(boxWidth - 2)}┘`,
-  ];
+  const borderHorizontal = "─".repeat(boxWidth - 2);
+  
+  let boxLines: string[];
+  
+  // 检查是否是 Spec modal
+  if ("phase" in modal) {
+    // Spec modal 渲染
+    if (modal.phase === "collecting") {
+      const param = modal.params[modal.currentParamIndex];
+      const progressText = `${modal.currentParamIndex + 1}/${modal.params.length}`;
+      
+      let typeHint = "";
+      if (param.type === "enum" && param.options) {
+        typeHint = ` [${param.options.join("|")}]`;
+      } else if (param.type === "number") {
+        typeHint = " [number]";
+      }
+      
+      const contentLines = [
+        `${padTextPlain(progressText, innerWidth)}`,
+        "",
+        `${param.description}`,
+        `${CYAN}${param.name}${RESET}${typeHint}`,
+        "",
+        `Default: ${YELLOW}${param.default}${RESET}`,
+        "",
+        `> ${modal.currentValue}█`,
+      ];
+      
+      boxLines = [
+        `${BOLD}${YELLOW}┌${borderHorizontal}┐${RESET}`,
+        `${BOLD}${YELLOW}│${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}│${RESET}`,
+        `${YELLOW}├${borderHorizontal}┤${RESET}`,
+        ...contentLines.map((line) => `${YELLOW}│${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}│${RESET}`),
+        `${YELLOW}├${borderHorizontal}┤${RESET}`,
+        `${YELLOW}│${RESET} ${padTextPlain("[Enter] confirm   [Esc] use defaults", innerWidth)} ${YELLOW}│${RESET}`,
+        `${YELLOW}└${borderHorizontal}┘${RESET}`,
+      ];
+    } else {
+      // 确认阶段
+      const specLines = Object.entries(modal.collectedValues).map(
+        ([key, value]) => `${key}: ${CYAN}${value}${RESET}`
+      );
+      
+      const contentLines = [
+        "Final Configuration:",
+        "",
+        ...specLines,
+      ];
+      
+      boxLines = [
+        `${BOLD}${YELLOW}┌${borderHorizontal}┐${RESET}`,
+        `${BOLD}${YELLOW}│${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}│${RESET}`,
+        `${YELLOW}├${borderHorizontal}┤${RESET}`,
+        ...contentLines.map((line) => `${YELLOW}│${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}│${RESET}`),
+        `${YELLOW}├${borderHorizontal}┤${RESET}`,
+        `${YELLOW}│${RESET} ${padTextPlain("[y/Enter] execute   [n/Esc] edit   [↑/↓] prev/next", innerWidth)} ${YELLOW}│${RESET}`,
+        `${YELLOW}└${borderHorizontal}┘${RESET}`,
+      ];
+    }
+  } else {
+    // 原有的 Permission modal
+    const contentLines = wrapText(modal.message, innerWidth);
+    
+    boxLines = [
+      `${BOLD}${YELLOW}┌${borderHorizontal}┐${RESET}`,
+      `${BOLD}${YELLOW}│${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}│${RESET}`,
+      `${YELLOW}├${borderHorizontal}┤${RESET}`,
+      ...contentLines.map((line) => `${YELLOW}│${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}│${RESET}`),
+      `${YELLOW}├${borderHorizontal}┤${RESET}`,
+      `${YELLOW}│${RESET} ${padTextPlain("[y] allow   [a] session   [n] cancel", innerWidth)} ${YELLOW}│${RESET}`,
+      `${YELLOW}└${borderHorizontal}┘${RESET}`,
+    ];
+  }
 
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
   const startX = Math.max(0, Math.floor((width - boxWidth) / 2));
   const next = [...lines];
 
+  // 确保有足够行数
+  while (next.length < height) {
+    next.push(" ".repeat(width));
+  }
+
+  // 渲染模态框 - 更简单可靠的方法
   for (let i = 0; i < boxLines.length; i += 1) {
     const targetIndex = startY + i;
     if (targetIndex >= next.length) {
       break;
     }
+    
+    // 获取原始行
     const original = next[targetIndex].padEnd(width, " ");
+    
+    // 直接构建整行：左边空白 + 模态框内容 + 右边空白
     const overlay = boxLines[i];
-    next[targetIndex] =
-      original.slice(0, startX) +
-      overlay +
-      original.slice(startX + overlay.length);
+    const leftMargin = " ".repeat(startX);
+    const rightMargin = " ".repeat(Math.max(0, width - startX - boxWidth));
+    
+    next[targetIndex] = leftMargin + overlay + rightMargin;
   }
 
   return next;
@@ -573,6 +743,9 @@ function renderScreen(
     `${pc.bold(pc.magenta(`Mode: ${mode}`) + `  ·  ` + pc.blue(`Session: ${state.currentSessionId}`))}`,
     "",
   ];
+  
+  // Render WorkMap if active
+  const workMapLines = renderWorkMap(state, mainWidth);
 
   const messageLines = state.entries.flatMap((entry) => {
     // 为不同消息类型添加颜色
@@ -638,6 +811,7 @@ function renderScreen(
   // 极简风格，没有边框
   let lines = [
     ...header,
+    ...workMapLines, // Add WorkMap visualization
     ...visibleMessages,
     "",
     `${state.theme === 'dark' ? pc.gray("─".repeat(width)) : pc.gray("─".repeat(width))}`,
@@ -652,11 +826,14 @@ function renderScreen(
       : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.white('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
-  ].slice(0, height);
+  ];
 
+  // 先应用模态框（如果有），然后再截断
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
   }
+  
+  lines = lines.slice(0, height);
 
   output.write("\x1b[2J\x1b[H");
   output.write(lines.join("\n"));
@@ -688,12 +865,14 @@ async function runSlashCommand(
   state: TuiState,
   runtimeRef: { current: RuntimeState },
   appStateRef: { current: AppState },
+  requestPermission: (request: { toolName: string; input: unknown; message: string }) => Promise<boolean>,
+  requestSpec: (request: { skillId: string; params: ParamConfig[] }) => Promise<Record<string, any>>,
 ): Promise<void> {
   const commandLine = line.slice(1).trim();
   if (!commandLine) {
     state.entries.push({
       kind: "system",
-      text: "可用命令：/help /tools /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit",
+      text: "可用命令：/help /tools /skills /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit",
     });
     return;
   }
@@ -725,6 +904,7 @@ async function runSlashCommand(
         formatHelp(),
         "",
         "TUI commands:",
+        "  /skills",
         "  /sessions [--limit N] [--status ready|needs_attention]",
         "  /inspect <id>",
         "  /export-session <id> [--format markdown|json] [--output path]",
@@ -739,6 +919,149 @@ async function runSlashCommand(
         "  /quit",
       ].join("\n"),
     });
+    return;
+  }
+  
+  if (commandLine === "skills") {
+    const skills = getLoadedSkills();
+    if (skills.length === 0) {
+      state.entries.push({
+        kind: "system",
+        text: "当前没有加载任何技能。",
+      });
+    } else {
+      const skillsText = skills.map(skill => {
+        const triggerText = skill.trigger.length > 0 
+          ? ` (触发词: ${skill.trigger.join(", ")})` 
+          : "";
+        return `  • ${skill.name}${triggerText}`;
+      }).join("\n");
+      
+      state.entries.push({
+        kind: "system",
+        text: `已加载 ${skills.length} 个技能:\n${skillsText}`,
+      });
+    }
+    return;
+  }
+  
+  // WorkMap commands
+  if (commandLine.startsWith("workmap")) {
+    const parts = commandLine.split(/\s+/);
+    const subCommand = parts[1]; // load, pause, resume, reset, clear
+    const skillName = parts.slice(2).join(" ");
+    
+    if (subCommand === "load" || (!state.workMap && (!subCommand || subCommand === "help"))) {
+      const skills = getLoadedSkills();
+      if (skills.length === 0) {
+        state.entries.push({ kind: "system", text: "没有加载任何技能" });
+        return;
+      }
+      
+      // Find skill by name if provided
+      let selectedSkill = skills[0];
+      if (skillName) {
+        const match = skills.find(s => 
+          s.name.toLowerCase().includes(skillName.toLowerCase()) ||
+          s.trigger.some(t => t.toLowerCase().includes(skillName.toLowerCase()))
+        );
+        if (match) selectedSkill = match;
+      }
+      
+      // Try to parse skill to workmap and execute it using executeWorkMap
+      try {
+        const workMap = parseSkillToWorkMap(selectedSkill);
+        state.workMap = workMap;
+        state.status = `WorkMap 已加载: ${workMap.name}`;
+        state.entries.push({
+          kind: "system",
+          text: `加载工作图: ${workMap.name} (${workMap.phases.length} 阶段, ${workMap.steps.length} 步骤)`,
+        });
+        renderScreen(state, runtimeRef);
+        
+        // 使用 executeWorkMap 函数来执行
+        for await (const message of executeWorkMap(workMap, {
+          prompt: '',
+          messages: runtimeRef.current.session.getMessages(),
+          systemPrompt: [],
+          toolUseContext: runtimeRef.current.toolContext,
+          canUseTool,
+          onPermissionRequest: requestPermission,
+          onSpecRequest: requestSpec,
+          onWorkMapUpdate: (workMapUpdate: any) => {
+            if (workMapUpdate) {
+              state.workMap = workMapUpdate;
+              renderScreen(state, runtimeRef);
+            }
+          }
+        })) {
+          await runtimeRef.current.session.recordMessages([message]);
+          state.entries.push(...makeConversationEntries(state, message));
+          renderScreen(state, runtimeRef);
+        }
+        
+      } catch (e) {
+        state.status = `执行失败: ${e}`;
+      }
+      return;
+    }
+    
+    if (!state.workMap) {
+      state.entries.push({
+        kind: "system",
+        text: "没有活动的 WorkMap。使用 /workmap load [skillName] 加载。",
+      });
+      return;
+    }
+    
+    switch (subCommand) {
+      case "pause":
+        state.workMap.isPaused = true;
+        state.status = "WorkMap 已暂停";
+        break;
+      case "resume":
+        state.workMap.isPaused = false;
+        state.status = "WorkMap 已恢复";
+        if (state.workMapExecutor) {
+          await state.workMapExecutor.handleCommand({ type: "resume" });
+        }
+        break;
+      case "reset":
+        state.workMap.steps.forEach(s => {
+          s.status = "pending";
+          s.error = undefined;
+          s.result = undefined;
+          s.startedAt = undefined;
+          s.completedAt = undefined;
+        });
+        state.workMap.isPaused = false;
+        state.workMap.error = undefined;
+        state.workMap.currentStepId = undefined;
+        state.status = "WorkMap 已重置";
+        if (state.workMapExecutor) {
+          await state.workMapExecutor.handleCommand({ type: "reset" });
+        }
+        break;
+      case "clear":
+      case "close":
+        state.workMap = null;
+        state.workMapExecutor = null;
+        state.selectedWorkMapStep = null;
+        state.status = "WorkMap 已关闭";
+        break;
+      default:
+        state.entries.push({
+          kind: "system",
+          text: [
+            "WorkMap 命令:",
+            "  /workmap load [skillName] - 加载技能的工作图",
+            "  /workmap pause            - 暂停执行",
+            "  /workmap resume           - 恢复执行",
+            "  /workmap reset            - 重置所有步骤",
+            "  /workmap clear            - 关闭工作图",
+          ].join("\n"),
+        });
+    }
     return;
   }
 
@@ -835,14 +1158,68 @@ async function runSlashCommand(
 
 
 function autoCompleteSlashCommand(input: string): string[] | null {
-  const normalized = input.trim().toLowerCase();
+  const trimmed = input.trim();
+  const normalized = trimmed.toLowerCase();
   if (!normalized.startsWith("/")) {
     return null;
   }
+  
+  // 处理 workmap 命令的特殊补全
+  if (normalized.startsWith("/workmap")) {
+    const parts = trimmed.split(/\s+/);
+    const commandPart = parts[0];
+    const subCommand = parts[1];
+    const argPart = parts.slice(2).join(' ');
+    
+    if (!subCommand) {
+      // 没有子命令，显示所有可用选项
+      return [
+        "  /workmap load [skillName]",
+        "  /workmap pause",
+        "  /workmap resume",
+        "  /workmap reset",
+        "  /workmap clear",
+      ];
+    }
+    
+    if (subCommand === "load") {
+      // load 子命令，补全技能名称
+      const skills = loadedSkillsForCompletion;
+      if (skills.length === 0) {
+        return ["  /workmap load"];
+      }
+      
+      const skillMatches = skills
+        .filter(s => {
+          const searchTerm = argPart.toLowerCase();
+          return (
+            s.name.toLowerCase().includes(searchTerm) ||
+            s.frontmatter.trigger?.some((t: string) => 
+              t.toLowerCase().includes(searchTerm)
+            ) ||
+            searchTerm === ""
+          );
+        })
+        .map(s => `  /workmap load ${s.name}`);
+      
+      return skillMatches.length > 0 ? skillMatches : null;
+    }
+    
+    // 其他子命令
+    return [
+      "  /workmap load [skillName]",
+      "  /workmap pause",
+      "  /workmap resume",
+      "  /workmap reset",
+      "  /workmap clear",
+    ].filter(msg => msg.toLowerCase().includes(normalized));
+  }
+  
+  // 其他命令的常规补全
   const command = normalized.slice(1);
   const matches = helpMessagesAll.filter(msg =>
     msg.toLowerCase().includes(command)
-  )
+  );
   return matches.length > 0 ? matches : null;
 }
 
@@ -918,6 +1295,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
     theme: sysTheme === 'dark' ? 'light' : 'dark',
     history: [],
     historyIndex: -1,
+    workMap: null,
+    workMapExecutor: null,
+    selectedWorkMapStep: null,
   };
 
   const availableSessions = await listSessions(options.cwd);
@@ -925,6 +1305,16 @@ export async function startTui(options: TuiOptions): Promise<void> {
     state.entries.push({
       kind: "system",
       text: `发现最近会话 ${availableSessions[0].id}。输入 /resume latest 可恢复；若要回到异常会话，使用 /resume failed。`,
+    });
+  }
+
+  // 加载技能
+  const skills = await loadSkills();
+  loadedSkillsForCompletion = skills;
+  if (skills.length > 0) {
+    state.entries.push({
+      kind: "system",
+      text: `已加载 ${skills.length} 个技能: ${skills.map(s => s.name).join(", ")}`,
     });
   }
 
@@ -941,6 +1331,80 @@ export async function startTui(options: TuiOptions): Promise<void> {
 
   const onResize = () => {
     renderScreen(state, runtimeRef);
+  };
+
+  const validateParamValue = (param: ParamConfig, value: string): { valid: boolean; error?: string } => {
+    // 如果用户没有输入，使用默认值
+    if (!value.trim()) {
+      return { valid: true };
+    }
+
+    switch (param.type) {
+      case "string":
+        return { valid: true };
+
+      case "number":
+        const num = Number(value);
+        if (isNaN(num)) {
+          return { valid: false, error: "请输入有效的数字" };
+        }
+        return { valid: true };
+
+      case "enum":
+        if (param.options && !param.options.includes(value)) {
+          return { valid: false, error: `请从以下选项中选择: ${param.options.join(", ")}` };
+        }
+        return { valid: true };
+    }
+
+    return { valid: true };
+  };
+
+  const requestSpec = async (request: {
+    skillId: string;
+    params: ParamConfig[];
+  }): Promise<Record<string, any>> => {
+    state.status = `Configuring: ${request.skillId}`;
+    setCurrentActivity(state, {
+      phase: "approval",
+      detail: "collecting parameters",
+    });
+    addActivityStep(
+      state,
+      `configure ${request.skillId}`,
+      "permission",
+      "info",
+    );
+    renderScreen(state, runtimeRef);
+
+    return new Promise<Record<string, any>>((resolve) => {
+      state.modal = {
+        title: `Configure · ${request.skillId}`,
+        skillId: request.skillId,
+        params: request.params,
+        currentParamIndex: 0,
+        currentValue: String(request.params[0].default),
+        collectedValues: {},
+        phase: "collecting",
+        resolve: (spec: Record<string, any>) => {
+          state.modal = null;
+          state.status = `Configured ${request.skillId}`;
+          setCurrentActivity(state, {
+            phase: "done",
+            detail: "parameters collected",
+            lastResult: "configured",
+          });
+          addActivityStep(
+            state,
+            `configured ${request.skillId}`,
+            "permission",
+            "done",
+          );
+          resolve(spec);
+        },
+      };
+      renderScreen(state, runtimeRef);
+    });
   };
 
   const requestPermission = async (request: {
@@ -983,7 +1447,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
         message: request.message,
         toolName: request.toolName,
         inputValue: request.input,
-        resolve: (decision) => {
+        resolve: (decision: "allow-once" | "allow-session" | "deny") => {
           state.modal = null;
           const allowed = decision !== "deny";
           if (decision === "allow-session") {
@@ -1063,7 +1527,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
 
     try {
       if (trimmed.startsWith("/")) {
-        await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef);
+        await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef, requestPermission, requestSpec);
         // 重置搜索状态
         state.isSearching = false;
         state.searchMatches = [];
@@ -1088,6 +1552,11 @@ export async function startTui(options: TuiOptions): Promise<void> {
             renderScreen(state, runtimeRef);
           },
           onPermissionRequest: requestPermission,
+          onSpecRequest: requestSpec,
+          onWorkMapUpdate: (workMap: WorkMap | null) => {
+            state.workMap = workMap;
+            renderScreen(state, runtimeRef);
+          },
         })) {
           if (
             message.type === "assistant" &&
@@ -1201,15 +1670,79 @@ export async function startTui(options: TuiOptions): Promise<void> {
     }
 
     if (state.modal) {
-      if (key.name === "y") {
-        state.modal.resolve("allow-once");
-      } else if (key.name === "a") {
-        state.modal.resolve("allow-session");
-      } else if (key.name === "n" || key.name === "escape") {
-        state.modal.resolve("deny");
+      // 检查是否是 Spec modal
+      if ("phase" in state.modal) {
+        const modal = state.modal;
+        if (modal.phase === "collecting") {
+          if (key.name === "return" || key.name === "enter") {
+            // 验证当前值
+            const param = modal.params[modal.currentParamIndex];
+            const validation = validateParamValue(param, modal.currentValue);
+            if (!validation.valid) {
+              state.status = validation.error || "Invalid value";
+              renderScreen(state, runtimeRef);
+              return;
+            }
+
+            // 保存当前值
+            const finalValue = modal.currentValue.trim() ? modal.currentValue : String(param.default);
+            let typedValue: any = finalValue;
+            if (param.type === "number") {
+              typedValue = Number(finalValue);
+            }
+            modal.collectedValues[param.name] = typedValue;
+
+            // 移动到下一个参数或确认阶段
+            if (modal.currentParamIndex < modal.params.length - 1) {
+              modal.currentParamIndex++;
+              modal.currentValue = String(modal.params[modal.currentParamIndex].default);
+            } else {
+              modal.phase = "confirming";
+            }
+          } else if (key.name === "backspace") {
+            modal.currentValue = modal.currentValue.slice(0, -1);
+          } else if (key.name === "escape") {
+            // ESC 取消收集，使用全部默认值
+            const defaultSpec: Record<string, any> = {};
+            for (const p of modal.params) {
+              defaultSpec[p.name] = p.default;
+            }
+            modal.resolve(defaultSpec);
+          } else if (str && str.length > 0 && !key.ctrl && !key.meta) {
+            modal.currentValue += str;
+          }
+        } else if (modal.phase === "confirming") {
+          if (key.name === "y" || key.name === "return" || key.name === "enter") {
+            // 确认执行
+            modal.resolve(modal.collectedValues);
+          } else if (key.name === "n" || key.name === "escape") {
+            // 回到收集阶段，重新开始
+            modal.phase = "collecting";
+            modal.currentParamIndex = 0;
+            modal.currentValue = String(modal.params[0].default);
+            modal.collectedValues = {};
+          } else if (key.name === "arrowup" || key.name === "arrowdown") {
+            // 上下箭头回到前一个/后一个参数
+            const direction = key.name === "arrowup" ? -1 : 1;
+            modal.currentParamIndex = Math.max(0, Math.min(modal.params.length - 1, modal.currentParamIndex + direction));
+            modal.currentValue = String(modal.params[modal.currentParamIndex].default);
+            modal.phase = "collecting";
+          }
+        }
+        renderScreen(state, runtimeRef);
+        return;
+      } else {
+        // 原有的 Permission modal
+        if (key.name === "y") {
+          state.modal.resolve("allow-once");
+        } else if (key.name === "a") {
+          state.modal.resolve("allow-session");
+        } else if (key.name === "n" || key.name === "escape") {
+          state.modal.resolve("deny");
+        }
+        renderScreen(state, runtimeRef);
+        return;
       }
-      renderScreen(state, runtimeRef);
-      return;
     }
 
     // 检查是否是斜杠字符（readline可能不会将斜杠识别为key.name === "slash"）

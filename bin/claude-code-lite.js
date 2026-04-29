@@ -150,7 +150,7 @@ import { cwd } from "process";
 import { pathToFileURL } from "url";
 
 // app/headless.ts
-import { writeFile as writeFile3 } from "fs/promises";
+import { writeFile as writeFile6 } from "fs/promises";
 import readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 
@@ -184,9 +184,9 @@ async function appendTranscript(cwd2, sessionId, messages) {
 `, "utf8");
 }
 async function readTranscriptMessages(cwd2, sessionId) {
-  const { readFile: readFile3 } = await import("fs/promises");
+  const { readFile: readFile6 } = await import("fs/promises");
   const filePath = getTranscriptPath(cwd2, sessionId);
-  const content = await readFile3(filePath, "utf8");
+  const content = await readFile6(filePath, "utf8");
   return content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
 async function deleteTranscript(cwd2, sessionId) {
@@ -398,7 +398,8 @@ async function deleteSessionInfo(cwd2, sessionId) {
 function emptyUsage() {
   return {
     inputTokens: 0,
-    outputTokens: 0
+    outputTokens: 0,
+    totalTokens: 0
   };
 }
 
@@ -639,12 +640,48 @@ async function writeTextFile(path, content) {
 }
 
 // tools/files/editTool.ts
+import { mkdir as mkdir4, writeFile as writeFile3 } from "fs/promises";
+import { join as join3 } from "path";
+function generateUnifiedDiff(oldLines, newLines, filename) {
+  let diff = `--- a/${filename}
++++ b/${filename}
+`;
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  let hunkStart = -1;
+  let hunkOld = 0;
+  let hunkNew = 0;
+  for (let i = 0; i < maxLen; i++) {
+    const oldLine = oldLines[i] ?? "";
+    const newLine = newLines[i] ?? "";
+    const isContext = oldLine === newLine;
+    if (isContext) {
+      if (hunkStart >= 0) {
+        diff += `@@ -${hunkOld},${hunkNew} +${hunkNew},${hunkNew} @@
+`;
+        hunkStart = -1;
+      }
+      diff += ` ${oldLine}
+`;
+    } else {
+      if (hunkStart < 0) {
+        hunkStart = i;
+        hunkOld = Math.max(1, i);
+        hunkNew = Math.max(1, i);
+      }
+    }
+  }
+  if (hunkStart >= 0) {
+    diff += `@@ -${hunkOld},1 +${hunkNew},1 @@
+`;
+  }
+  return diff;
+}
 var EditTool = {
   name: "Edit",
   inputSchema: null,
   outputSchema: null,
   async description() {
-    return "Edit a file in place";
+    return "Edit a file in place with diff display and automatic backup.";
   },
   async call(args, context, _canUseTool, _parentMessage) {
     const absolutePath = resolvePathFromCwd(context.cwd, args.path);
@@ -652,11 +689,20 @@ var EditTool = {
     if (!content.includes(args.oldString)) {
       throw new Error(`Could not find target string in ${args.path}`);
     }
-    const updated = content.replace(args.oldString, args.newString);
-    await writeTextFile(absolutePath, updated);
+    const oldLines = content.split("\n");
+    const newContent = content.replace(args.oldString, args.newString);
+    const newLines = newContent.split("\n");
+    const diff = generateUnifiedDiff(oldLines, newLines, args.path);
+    const backupDir = join3(context.cwd, ".claude-code-lite", "backups");
+    const backupPath = join3(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
+    await mkdir4(backupDir, { recursive: true });
+    await writeFile3(backupPath, content, "utf8");
+    await writeTextFile(absolutePath, newContent);
     return {
       data: {
-        applied: true
+        applied: true,
+        diff,
+        backupPath
       }
     };
   },
@@ -788,7 +834,7 @@ var ShellTool = {
     return "Run a shell command";
   },
   async call(args, context, _canUseTool, _parentMessage) {
-    const data = await new Promise((resolve2, reject) => {
+    const data = await new Promise((resolve5, reject) => {
       const child = spawn(args.command, {
         cwd: context.cwd,
         shell: true,
@@ -804,7 +850,7 @@ var ShellTool = {
       });
       child.on("error", reject);
       child.on("close", (code) => {
-        resolve2({
+        resolve5({
           stdout,
           stderr,
           exitCode: code ?? 0
@@ -965,15 +1011,500 @@ ${errorMsg}`
   }
 };
 
-// tools/registry.ts
-function getTools() {
-  return [ReadTool, WriteTool, EditTool, ShellTool, WebFetchTool, AgentTool];
+// tools/files/fileTreeTool.ts
+import { readdir as readdir2, stat as stat2 } from "fs/promises";
+import { resolve as resolve2 } from "path";
+function getFileType(mode) {
+  if (mode & 40960) return "symlink";
+  if (mode & 16384) return "directory";
+  return "file";
 }
+async function buildTree(dirPath, cwd2, relativePath, maxDepth, depth, fileLimit, includeHidden, counter) {
+  const entry = {
+    name: relativePath || ".",
+    type: "directory",
+    children: []
+  };
+  let entries = [];
+  try {
+    const rawEntries = await readdir2(dirPath, { withFileTypes: true });
+    for (const re of rawEntries) {
+      if (!includeHidden && re.name.startsWith(".")) continue;
+      const st = await stat2(resolve2(dirPath, re.name)).catch(() => null);
+      if (!st) continue;
+      entries.push({ name: re.name, mode: st.mode });
+    }
+  } catch {
+  }
+  entries.sort((a, b) => {
+    const aIsDir = a.mode & 16384;
+    const bIsDir = b.mode & 16384;
+    if (aIsDir !== bIsDir) return bIsDir - aIsDir;
+    return a.name.localeCompare(b.name);
+  });
+  for (const e of entries) {
+    if (counter.total >= fileLimit) {
+      entry.children.push({
+        name: "...",
+        type: "file",
+        size: 0
+      });
+      break;
+    }
+    const childPath = resolve2(dirPath, e.name);
+    const childRel = relativePath ? `${relativePath}/${e.name}` : e.name;
+    const fileType = getFileType(e.mode);
+    if (fileType === "directory") {
+      counter.dirs++;
+      counter.total++;
+      if (depth < maxDepth) {
+        const childTree = await buildTree(
+          childPath,
+          cwd2,
+          childRel,
+          maxDepth,
+          depth + 1,
+          fileLimit,
+          includeHidden,
+          counter
+        );
+        entry.children.push(childTree);
+      } else {
+        const childStat = await stat2(childPath).catch(() => null);
+        entry.children.push({
+          name: e.name,
+          type: "directory"
+        });
+      }
+    } else {
+      counter.files++;
+      counter.total++;
+      entry.children.push({
+        name: e.name,
+        type: "file",
+        size: e.mode & 32767
+      });
+    }
+  }
+  return entry;
+}
+var FileTreeTool = {
+  name: "FileTree",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "List directory contents recursively with file types and sizes.";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const targetPath = args.path ? resolve2(context.cwd, args.path) : context.cwd;
+    const maxDepth = args.maxDepth ?? 3;
+    const fileLimit = args.fileLimit ?? 100;
+    const includeHidden = args.includeHidden ?? false;
+    const entry = await buildTree(
+      targetPath,
+      context.cwd,
+      "",
+      maxDepth,
+      0,
+      fileLimit,
+      includeHidden,
+      { files: 0, dirs: 0, total: 0 }
+    );
+    return {
+      data: {
+        entries: [entry],
+        totalFiles: 0,
+        totalDirs: 0,
+        truncated: false
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (input3.path && typeof input3.path !== "string") {
+      return { result: false, message: "Path must be a string" };
+    }
+    if (input3.maxDepth !== void 0 && (input3.maxDepth < 0 || !Number.isInteger(input3.maxDepth))) {
+      return { result: false, message: "maxDepth must be a non-negative integer" };
+    }
+    if (input3.fileLimit !== void 0 && (input3.fileLimit < 1 || !Number.isInteger(input3.fileLimit))) {
+      return { result: false, message: "fileLimit must be a positive integer" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return true;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
 
-// tools/Tool.ts
-function findToolByName(tools, name) {
-  return tools.find((tool) => tool.name === name);
+// tools/files/searchFilesTool.ts
+import { readdir as readdir3, stat as stat3, readFile as readFile3 } from "fs/promises";
+import { resolve as resolve3, relative as relative2, dirname as dirname2 } from "path";
+function getFileType2(mode) {
+  if (mode & 40960) return "symlink";
+  if (mode & 16384) return "directory";
+  return "file";
 }
+function matchesGlob(filename, glob) {
+  const pattern = glob.replace(/\*\*/g, "___DOUBLESTAR___").replace(/\*/g, "___SINGLESTAR___").replace(/\?/g, "___QUESTION___");
+  let regex = "^";
+  for (const part of pattern.split("___DOUBLESTAR___")) {
+    for (const sub of part.split("___SINGLESTAR___")) {
+      regex += sub.replace(/[/]/g, "[/]").replace(/___QUESTION___/g, ".");
+    }
+    regex += ".*";
+  }
+  regex += "$";
+  try {
+    return new RegExp(regex).test(filename);
+  } catch {
+    return false;
+  }
+}
+async function searchFilesInDir(dirPath, cwd2, glob, pattern, limit, counter, type) {
+  const results = [];
+  let entries = [];
+  try {
+    const rawEntries = await readdir3(dirPath, { withFileTypes: true });
+    for (const re of rawEntries) {
+      if (re.name.startsWith(".")) continue;
+      const st = await stat3(resolve3(dirPath, re.name)).catch(() => null);
+      if (!st) continue;
+      entries.push({ name: re.name, mode: st.mode });
+    }
+  } catch {
+    return results;
+  }
+  for (const e of entries) {
+    if (counter.total >= limit) break;
+    const fullPath = resolve3(dirPath, e.name);
+    const relPath = relative2(cwd2, fullPath);
+    const fileType = getFileType2(e.mode);
+    if (glob) {
+      const fileName = e.name;
+      const dirName = dirname2(relPath);
+      const fullRelPath = dirName ? `${dirName}/${fileName}` : fileName;
+      const nameMatches = matchesGlob(fileName, glob);
+      const pathMatches = glob.includes("/") ? matchesGlob(fullRelPath, glob) : false;
+      if (!nameMatches && !pathMatches) continue;
+    }
+    if (fileType === "directory") {
+      const subResults = await searchFilesInDir(
+        fullPath,
+        cwd2,
+        glob,
+        pattern,
+        limit,
+        counter,
+        type
+      );
+      results.push(...subResults);
+    } else {
+      counter.files++;
+      counter.total++;
+      if (type === "files") {
+        results.push({
+          path: relPath,
+          type: "file",
+          size: e.mode & 32767
+        });
+      } else if (type === "content" && pattern) {
+        try {
+          const content = await readFile3(fullPath, "utf8");
+          const lines = content.split("\n");
+          const regex = new RegExp(pattern, "i");
+          for (let i = 0; i < lines.length; i++) {
+            if (regex.test(lines[i])) {
+              results.push({
+                path: relPath,
+                line: i + 1,
+                content: lines[i].trim()
+              });
+              counter.contentMatches++;
+              counter.total++;
+              if (counter.total >= limit) break;
+            }
+          }
+        } catch {
+        }
+      }
+    }
+  }
+  return results;
+}
+var SearchFilesTool = {
+  name: "SearchFiles",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Search for files by glob pattern or search file contents by regex. Supports 'files' mode (list matching files) and 'content' mode (find matching lines).";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const searchPath = args.path ? resolve3(context.cwd, args.path) : context.cwd;
+    const limit = args.limit ?? 50;
+    const type = args.type ?? "files";
+    const results = await searchFilesInDir(
+      searchPath,
+      context.cwd,
+      args.glob || null,
+      args.pattern || null,
+      limit,
+      { files: 0, contentMatches: 0, total: 0 },
+      type
+    );
+    const truncated = results.length >= limit;
+    return {
+      data: {
+        matches: results.slice(0, limit),
+        totalFiles: 0,
+        totalMatches: results.length,
+        truncated,
+        searchPath: relative2(context.cwd, searchPath)
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (input3.glob !== void 0 && typeof input3.glob !== "string") {
+      return { result: false, message: "glob must be a string" };
+    }
+    if (input3.pattern !== void 0 && typeof input3.pattern !== "string") {
+      return { result: false, message: "pattern must be a string" };
+    }
+    if (input3.path !== void 0 && typeof input3.path !== "string") {
+      return { result: false, message: "path must be a string" };
+    }
+    if (input3.limit !== void 0 && (input3.limit < 1 || !Number.isInteger(input3.limit))) {
+      return { result: false, message: "limit must be a positive integer" };
+    }
+    if (input3.type !== void 0 && !["files", "content"].includes(input3.type)) {
+      return { result: false, message: "type must be 'files' or 'content'" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return true;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/web/webSearchTool.ts
+async function duckduckgoSearch(query2, maxResults = 10) {
+  const encodedQuery = encodeURIComponent(query2);
+  const url = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AgentFromScratch/1.0)",
+      "Accept": "text/html"
+    },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!response.ok) {
+    throw new Error(`DuckDuckGo search failed: ${response.status}`);
+  }
+  const html = await response.text();
+  const results = [];
+  const titleRegex = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+  const snippetRegex = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]+href="[^"]+"[^>]*>([^<]+)<\/a>/g;
+  let titleMatch;
+  while ((titleMatch = titleRegex.exec(html)) !== null && results.length < maxResults) {
+    const href = titleMatch[1].replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
+      try {
+        return decodeURIComponent(u);
+      } catch {
+        return titleMatch[1];
+      }
+    });
+    results.push({
+      title: titleMatch[2].trim(),
+      url: href,
+      snippet: ""
+    });
+  }
+  let snippetMatch;
+  while ((snippetMatch = snippetRegex.exec(html)) !== null && results.length < maxResults) {
+    if (results.length > 0 && results[results.length - 1].snippet === "") {
+      results[results.length - 1].snippet = snippetMatch[1].trim();
+    } else {
+      results.push({
+        title: "",
+        url: "",
+        snippet: snippetMatch[1].trim()
+      });
+    }
+  }
+  if (results.length > 0 && results[0].snippet === "") {
+    for (const r of results) {
+      if (!r.snippet) {
+        r.snippet = "Click the link for more details.";
+      }
+    }
+  }
+  return results.slice(0, maxResults);
+}
+async function duckduckgoInstantAnswer(query2) {
+  const encodedQuery = encodeURIComponent(query2);
+  const url = `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1`;
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    const results = [];
+    if (data.RelatedTopics) {
+      for (const topic of data.RelatedTopics) {
+        if (topic.Text && topic.URL) {
+          results.push({
+            text: topic.Text,
+            url: topic.URL,
+            icon: topic.Icon?.URL || ""
+          });
+        }
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+var WebSearchTool = {
+  name: "WebSearch",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Search the web using DuckDuckGo. Returns titles, URLs, and snippets. Useful for finding information, documentation, and current events.";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const maxResults = args.maxResults ?? 10;
+    let results = [];
+    const instantResults = await duckduckgoInstantAnswer(args.query);
+    if (instantResults.length > 0) {
+      results = instantResults.map((r) => ({
+        title: r.text.split("\n")[0],
+        url: r.url,
+        snippet: r.text.split("\n").slice(1).join("\n").trim()
+      }));
+    }
+    if (results.length < 3) {
+      const htmlResults = await duckduckgoSearch(args.query, maxResults);
+      for (const r of htmlResults) {
+        if (!results.some((existing) => existing.url === r.url)) {
+          results.push(r);
+        }
+      }
+    }
+    const truncated = results.length >= maxResults;
+    return {
+      data: {
+        results: results.slice(0, maxResults),
+        totalResults: results.length,
+        truncated
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3.query || typeof input3.query !== "string" || !input3.query.trim()) {
+      return { result: false, message: "Query is required" };
+    }
+    if (input3.maxResults !== void 0 && (input3.maxResults < 1 || !Number.isInteger(input3.maxResults))) {
+      return { result: false, message: "maxResults must be a positive integer" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return true;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/web/imageUploadTool.ts
+import { mkdir as mkdir5, writeFile as writeFile4 } from "fs/promises";
+import { join as join4 } from "path";
+var ImageUploadTool = {
+  name: "ImageUpload",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Upload an image (base64) for storage and later analysis. Supports common image formats (PNG, JPG, GIF, WebP).";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const imageData = args.data;
+    const mimeType = args.mimeType || "image/png";
+    const description = args.description || "Uploaded image";
+    let ext = "png";
+    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) ext = "jpg";
+    else if (mimeType.includes("gif")) ext = "gif";
+    else if (mimeType.includes("webp")) ext = "webp";
+    else if (mimeType.includes("png")) ext = "png";
+    const timestamp = Date.now();
+    const filename = `image_${timestamp}.${ext}`;
+    const imageDir = join4(context.cwd, ".claude-code-lite", "images");
+    await mkdir5(imageDir, { recursive: true });
+    const filePath = join4(imageDir, filename);
+    const buffer = Buffer.from(imageData, "base64");
+    await writeFile4(filePath, buffer);
+    return {
+      data: {
+        path: filePath,
+        mimeType,
+        size: buffer.length,
+        description
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3.data || typeof input3.data !== "string") {
+      return { result: false, message: "Image data (base64) is required" };
+    }
+    if (input3.mimeType !== void 0 && typeof input3.mimeType !== "string") {
+      return { result: false, message: "mimeType must be a string" };
+    }
+    if (input3.description !== void 0 && typeof input3.description !== "string") {
+      return { result: false, message: "description must be a string" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/web/imageAnalyzeTool.ts
+import { readdir as readdir4, readFile as readFile4, stat as stat4 } from "fs/promises";
+import { join as join5 } from "path";
 
 // runtime/llm.ts
 function stripTrailingSlash(value) {
@@ -1328,19 +1859,508 @@ async function runLlmTurn(params) {
   return getProvider(config).runTurn(params, config);
 }
 
-// runtime/query.ts
-function truncate(value, maxLength = 500) {
-  if (!value || value.length === 0) {
-    return "";
+// tools/web/imageAnalyzeTool.ts
+async function analyzeWithAnthropic(imageData, mimeType, prompt, config) {
+  const response = await fetch(`${config.baseUrl}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": config.apiKey,
+      "anthropic-version": config.anthropicVersion || "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 1024,
+      system: prompt || "Describe this image in detail.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mimeType,
+                data: imageData
+              }
+            }
+          ]
+        }
+      ]
+    })
+  });
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error?.message || `Anthropic API error: ${response.status}`);
   }
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, maxLength)}
-...`;
+  const data = await response.json();
+  return data.content?.[0]?.text || "No analysis returned.";
 }
-function stringify(value) {
-  return JSON.stringify(value, null, 2);
+async function analyzeWithOpenAI(imageData, mimeType, prompt, config) {
+  const dataUrl = `data:${mimeType};base64,${imageData}`;
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.apiKey}`
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "system",
+          content: prompt || "Describe this image in detail."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt || "Describe this image in detail." },
+            { type: "image_url", image_url: { url: dataUrl, detail: "high" } }
+          ]
+        }
+      ]
+    })
+  });
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error?.message || `OpenAI API error: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "No analysis returned.";
+}
+var ImageAnalyzeTool = {
+  name: "ImageAnalyze",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Analyze an image using LLM vision capabilities. Upload an image first with ImageUpload, then analyze it.";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const llmConfig = getLlmConfigFromEnv();
+    if (!llmConfig) {
+      return {
+        data: {
+          analysis: "Cannot analyze image: no LLM configured. Set CCL_LLM_API_KEY and CCL_LLM_MODEL.",
+          imageUrl: "",
+          provider: "none",
+          model: "none"
+        }
+      };
+    }
+    let imageData;
+    let mimeType;
+    let imageUrl;
+    if (args.imagePath) {
+      const filePath = args.imagePath.startsWith("/") ? args.imagePath : join5(context.cwd, args.imagePath);
+      const fileStat = await stat4(filePath).catch(() => null);
+      if (!fileStat) {
+        return {
+          data: {
+            analysis: `Image not found: ${args.imagePath}`,
+            imageUrl: "",
+            provider: "none",
+            model: "none"
+          }
+        };
+      }
+      const buffer = await readFile4(filePath);
+      imageData = buffer.toString("base64");
+      mimeType = fileStat.mode & 32767 ? "image/png" : "image/png";
+      imageUrl = filePath;
+    } else if (args.imageId) {
+      const imageDir = join5(context.cwd, ".claude-code-lite", "images");
+      const files = await readdir4(imageDir).catch(() => []);
+      const matchingFile = files.find((f) => f.startsWith(args.imageId));
+      if (!matchingFile) {
+        return {
+          data: {
+            analysis: `Image not found: ${args.imageId}`,
+            imageUrl: "",
+            provider: "none",
+            model: "none"
+          }
+        };
+      }
+      const filePath = join5(imageDir, matchingFile);
+      const buffer = await readFile4(filePath);
+      imageData = buffer.toString("base64");
+      mimeType = matchingFile.endsWith(".jpg") || matchingFile.endsWith(".jpeg") ? "image/jpeg" : "image/png";
+      imageUrl = filePath;
+    } else {
+      return {
+        data: {
+          analysis: "Provide imagePath or imageId to analyze.",
+          imageUrl: "",
+          provider: "none",
+          model: "none"
+        }
+      };
+    }
+    let analysis = "";
+    try {
+      if (llmConfig.provider === "anthropic") {
+        analysis = await analyzeWithAnthropic(imageData, mimeType, args.prompt || "Describe this image in detail.", llmConfig);
+      } else {
+        analysis = await analyzeWithOpenAI(imageData, mimeType, args.prompt || "Describe this image in detail.", llmConfig);
+      }
+    } catch (error) {
+      analysis = `Error analyzing image: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    return {
+      data: {
+        analysis,
+        imageUrl,
+        provider: llmConfig.provider,
+        model: llmConfig.model
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (input3.imagePath !== void 0 && typeof input3.imagePath !== "string") {
+      return { result: false, message: "imagePath must be a string" };
+    }
+    if (input3.imageId !== void 0 && typeof input3.imageId !== "string") {
+      return { result: false, message: "imageId must be a string" };
+    }
+    if (input3.prompt !== void 0 && typeof input3.prompt !== "string") {
+      return { result: false, message: "prompt must be a string" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return true;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/web/imageGenerateTool.ts
+import { mkdir as mkdir6, writeFile as writeFile5 } from "fs/promises";
+import { join as join6 } from "path";
+async function generateWithOpenAI(prompt, size, model, quality, apiKey, n) {
+  const response = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      size,
+      quality,
+      n
+    })
+  });
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error?.message || `OpenAI DALL-E error: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.data || [];
+}
+async function generateWithStabilityAI(prompt, size, apiKey) {
+  const [width, height] = size.split("x").map(Number);
+  const response = await fetch("https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "Accept": "application/json"
+    },
+    body: JSON.stringify({
+      text_prompts: [{ text: prompt, weight: 1 }],
+      cfg_scale: 7,
+      width,
+      height,
+      steps: 30,
+      samples: 1
+    })
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Stability AI error: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return (data.artifacts || []).map((art) => ({ b64_json: art.base64 }));
+}
+var ImageGenerateTool = {
+  name: "ImageGenerate",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Generate images using AI. Supports OpenAI DALL-E and Stability AI. Set IMAGE_GENERATION_PROVIDER (openai or stability) and the corresponding API key.";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const provider = process.env.IMAGE_GENERATION_PROVIDER || "openai";
+    const apiKey = provider === "openai" ? process.env.IMAGE_GENERATION_API_KEY || process.env.OPENAI_API_KEY : process.env.STABILITY_AI_KEY || process.env.IMAGE_GENERATION_API_KEY;
+    if (!apiKey) {
+      return {
+        data: {
+          images: [],
+          model: "none",
+          size: "1024x1024"
+        }
+      };
+    }
+    const size = args.size || "1024x1024";
+    const model = args.model || "dall-e-3";
+    const quality = args.quality || "standard";
+    const n = args.n || 1;
+    const imageDir = join6(context.cwd, ".claude-code-lite", "images");
+    await mkdir6(imageDir, { recursive: true });
+    let images = [];
+    if (provider === "openai") {
+      images = await generateWithOpenAI(
+        args.prompt,
+        size,
+        model,
+        quality,
+        apiKey,
+        n
+      );
+    } else {
+      images = await generateWithStabilityAI(args.prompt, size, apiKey);
+    }
+    const savedImages = await Promise.all(
+      images.map(async (img, i) => {
+        if (img.b64_json) {
+          const timestamp = Date.now();
+          const filename = `generated_${timestamp}_${i}.png`;
+          const filePath = join6(imageDir, filename);
+          const buffer = Buffer.from(img.b64_json, "base64");
+          await writeFile5(filePath, buffer);
+          return { path: filePath, b64_json: img.b64_json };
+        }
+        return { url: img.url };
+      })
+    );
+    return {
+      data: {
+        images: savedImages,
+        model: provider === "openai" ? model : "stable-diffusion-xl",
+        size
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3.prompt || typeof input3.prompt !== "string" || !input3.prompt.trim()) {
+      return { result: false, message: "Prompt is required" };
+    }
+    if (input3.size !== void 0 && !/^\d+x\d+$/.test(input3.size)) {
+      return { result: false, message: "size must be in format WxH (e.g., 1024x1024)" };
+    }
+    if (input3.model !== void 0 && !["dall-e-3", "dall-e-2"].includes(input3.model)) {
+      return { result: false, message: "model must be 'dall-e-3' or 'dall-e-2'" };
+    }
+    if (input3.quality !== void 0 && !["standard", "hd"].includes(input3.quality)) {
+      return { result: false, message: "quality must be 'standard' or 'hd'" };
+    }
+    if (input3.n !== void 0 && (input3.n < 1 || input3.n > 10)) {
+      return { result: false, message: "n must be between 1 and 10" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/registry.ts
+function getTools() {
+  return [
+    ReadTool,
+    WriteTool,
+    EditTool,
+    ShellTool,
+    WebFetchTool,
+    WebSearchTool,
+    FileTreeTool,
+    SearchFilesTool,
+    AgentTool,
+    ImageUploadTool,
+    ImageAnalyzeTool,
+    ImageGenerateTool
+  ];
+}
+
+// tools/Tool.ts
+function findToolByName(tools, name) {
+  return tools.find((tool) => tool.name === name);
+}
+
+// skills/loader.ts
+import { readFile as readFile5, readdir as readdir5, access } from "fs/promises";
+import { join as join7, dirname as dirname3 } from "path";
+import { fileURLToPath } from "url";
+var LoadedSkills = [];
+function parseSimpleYaml(yamlContent) {
+  const result = {};
+  const lines = yamlContent.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const colonIndex = trimmed.indexOf(":");
+    if (colonIndex === -1) continue;
+    const key = trimmed.slice(0, colonIndex).trim();
+    let value = trimmed.slice(colonIndex + 1).trim();
+    if (value.startsWith("[")) {
+      let jsonStr = value;
+      let openBrackets = (value.match(/\[/g) || []).length;
+      let closeBrackets = (value.match(/\]/g) || []).length;
+      let j = i + 1;
+      while (j < lines.length && openBrackets > closeBrackets) {
+        const nextLine = lines[j];
+        jsonStr += "\n" + nextLine;
+        openBrackets += (nextLine.match(/\[/g) || []).length;
+        closeBrackets += (nextLine.match(/\]/g) || []).length;
+        j++;
+      }
+      try {
+        result[key] = JSON.parse(jsonStr);
+        i = j - 1;
+        continue;
+      } catch (e) {
+        console.warn("Failed to parse array JSON:", e);
+      }
+    }
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    }
+    result[key] = value;
+  }
+  return result;
+}
+async function parseSkillFrontmatter(skillPath) {
+  try {
+    const content = await readFile5(skillPath, "utf-8");
+    const parts = content.split("---");
+    if (parts.length < 3) {
+      console.error(`Invalid skill file format: ${skillPath}`);
+      return null;
+    }
+    const frontmatterRaw = parts[1].trim();
+    const body = parts[2].trim();
+    const parsed = parseSimpleYaml(frontmatterRaw);
+    const frontmatterObj = {};
+    let name = parsed.name || "";
+    let trigger = Array.isArray(parsed.trigger) ? parsed.trigger : [];
+    if (parsed.description) frontmatterObj.description = parsed.description;
+    if (parsed.model) frontmatterObj.model = parsed.model;
+    if (parsed.context === "inline" || parsed.context === "fork") {
+      frontmatterObj.context = parsed.context;
+    }
+    if (Array.isArray(parsed.allowedTools)) {
+      frontmatterObj.allowedTools = parsed.allowedTools;
+    }
+    if (Array.isArray(parsed.params)) {
+      frontmatterObj.params = parsed.params;
+    }
+    return {
+      name,
+      trigger,
+      frontmatter: frontmatterObj,
+      content: body
+    };
+  } catch (error) {
+    console.error(`Error parsing skill ${skillPath}:`, error);
+    return null;
+  }
+}
+async function registerSkill(skillPath) {
+  const skill = await parseSkillFrontmatter(skillPath);
+  if (skill) {
+    LoadedSkills.push(skill);
+  }
+}
+async function registerSkillsFromDirectory(dirPath) {
+  try {
+    const files = await readdir5(dirPath);
+    const mdFiles = files.filter((file) => file.endsWith(".md"));
+    for (const file of mdFiles) {
+      await registerSkill(join7(dirPath, file));
+    }
+  } catch (error) {
+    console.error(`Error reading skills directory ${dirPath}:`, error);
+  }
+}
+async function directoryExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function loadSkills() {
+  LoadedSkills = [];
+  const currentFilePath = fileURLToPath(import.meta.url);
+  const currentDir = dirname3(currentFilePath);
+  const possiblePaths = [
+    // 源代码目录 (TypeScript)
+    join7(currentDir, "bundled"),
+    // 编译后的目录 (JavaScript in bin)
+    join7(dirname3(dirname3(currentDir)), "skills", "bundled"),
+    // 项目根目录的 skills
+    join7(process.cwd(), "skills", "bundled")
+  ];
+  let skillsLoaded = false;
+  for (const skillsPath of possiblePaths) {
+    if (await directoryExists(skillsPath)) {
+      console.log(`Loading skills from: ${skillsPath}`);
+      await registerSkillsFromDirectory(skillsPath);
+      skillsLoaded = true;
+      break;
+    }
+  }
+  if (!skillsLoaded) {
+    console.warn("Could not find skills directory in any of the expected locations");
+    console.warn("Tried paths:", possiblePaths);
+  }
+  return LoadedSkills;
+}
+function getLoadedSkills() {
+  return LoadedSkills;
+}
+function shouldTriggerSkill(skill, prompt) {
+  if (!skill.trigger || skill.trigger.length === 0) return false;
+  const lowerPrompt = prompt.toLowerCase();
+  return skill.trigger.some(
+    (trigger) => lowerPrompt.includes(trigger.toLowerCase())
+  );
+}
+function detectRelevantSkills(prompt) {
+  const skills = getLoadedSkills();
+  return skills.filter((skill) => shouldTriggerSkill(skill, prompt));
+}
+
+// runtime/query.ts
+function stringify(data) {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
 }
 function createAssistantMessage(blocks) {
   return {
@@ -1366,99 +2386,70 @@ function createToolResultMessage(toolUseId, content, isError = false) {
     isError
   };
 }
-function summarizeReadResult(result) {
-  const content = typeof result === "object" && result !== null && "content" in result && typeof result.content === "string" ? result.content : stringify(result);
-  return `\u6211\u5DF2\u7ECF\u8BFB\u53D6\u4E86\u76EE\u6807\u5185\u5BB9\u3002\u4E0B\u9762\u662F\u9884\u89C8\uFF1A
-
-${truncate(content, 1200)}`;
-}
-function summarizeShellResult(result) {
-  if (typeof result === "object" && result !== null && "stdout" in result && "stderr" in result && "exitCode" in result) {
-    const stdout = typeof result.stdout === "string" ? truncate(result.stdout, 800) : "";
-    const stderr = typeof result.stderr === "string" ? truncate(result.stderr, 400) : "";
-    const exitCode = typeof result.exitCode === "number" ? result.exitCode : "unknown";
-    return [
-      `\u547D\u4EE4\u5DF2\u6267\u884C\uFF0C\u9000\u51FA\u7801\uFF1A${exitCode}\u3002`,
-      stdout ? `stdout:
-${stdout}` : "",
-      stderr ? `stderr:
-${stderr}` : ""
-    ].filter(Boolean).join("\n\n");
-  }
-  return `\u547D\u4EE4\u5DF2\u6267\u884C\u3002
-
-${truncate(stringify(result), 1200)}`;
-}
 function planPrompt(prompt) {
   const trimmed = prompt.trim();
-  const readMatch = trimmed.match(/^(?:read|open|show|cat)\s+(.+)$/i) ?? trimmed.match(/^(?:读取|查看|打开)\s+(.+)$/);
+  const readMatch = trimmed.match(/^read\s+(.+)$/i);
   if (readMatch) {
-    const path = readMatch[1].trim().replace(/^["']|["']$/g, "");
+    const path = readMatch[1].trim();
     return {
       kind: "tool",
       toolName: "Read",
       input: { path },
-      intro: `\u6211\u4F1A\u5148\u8BFB\u53D6 \`${path}\`\u3002`,
-      summarizeResult: summarizeReadResult,
+      intro: `\u6211\u6765\u8BFB\u53D6 ${path} \u7684\u5185\u5BB9\u3002`,
+      summarizeResult: () => `\u8BFB\u53D6\u5B8C\u6210\uFF1A\`${path}\``,
       summarizeError: (message) => `\u8BFB\u53D6 \`${path}\` \u5931\u8D25\uFF1A${message}`
     };
   }
-  const shellMatch = trimmed.match(/^(?:run|exec|execute|shell|bash)\s+(.+)$/i) ?? trimmed.match(/^(?:执行|运行命令)\s+(.+)$/);
-  if (shellMatch) {
-    const command = shellMatch[1].trim();
-    return {
-      kind: "tool",
-      toolName: "Shell",
-      input: { command },
-      intro: `\u6211\u4F1A\u6267\u884C\u547D\u4EE4\uFF1A\`${command}\`\u3002`,
-      summarizeResult: summarizeShellResult,
-      summarizeError: (message) => `\u547D\u4EE4\u6267\u884C\u5931\u8D25\uFF1A${message}`
-    };
-  }
-  const fetchMatch = trimmed.match(
-    /^(?:fetch|visit|open-url)\s+(https?:\/\/\S+)(?:\s+(.+))?$/i
-  ) ?? trimmed.match(/^(?:抓取|访问)\s+(https?:\/\/\S+)(?:\s+(.+))?$/);
-  if (fetchMatch) {
-    const url = fetchMatch[1];
-    const fetchPrompt = fetchMatch[2]?.trim() ?? "";
-    return {
-      kind: "tool",
-      toolName: "WebFetch",
-      input: { url, prompt: fetchPrompt },
-      intro: `\u6211\u4F1A\u6293\u53D6 ${url}\u3002`,
-      summarizeResult: (result) => `\u7F51\u9875\u6293\u53D6\u5B8C\u6210\u3002\u4EE5\u4E0B\u662F\u7ED3\u679C\u9884\u89C8\uFF1A
-
-${truncate(stringify(result), 1200)}`,
-      summarizeError: (message) => `\u6293\u53D6 ${url} \u5931\u8D25\uFF1A${message}`
-    };
-  }
-  const writeMatch = trimmed.match(/^(?:write|create|save)\s+(\S+)\s+(.+)$/i) ?? trimmed.match(/^(?:写入|创建文件)\s+(\S+)\s+(.+)$/);
+  const writeMatch = trimmed.match(/^write\s+(\S+)\s+(.+)$/s);
   if (writeMatch) {
     const path = writeMatch[1].trim();
-    const content = writeMatch[2];
+    const content = writeMatch[2].trimStart();
     return {
       kind: "tool",
       toolName: "Write",
       input: { path, content },
-      intro: `\u6211\u4F1A\u628A\u5185\u5BB9\u5199\u5165 \`${path}\`\u3002`,
-      summarizeResult: (result) => `\u5199\u5165\u5B8C\u6210\uFF1A\`${path}\`\u3002
-
-${stringify(result)}`,
+      intro: `\u6211\u6765\u5199\u5165 ${path}\u3002`,
+      summarizeResult: () => `\u5199\u5165\u5B8C\u6210\uFF1A\`${path}\``,
       summarizeError: (message) => `\u5199\u5165 \`${path}\` \u5931\u8D25\uFF1A${message}`
     };
   }
-  const editMatch = trimmed.match(/^(?:edit|replace)\s+(\S+)\s+(.+?)\s*(?:=>|->)\s*(.+)$/i) ?? trimmed.match(/^(?:编辑|替换)\s+(\S+)\s+(.+?)\s*(?:=>|->|为)\s*(.+)$/);
+  const editMatch = trimmed.match(/^edit\s+(\S+)\s+(.+?)\s*=>\s*(.+)$/s);
   if (editMatch) {
     const path = editMatch[1].trim();
-    const oldString = editMatch[2];
-    const newString = editMatch[3];
+    const oldString = editMatch[2].trim();
+    const newString = editMatch[3].trim();
     return {
       kind: "tool",
       toolName: "Edit",
       input: { path, oldString, newString },
-      intro: `\u6211\u4F1A\u7F16\u8F91 \`${path}\`\uFF0C\u66FF\u6362\u6307\u5B9A\u5185\u5BB9\u3002`,
+      intro: `\u6211\u6765\u7F16\u8F91 ${path} \u7684\u5185\u5BB9\u3002`,
       summarizeResult: () => `\u7F16\u8F91\u5B8C\u6210\uFF1A\`${path}\` \u5DF2\u66F4\u65B0\u3002`,
       summarizeError: (message) => `\u7F16\u8F91 \`${path}\` \u5931\u8D25\uFF1A${message}`
+    };
+  }
+  const runMatch = trimmed.match(/^run\s+(.+)$/i);
+  if (runMatch) {
+    const command = runMatch[1].trim();
+    return {
+      kind: "tool",
+      toolName: "Shell",
+      input: { command },
+      intro: `\u6211\u6765\u6267\u884C \`${command}\`\u3002`,
+      summarizeResult: () => `\u6267\u884C\u5B8C\u6210\uFF1A\`${command}\``,
+      summarizeError: (message) => `\u6267\u884C \`${command}\` \u5931\u8D25\uFF1A${message}`
+    };
+  }
+  const fetchMatch = trimmed.match(/^fetch\s+(.+?)(?:\s+(.+))?$/i);
+  if (fetchMatch) {
+    const url = fetchMatch[1].trim();
+    const prompt2 = fetchMatch[2]?.trim() ?? "";
+    return {
+      kind: "tool",
+      toolName: "WebFetch",
+      input: { url, prompt: prompt2 },
+      intro: `\u6211\u6765\u83B7\u53D6 ${url} \u7684\u5185\u5BB9\u3002`,
+      summarizeResult: () => `\u83B7\u53D6\u5B8C\u6210\uFF1A${url}`,
+      summarizeError: (message) => `\u83B7\u53D6 ${url} \u5931\u8D25\uFF1A${message}`
     };
   }
   return {
@@ -1755,7 +2746,142 @@ async function* queryWithLlm(params) {
   }
   yield createAssistantTextMessage("\u8FBE\u5230\u6700\u5927\u5DE5\u5177\u8F6E\u6B21\u9650\u5236\uFF0C\u5DF2\u505C\u6B62\u7EE7\u7EED\u6267\u884C\u3002");
 }
+function replaceParams(input3, values) {
+  if (typeof input3 === "string") {
+    let result = input3;
+    for (const [key, value] of Object.entries(values)) {
+      const regex = new RegExp(`\\{${key}\\}`, "g");
+      result = result.replace(regex, String(value));
+    }
+    return result;
+  } else if (Array.isArray(input3)) {
+    return input3.map((item) => replaceParams(item, values));
+  } else if (typeof input3 === "object" && input3 !== null) {
+    const result = {};
+    for (const key of Object.keys(input3)) {
+      result[key] = replaceParams(input3[key], values);
+    }
+    return result;
+  }
+  return input3;
+}
+async function* executeWorkMap(workMap, params) {
+  yield createAssistantTextMessage(
+    `\u{1F9ED} \u68C0\u6D4B\u5230\u6280\u80FD "${workMap.name}"\uFF0C\u6B63\u5728\u751F\u6210\u5DE5\u4F5C\u56FE...
+
+\u5171 ${workMap.phases.length} \u4E2A\u9636\u6BB5\uFF0C${workMap.steps.length} \u4E2A\u6B65\u9AA4`
+  );
+  if (params.onWorkMapUpdate) {
+    params.onWorkMapUpdate(workMap);
+  }
+  let collectedValues = {};
+  if (workMap.globalParams && workMap.globalParams.length > 0) {
+    if (params.onSpecRequest) {
+      collectedValues = await params.onSpecRequest({
+        skillId: workMap.skillName,
+        params: workMap.globalParams
+      });
+      workMap.globalParamValues = collectedValues;
+    }
+  }
+  let completedCount = 0;
+  for (const phase of workMap.phases) {
+    for (const stepId of phase.stepIds) {
+      const step = workMap.steps.find((s) => s.id === stepId);
+      if (!step) continue;
+      step.status = "running";
+      if (params.onWorkMapUpdate) {
+        params.onWorkMapUpdate(workMap);
+      }
+      yield createAssistantTextMessage(
+        `[${phase.name}] \u6267\u884C: ${step.name}`
+      );
+      try {
+        if (step.toolName) {
+          let toolInput = step.toolInputTemplate || {};
+          if (Object.keys(collectedValues).length > 0) {
+            toolInput = replaceParams(toolInput, collectedValues);
+          }
+          const toolUseBlock = {
+            type: "tool_use",
+            id: createId("tool-use"),
+            name: step.toolName,
+            input: toolInput
+          };
+          const toolUseMessage = createAssistantMessage([toolUseBlock]);
+          yield toolUseMessage;
+          for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
+            yield message;
+          }
+        }
+        step.status = "completed";
+        completedCount++;
+      } catch (error) {
+        step.status = "failed";
+        step.error = error instanceof Error ? error.message : String(error);
+        yield createAssistantTextMessage(
+          `\u26A0\uFE0F \u6B65\u9AA4 "${step.name}" \u6267\u884C\u5931\u8D25: ${step.error}`
+        );
+        if (params.onWorkMapUpdate) {
+          params.onWorkMapUpdate(workMap);
+        }
+        break;
+      }
+      if (params.onWorkMapUpdate) {
+        params.onWorkMapUpdate(workMap);
+      }
+    }
+  }
+  yield createAssistantTextMessage(
+    `
+\u{1F389} WorkMap "${workMap.name}" \u6267\u884C\u5B8C\u6210\uFF01
+
+\u2705 \u5171\u5B8C\u6210 ${completedCount} \u4E2A\u6B65\u9AA4`
+  );
+}
 async function* query(params) {
+  const relevantSkills = detectRelevantSkills(params.prompt);
+  if (relevantSkills.length > 0) {
+    const skill = relevantSkills[0];
+    try {
+      const workMap = { steps: [] };
+      if (workMap.steps.length > 0) {
+        yield* executeWorkMap(workMap, params);
+        return;
+      }
+    } catch (e) {
+      console.error("[WorkMap] Parse failed, falling back", e);
+    }
+    let enhancedSystemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+    enhancedSystemPrompt.push(
+      `
+
+=== RELEVANT SKILL: ${skill.name} ===
+${skill.content}
+
+INSTRUCTIONS: Follow the step-by-step workflow outlined in the skill above.Make sure to complete ALL steps in order, including: property, alignsetting, all mark points, etc.Do not skip any steps! Execute the full workflow automatically without asking for confirmation.`
+    );
+    const enhancedParams = {
+      ...params,
+      systemPrompt: enhancedSystemPrompt
+    };
+    if (!getLlmConfigFromEnv()) {
+      yield* queryWithPlanner(enhancedParams);
+      return;
+    }
+    try {
+      yield* queryWithLlm(enhancedParams);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      yield createAssistantTextMessage(
+        `LLM \u8C03\u7528\u5931\u8D25\uFF0C\u5DF2\u56DE\u9000\u5230\u672C\u5730 planner\u3002
+
+${message}`
+      );
+      yield* queryWithPlanner(enhancedParams);
+    }
+    return;
+  }
   if (!getLlmConfigFromEnv()) {
     yield* queryWithPlanner(params);
     return;
@@ -2463,7 +3589,7 @@ async function executeCliCommand(cwd2, argv, autoApprove = false, hooks) {
       }
       const content = options.format === "json" ? formatJsonExport(info, messages) : formatMarkdownExport(info, messages);
       if (options.outputPath) {
-        await writeFile3(options.outputPath, `${content}
+        await writeFile6(options.outputPath, `${content}
 `, "utf8");
       }
       return {
@@ -3106,9 +4232,146 @@ function tokenizeCommandLine(input3) {
 // app/tui.ts
 var import_picocolors = __toESM(require_picocolors(), 1);
 var import_is_dark = __toESM(require_dist(), 1);
+
+// runtime/workmap/parser.ts
+function parseSkillToWorkMap(skill) {
+  const phases = [];
+  const steps = [];
+  const globalParams = skill.frontmatter?.params || [];
+  const content = skill.content || "";
+  const phaseRegex = /###\s+Phase\s+\d+:\s+(.+)/g;
+  const phaseMatches = [...content.matchAll(phaseRegex)];
+  if (phaseMatches.length > 0) {
+    for (let i = 0; i < phaseMatches.length; i++) {
+      const phaseMatch = phaseMatches[i];
+      const phaseName = phaseMatch[1];
+      const phaseStart = phaseMatch.index || 0;
+      const nextPhaseStart = phaseMatches[i + 1]?.index || content.length;
+      const phaseContent = content.substring(phaseStart, nextPhaseStart);
+      const phase = parsePhase(phaseName, phaseContent, i, steps.length);
+      phases.push(phase.phase);
+      steps.push(...phase.steps);
+    }
+  } else {
+    const fallbackSteps = parseFallbackSteps(content);
+    steps.push(...fallbackSteps);
+    phases.push({
+      id: "phase-default",
+      name: "\u6267\u884C\u6D41\u7A0B",
+      description: "\u5B8C\u6574\u6267\u884C\u6D41\u7A0B",
+      stepIds: fallbackSteps.map((s) => s.id)
+    });
+  }
+  return {
+    id: createId("workmap"),
+    name: skill.frontmatter.name || skill.name,
+    description: skill.frontmatter.description || "",
+    skillName: skill.name,
+    phases,
+    steps,
+    globalParams,
+    globalParamValues: {},
+    createdAt: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  };
+}
+function parsePhase(phaseName, phaseContent, phaseIndex, startStepIndex) {
+  const phaseId = `phase-${phaseIndex + 1}`;
+  const steps = [];
+  const stepRegex = /(\d+)\.\s+([^\n]+)/g;
+  const stepMatches = [...phaseContent.matchAll(stepRegex)];
+  for (let i = 0; i < stepMatches.length; i++) {
+    const stepMatch = stepMatches[i];
+    const stepNum = parseInt(stepMatch[1]);
+    const stepName = stepMatch[2].trim();
+    const stepStart = stepMatch.index || 0;
+    const nextStepStart = stepMatches[i + 1]?.index || phaseContent.length;
+    const stepDetail = phaseContent.substring(stepStart + stepMatch[0].length, nextStepStart);
+    const step = parseStep(stepName, stepDetail, startStepIndex + i, phaseId);
+    steps.push(step);
+  }
+  return {
+    phase: {
+      id: phaseId,
+      name: phaseName,
+      description: phaseName,
+      stepIds: steps.map((s) => s.id)
+    },
+    steps
+  };
+}
+function parseStep(stepName, stepDetail, stepIndex, phaseId) {
+  const stepId = `step-${stepIndex + 1}`;
+  let toolName;
+  const toolMatch1 = stepDetail.match(/使用\s+`?(\w+_tool)`?/);
+  const toolMatch2 = stepDetail.match(/示例[：:]\s*`?(\w+_tool)/);
+  toolName = toolMatch1 ? toolMatch1[1] : toolMatch2 ? toolMatch2[1] : void 0;
+  let exampleCmd;
+  const exampleMatch1 = stepDetail.match(/示例[：:]\s*`([^`]+)`/);
+  const exampleMatch2 = stepDetail.match(/示例[：:]\s*([^\n]+)/);
+  exampleCmd = exampleMatch1 ? exampleMatch1[1] : exampleMatch2 ? exampleMatch2[1].trim() : void 0;
+  return {
+    id: stepId,
+    name: stepName,
+    description: stepDetail.trim(),
+    toolName,
+    toolInputTemplate: exampleCmd ? parseExampleInput(exampleCmd) : void 0,
+    phase: phaseId,
+    status: "pending",
+    dependencies: stepIndex > 0 ? [`step-${stepIndex}`] : void 0
+  };
+}
+function parseExampleInput(command) {
+  const parts = command.split(/\s+/);
+  if (parts.length === 0) return void 0;
+  const toolName = parts[0];
+  const input3 = {};
+  for (let i = 1; i < parts.length; i++) {
+    if (parts[i].startsWith("-")) {
+      const key = parts[i].substring(1);
+      let value = "";
+      if (i + 1 < parts.length && !parts[i + 1].startsWith("-")) {
+        value = parts[i + 1];
+        if (value.startsWith('"') || value.startsWith("'")) {
+          const quote = value[0];
+          let fullValue = value.substring(1);
+          let j = i + 2;
+          while (j < parts.length && !parts[j].endsWith(quote)) {
+            fullValue += " " + parts[j];
+            j++;
+          }
+          if (j < parts.length && parts[j].endsWith(quote)) {
+            fullValue += " " + parts[j].substring(0, parts[j].length - 1);
+            value = fullValue;
+            i = j;
+          } else {
+            value = value.substring(1);
+          }
+        }
+        i++;
+      }
+      input3[key] = value;
+    }
+  }
+  return { command };
+}
+function parseFallbackSteps(content) {
+  const stepRegex = /(\d+)\.\s+([^\n]+)/g;
+  const stepMatches = [...content.matchAll(stepRegex)];
+  return stepMatches.map((match, i) => ({
+    id: `step-${i + 1}`,
+    name: match[2].trim(),
+    description: "",
+    status: "pending"
+  }));
+}
+
+// app/tui.ts
 var helpMessagesAll = [
   "  /help",
   "  /tools",
+  "  /skills",
+  "  /workmap",
   "  /sessions",
   "  /inspect <id>",
   "  /export-session <id>",
@@ -3122,6 +4385,7 @@ var helpMessagesAll = [
   "  /clear",
   "  /quit"
 ];
+var loadedSkillsForCompletion = [];
 function getPermissionMode(state, runtimeRef) {
   return runtimeRef.current.toolContext.getAppState().permissionContext.mode;
 }
@@ -3156,11 +4420,12 @@ function wrapText(text, width) {
   }
   return wrapped;
 }
-function trimTextPlain(text, width) {
-  if (text.length <= width) {
-    return text.padEnd(width, " ");
+function trimText(text, width) {
+  const plain = text.replace(/\x1b\[[0-9;]*m/g, "");
+  if (plain.length <= width) {
+    return text + " ".repeat(Math.max(0, width - plain.length));
   }
-  return `${text.slice(0, Math.max(0, width - 1))}\u2026`;
+  return `${plain.slice(0, Math.max(0, width - 1))}\u2026`;
 }
 function formatUnknown(value) {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -3256,6 +4521,36 @@ function cycleTimelineFilter(filter) {
       return "all";
   }
 }
+function getStepStatusIcon(status) {
+  switch (status) {
+    case "completed":
+      return import_picocolors.default.green("\u2713");
+    case "failed":
+      return import_picocolors.default.red("\u2715");
+    case "running":
+      return import_picocolors.default.yellow("\u25B6");
+    case "skipped":
+      return import_picocolors.default.gray("\u2192");
+    default:
+      return import_picocolors.default.gray("\u25CB");
+  }
+}
+function renderWorkMap(state, width) {
+  if (!state.workMap) return [];
+  const lines = [];
+  const workMap = state.workMap;
+  const statusText = workMap.isPaused ? " [\u23F8]" : workMap.error ? " [\u274C]" : "";
+  lines.push(import_picocolors.default.bold(import_picocolors.default.cyan(`[WorkMap] ${workMap.name}${statusText}`)));
+  let stepLine = "";
+  for (const step of workMap.steps) {
+    const icon = getStepStatusIcon(step.status);
+    stepLine += `${icon} `;
+  }
+  if (stepLine.trim()) {
+    lines.push(import_picocolors.default.gray(trimText(stepLine, width - 2)));
+  }
+  return lines;
+}
 function updateFoldState(state, target, expanded) {
   let affected = 0;
   for (const entry of state.entries) {
@@ -3271,23 +4566,95 @@ function updateFoldState(state, target, expanded) {
   return affected;
 }
 function applyModalOverlay(lines, modal, width, height) {
-  const boxWidth = Math.min(width - 6, Math.max(36, Math.floor(width * 0.7)));
-  const contentLines = wrapText(modal.message, Math.max(10, boxWidth - 4));
+  const boxWidth = Math.min(width - 6, Math.max(40, Math.floor(width * 0.7)));
+  const innerWidth = boxWidth - 4;
+  function stripAnsi(text) {
+    return text.replace(/\x1b\[[0-9;]*m/g, "");
+  }
+  function padTextPlain(text, targetWidth) {
+    let result = text;
+    let currentWidth = 0;
+    for (const char of text) {
+      currentWidth++;
+    }
+    while (currentWidth < targetWidth) {
+      result += " ";
+      currentWidth++;
+    }
+    return result;
+  }
   const YELLOW = "\x1B[33m";
   const RESET = "\x1B[0m";
   const BOLD = "\x1B[1m";
-  const boxLines = [
-    `${BOLD}${YELLOW}\u250C${"\u2500".repeat(boxWidth - 2)}\u2510${RESET}`,
-    `${BOLD}${YELLOW}\u2502 ${trimTextPlain(modal.title, boxWidth - 4)} \u2502${RESET}`,
-    `\u251C${"\u2500".repeat(boxWidth - 2)}\u2524`,
-    ...contentLines.map((line) => `\u2502 ${trimTextPlain(line, boxWidth - 4)} \u2502`),
-    `\u251C${"\u2500".repeat(boxWidth - 2)}\u2524`,
-    `${YELLOW}\u2502 ${trimTextPlain("[y] allow   [a] session   [n] cancel", boxWidth - 4)} \u2502${RESET}`,
-    `\u2514${"\u2500".repeat(boxWidth - 2)}\u2518`
-  ];
+  const CYAN = "\x1B[36m";
+  const borderHorizontal = "\u2500".repeat(boxWidth - 2);
+  let boxLines;
+  if ("phase" in modal) {
+    if (modal.phase === "collecting") {
+      const param = modal.params[modal.currentParamIndex];
+      const progressText = `${modal.currentParamIndex + 1}/${modal.params.length}`;
+      let typeHint = "";
+      if (param.type === "enum" && param.options) {
+        typeHint = ` [${param.options.join("|")}]`;
+      } else if (param.type === "number") {
+        typeHint = " [number]";
+      }
+      const contentLines = [
+        `${padTextPlain(progressText, innerWidth)}`,
+        "",
+        `${param.description}`,
+        `${CYAN}${param.name}${RESET}${typeHint}`,
+        "",
+        `Default: ${YELLOW}${param.default}${RESET}`,
+        "",
+        `> ${modal.currentValue}\u2588`
+      ];
+      boxLines = [
+        `${BOLD}${YELLOW}\u250C${borderHorizontal}\u2510${RESET}`,
+        `${BOLD}${YELLOW}\u2502${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}\u2502${RESET}`,
+        `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+        ...contentLines.map((line) => `${YELLOW}\u2502${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}\u2502${RESET}`),
+        `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+        `${YELLOW}\u2502${RESET} ${padTextPlain("[Enter] confirm   [Esc] use defaults", innerWidth)} ${YELLOW}\u2502${RESET}`,
+        `${YELLOW}\u2514${borderHorizontal}\u2518${RESET}`
+      ];
+    } else {
+      const specLines = Object.entries(modal.collectedValues).map(
+        ([key, value]) => `${key}: ${CYAN}${value}${RESET}`
+      );
+      const contentLines = [
+        "Final Configuration:",
+        "",
+        ...specLines
+      ];
+      boxLines = [
+        `${BOLD}${YELLOW}\u250C${borderHorizontal}\u2510${RESET}`,
+        `${BOLD}${YELLOW}\u2502${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}\u2502${RESET}`,
+        `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+        ...contentLines.map((line) => `${YELLOW}\u2502${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}\u2502${RESET}`),
+        `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+        `${YELLOW}\u2502${RESET} ${padTextPlain("[y/Enter] execute   [n/Esc] edit   [\u2191/\u2193] prev/next", innerWidth)} ${YELLOW}\u2502${RESET}`,
+        `${YELLOW}\u2514${borderHorizontal}\u2518${RESET}`
+      ];
+    }
+  } else {
+    const contentLines = wrapText(modal.message, innerWidth);
+    boxLines = [
+      `${BOLD}${YELLOW}\u250C${borderHorizontal}\u2510${RESET}`,
+      `${BOLD}${YELLOW}\u2502${RESET} ${padTextPlain(modal.title, innerWidth)} ${BOLD}${YELLOW}\u2502${RESET}`,
+      `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+      ...contentLines.map((line) => `${YELLOW}\u2502${RESET} ${padTextPlain(line, innerWidth)} ${YELLOW}\u2502${RESET}`),
+      `${YELLOW}\u251C${borderHorizontal}\u2524${RESET}`,
+      `${YELLOW}\u2502${RESET} ${padTextPlain("[y] allow   [a] session   [n] cancel", innerWidth)} ${YELLOW}\u2502${RESET}`,
+      `${YELLOW}\u2514${borderHorizontal}\u2518${RESET}`
+    ];
+  }
   const startY = Math.max(1, Math.floor((height - boxLines.length) / 2));
   const startX = Math.max(0, Math.floor((width - boxWidth) / 2));
   const next = [...lines];
+  while (next.length < height) {
+    next.push(" ".repeat(width));
+  }
   for (let i = 0; i < boxLines.length; i += 1) {
     const targetIndex = startY + i;
     if (targetIndex >= next.length) {
@@ -3295,7 +4662,9 @@ function applyModalOverlay(lines, modal, width, height) {
     }
     const original = next[targetIndex].padEnd(width, " ");
     const overlay = boxLines[i];
-    next[targetIndex] = original.slice(0, startX) + overlay + original.slice(startX + overlay.length);
+    const leftMargin = " ".repeat(startX);
+    const rightMargin = " ".repeat(Math.max(0, width - startX - boxWidth));
+    next[targetIndex] = leftMargin + overlay + rightMargin;
   }
   return next;
 }
@@ -3316,6 +4685,7 @@ function renderScreen(state, runtimeRef) {
     `${import_picocolors.default.bold(import_picocolors.default.magenta(`Mode: ${mode}`) + `  \xB7  ` + import_picocolors.default.blue(`Session: ${state.currentSessionId}`))}`,
     ""
   ];
+  const workMapLines = renderWorkMap(state, mainWidth);
   const messageLines = state.entries.flatMap((entry) => {
     let text = entry.text;
     if (entry.collapsible && entry.expanded === false) {
@@ -3374,6 +4744,8 @@ function renderScreen(state, runtimeRef) {
   }
   let lines = [
     ...header,
+    ...workMapLines,
+    // Add WorkMap visualization
     ...visibleMessages,
     "",
     `${state.theme === "dark" ? import_picocolors.default.gray("\u2500".repeat(width)) : import_picocolors.default.gray("\u2500".repeat(width))}`,
@@ -3382,10 +4754,11 @@ function renderScreen(state, runtimeRef) {
     state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.white("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
-  ].slice(0, height);
+  ];
   if (state.modal) {
     lines = applyModalOverlay(lines, state.modal, width, height);
   }
+  lines = lines.slice(0, height);
   output2.write("\x1B[2J\x1B[H");
   output2.write(lines.join("\n"));
 }
@@ -3402,12 +4775,12 @@ async function restoreSession(cwd2, appStateRef, state, runtimeRef, sessionId) {
   state.status = `Resumed ${sessionId}`;
   addToolStep(state, `resumed ${sessionId}`);
 }
-async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
+async function runSlashCommand(line, options, state, runtimeRef, appStateRef, requestPermission, requestSpec) {
   const commandLine = line.slice(1).trim();
   if (!commandLine) {
     state.entries.push({
       kind: "system",
-      text: "\u53EF\u7528\u547D\u4EE4\uFF1A/help /tools /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
+      text: "\u53EF\u7528\u547D\u4EE4\uFF1A/help /tools /skills /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
     });
     return;
   }
@@ -3436,6 +4809,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
         formatHelp(),
         "",
         "TUI commands:",
+        "  /skills",
         "  /sessions [--limit N] [--status ready|needs_attention]",
         "  /inspect <id>",
         "  /export-session <id> [--format markdown|json] [--output path]",
@@ -3450,6 +4824,133 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef) {
         "  /quit"
       ].join("\n")
     });
+    return;
+  }
+  if (commandLine === "skills") {
+    const skills = getLoadedSkills();
+    if (skills.length === 0) {
+      state.entries.push({
+        kind: "system",
+        text: "\u5F53\u524D\u6CA1\u6709\u52A0\u8F7D\u4EFB\u4F55\u6280\u80FD\u3002"
+      });
+    } else {
+      const skillsText = skills.map((skill) => {
+        const triggerText = skill.trigger.length > 0 ? ` (\u89E6\u53D1\u8BCD: ${skill.trigger.join(", ")})` : "";
+        return `  \u2022 ${skill.name}${triggerText}`;
+      }).join("\n");
+      state.entries.push({
+        kind: "system",
+        text: `\u5DF2\u52A0\u8F7D ${skills.length} \u4E2A\u6280\u80FD:
+${skillsText}`
+      });
+    }
+    return;
+  }
+  if (commandLine.startsWith("workmap")) {
+    const parts = commandLine.split(/\s+/);
+    const subCommand = parts[1];
+    const skillName = parts.slice(2).join(" ");
+    if (subCommand === "load" || !state.workMap && (!subCommand || subCommand === "help")) {
+      const skills = getLoadedSkills();
+      if (skills.length === 0) {
+        state.entries.push({ kind: "system", text: "\u6CA1\u6709\u52A0\u8F7D\u4EFB\u4F55\u6280\u80FD" });
+        return;
+      }
+      let selectedSkill = skills[0];
+      if (skillName) {
+        const match = skills.find(
+          (s) => s.name.toLowerCase().includes(skillName.toLowerCase()) || s.trigger.some((t) => t.toLowerCase().includes(skillName.toLowerCase()))
+        );
+        if (match) selectedSkill = match;
+      }
+      try {
+        const workMap = parseSkillToWorkMap(selectedSkill);
+        state.workMap = workMap;
+        state.status = `WorkMap \u5DF2\u52A0\u8F7D: ${workMap.name}`;
+        state.entries.push({
+          kind: "system",
+          text: `\u52A0\u8F7D\u5DE5\u4F5C\u56FE: ${workMap.name} (${workMap.phases.length} \u9636\u6BB5, ${workMap.steps.length} \u6B65\u9AA4)`
+        });
+        renderScreen(state, runtimeRef);
+        for await (const message of executeWorkMap(workMap, {
+          prompt: "",
+          messages: runtimeRef.current.session.getMessages(),
+          systemPrompt: [],
+          toolUseContext: runtimeRef.current.toolContext,
+          canUseTool,
+          onPermissionRequest: requestPermission,
+          onSpecRequest: requestSpec,
+          onWorkMapUpdate: (workMapUpdate) => {
+            if (workMapUpdate) {
+              state.workMap = workMapUpdate;
+              renderScreen(state, runtimeRef);
+            }
+          }
+        })) {
+          await runtimeRef.current.session.recordMessages([message]);
+          state.entries.push(...makeConversationEntries(state, message));
+          renderScreen(state, runtimeRef);
+        }
+      } catch (e) {
+        state.status = `\u6267\u884C\u5931\u8D25: ${e}`;
+      }
+      return;
+    }
+    if (!state.workMap) {
+      state.entries.push({
+        kind: "system",
+        text: "\u6CA1\u6709\u6D3B\u52A8\u7684 WorkMap\u3002\u4F7F\u7528 /workmap load [skillName] \u52A0\u8F7D\u3002"
+      });
+      return;
+    }
+    switch (subCommand) {
+      case "pause":
+        state.workMap.isPaused = true;
+        state.status = "WorkMap \u5DF2\u6682\u505C";
+        break;
+      case "resume":
+        state.workMap.isPaused = false;
+        state.status = "WorkMap \u5DF2\u6062\u590D";
+        if (state.workMapExecutor) {
+          await state.workMapExecutor.handleCommand({ type: "resume" });
+        }
+        break;
+      case "reset":
+        state.workMap.steps.forEach((s) => {
+          s.status = "pending";
+          s.error = void 0;
+          s.result = void 0;
+          s.startedAt = void 0;
+          s.completedAt = void 0;
+        });
+        state.workMap.isPaused = false;
+        state.workMap.error = void 0;
+        state.workMap.currentStepId = void 0;
+        state.status = "WorkMap \u5DF2\u91CD\u7F6E";
+        if (state.workMapExecutor) {
+          await state.workMapExecutor.handleCommand({ type: "reset" });
+        }
+        break;
+      case "clear":
+      case "close":
+        state.workMap = null;
+        state.workMapExecutor = null;
+        state.selectedWorkMapStep = null;
+        state.status = "WorkMap \u5DF2\u5173\u95ED";
+        break;
+      default:
+        state.entries.push({
+          kind: "system",
+          text: [
+            "WorkMap \u547D\u4EE4:",
+            "  /workmap load [skillName] - \u52A0\u8F7D\u6280\u80FD\u7684\u5DE5\u4F5C\u56FE",
+            "  /workmap pause            - \u6682\u505C\u6267\u884C",
+            "  /workmap resume           - \u6062\u590D\u6267\u884C",
+            "  /workmap reset            - \u91CD\u7F6E\u6240\u6709\u6B65\u9AA4",
+            "  /workmap clear            - \u5173\u95ED\u5DE5\u4F5C\u56FE"
+          ].join("\n")
+        });
+    }
     return;
   }
   if (commandLine.startsWith("expand")) {
@@ -3525,9 +5026,45 @@ ${formatUnknown(result.output)}`
   addToolStep(state, `slash tool ${result.tool}`);
 }
 function autoCompleteSlashCommand(input3) {
-  const normalized = input3.trim().toLowerCase();
+  const trimmed = input3.trim();
+  const normalized = trimmed.toLowerCase();
   if (!normalized.startsWith("/")) {
     return null;
+  }
+  if (normalized.startsWith("/workmap")) {
+    const parts = trimmed.split(/\s+/);
+    const commandPart = parts[0];
+    const subCommand = parts[1];
+    const argPart = parts.slice(2).join(" ");
+    if (!subCommand) {
+      return [
+        "  /workmap load [skillName]",
+        "  /workmap pause",
+        "  /workmap resume",
+        "  /workmap reset",
+        "  /workmap clear"
+      ];
+    }
+    if (subCommand === "load") {
+      const skills = loadedSkillsForCompletion;
+      if (skills.length === 0) {
+        return ["  /workmap load"];
+      }
+      const skillMatches = skills.filter((s) => {
+        const searchTerm = argPart.toLowerCase();
+        return s.name.toLowerCase().includes(searchTerm) || s.frontmatter.trigger?.some(
+          (t) => t.toLowerCase().includes(searchTerm)
+        ) || searchTerm === "";
+      }).map((s) => `  /workmap load ${s.name}`);
+      return skillMatches.length > 0 ? skillMatches : null;
+    }
+    return [
+      "  /workmap load [skillName]",
+      "  /workmap pause",
+      "  /workmap resume",
+      "  /workmap reset",
+      "  /workmap clear"
+    ].filter((msg) => msg.toLowerCase().includes(normalized));
   }
   const command = normalized.slice(1);
   const matches = helpMessagesAll.filter(
@@ -3590,13 +5127,24 @@ async function startTui(options) {
     selectedMatchIndex: -1,
     theme: sysTheme === "dark" ? "light" : "dark",
     history: [],
-    historyIndex: -1
+    historyIndex: -1,
+    workMap: null,
+    workMapExecutor: null,
+    selectedWorkMapStep: null
   };
   const availableSessions = await listSessions(options.cwd);
   if (availableSessions.length > 0) {
     state.entries.push({
       kind: "system",
       text: `\u53D1\u73B0\u6700\u8FD1\u4F1A\u8BDD ${availableSessions[0].id}\u3002\u8F93\u5165 /resume latest \u53EF\u6062\u590D\uFF1B\u82E5\u8981\u56DE\u5230\u5F02\u5E38\u4F1A\u8BDD\uFF0C\u4F7F\u7528 /resume failed\u3002`
+    });
+  }
+  const skills = await loadSkills();
+  loadedSkillsForCompletion = skills;
+  if (skills.length > 0) {
+    state.entries.push({
+      kind: "system",
+      text: `\u5DF2\u52A0\u8F7D ${skills.length} \u4E2A\u6280\u80FD: ${skills.map((s) => s.name).join(", ")}`
     });
   }
   let exiting = false;
@@ -3610,6 +5158,69 @@ async function startTui(options) {
   };
   const onResize = () => {
     renderScreen(state, runtimeRef);
+  };
+  const validateParamValue = (param, value) => {
+    if (!value.trim()) {
+      return { valid: true };
+    }
+    switch (param.type) {
+      case "string":
+        return { valid: true };
+      case "number":
+        const num = Number(value);
+        if (isNaN(num)) {
+          return { valid: false, error: "\u8BF7\u8F93\u5165\u6709\u6548\u7684\u6570\u5B57" };
+        }
+        return { valid: true };
+      case "enum":
+        if (param.options && !param.options.includes(value)) {
+          return { valid: false, error: `\u8BF7\u4ECE\u4EE5\u4E0B\u9009\u9879\u4E2D\u9009\u62E9: ${param.options.join(", ")}` };
+        }
+        return { valid: true };
+    }
+    return { valid: true };
+  };
+  const requestSpec = async (request) => {
+    state.status = `Configuring: ${request.skillId}`;
+    setCurrentActivity(state, {
+      phase: "approval",
+      detail: "collecting parameters"
+    });
+    addActivityStep(
+      state,
+      `configure ${request.skillId}`,
+      "permission",
+      "info"
+    );
+    renderScreen(state, runtimeRef);
+    return new Promise((resolve5) => {
+      state.modal = {
+        title: `Configure \xB7 ${request.skillId}`,
+        skillId: request.skillId,
+        params: request.params,
+        currentParamIndex: 0,
+        currentValue: String(request.params[0].default),
+        collectedValues: {},
+        phase: "collecting",
+        resolve: (spec) => {
+          state.modal = null;
+          state.status = `Configured ${request.skillId}`;
+          setCurrentActivity(state, {
+            phase: "done",
+            detail: "parameters collected",
+            lastResult: "configured"
+          });
+          addActivityStep(
+            state,
+            `configured ${request.skillId}`,
+            "permission",
+            "done"
+          );
+          resolve5(spec);
+        }
+      };
+      renderScreen(state, runtimeRef);
+    });
   };
   const requestPermission = async (request) => {
     if (options.autoApprove) {
@@ -3640,7 +5251,7 @@ async function startTui(options) {
       "info"
     );
     renderScreen(state, runtimeRef);
-    return new Promise((resolve2) => {
+    return new Promise((resolve5) => {
       state.modal = {
         title: `Permission \xB7 ${request.toolName}`,
         message: request.message,
@@ -3672,7 +5283,7 @@ async function startTui(options) {
             "permission",
             allowed ? "done" : "failed"
           );
-          resolve2(allowed);
+          resolve5(allowed);
         }
       };
       renderScreen(state, runtimeRef);
@@ -3718,7 +5329,7 @@ async function startTui(options) {
     renderScreen(state, runtimeRef);
     try {
       if (trimmed.startsWith("/")) {
-        await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef);
+        await runSlashCommand(trimmed, options, state, runtimeRef, appStateRef, requestPermission, requestSpec);
         state.isSearching = false;
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
@@ -3740,7 +5351,12 @@ async function startTui(options) {
             state.streamingAssistantText = text;
             renderScreen(state, runtimeRef);
           },
-          onPermissionRequest: requestPermission
+          onPermissionRequest: requestPermission,
+          onSpecRequest: requestSpec,
+          onWorkMapUpdate: (workMap) => {
+            state.workMap = workMap;
+            renderScreen(state, runtimeRef);
+          }
         })) {
           if (message.type === "assistant" && message.content.some((block) => block.type === "text")) {
             state.streamingAssistantText = "";
@@ -3833,15 +5449,68 @@ async function startTui(options) {
       return;
     }
     if (state.modal) {
-      if (key.name === "y") {
-        state.modal.resolve("allow-once");
-      } else if (key.name === "a") {
-        state.modal.resolve("allow-session");
-      } else if (key.name === "n" || key.name === "escape") {
-        state.modal.resolve("deny");
+      if ("phase" in state.modal) {
+        const modal = state.modal;
+        if (modal.phase === "collecting") {
+          if (key.name === "return" || key.name === "enter") {
+            const param = modal.params[modal.currentParamIndex];
+            const validation = validateParamValue(param, modal.currentValue);
+            if (!validation.valid) {
+              state.status = validation.error || "Invalid value";
+              renderScreen(state, runtimeRef);
+              return;
+            }
+            const finalValue = modal.currentValue.trim() ? modal.currentValue : String(param.default);
+            let typedValue = finalValue;
+            if (param.type === "number") {
+              typedValue = Number(finalValue);
+            }
+            modal.collectedValues[param.name] = typedValue;
+            if (modal.currentParamIndex < modal.params.length - 1) {
+              modal.currentParamIndex++;
+              modal.currentValue = String(modal.params[modal.currentParamIndex].default);
+            } else {
+              modal.phase = "confirming";
+            }
+          } else if (key.name === "backspace") {
+            modal.currentValue = modal.currentValue.slice(0, -1);
+          } else if (key.name === "escape") {
+            const defaultSpec = {};
+            for (const p of modal.params) {
+              defaultSpec[p.name] = p.default;
+            }
+            modal.resolve(defaultSpec);
+          } else if (str && str.length > 0 && !key.ctrl && !key.meta) {
+            modal.currentValue += str;
+          }
+        } else if (modal.phase === "confirming") {
+          if (key.name === "y" || key.name === "return" || key.name === "enter") {
+            modal.resolve(modal.collectedValues);
+          } else if (key.name === "n" || key.name === "escape") {
+            modal.phase = "collecting";
+            modal.currentParamIndex = 0;
+            modal.currentValue = String(modal.params[0].default);
+            modal.collectedValues = {};
+          } else if (key.name === "arrowup" || key.name === "arrowdown") {
+            const direction = key.name === "arrowup" ? -1 : 1;
+            modal.currentParamIndex = Math.max(0, Math.min(modal.params.length - 1, modal.currentParamIndex + direction));
+            modal.currentValue = String(modal.params[modal.currentParamIndex].default);
+            modal.phase = "collecting";
+          }
+        }
+        renderScreen(state, runtimeRef);
+        return;
+      } else {
+        if (key.name === "y") {
+          state.modal.resolve("allow-once");
+        } else if (key.name === "a") {
+          state.modal.resolve("allow-session");
+        } else if (key.name === "n" || key.name === "escape") {
+          state.modal.resolve("deny");
+        }
+        renderScreen(state, runtimeRef);
+        return;
       }
-      renderScreen(state, runtimeRef);
-      return;
     }
     if (str === "/" && state.busy === false) {
       state.inputBuffer += "/";
@@ -4020,7 +5689,7 @@ async function startTui(options) {
   output2.on("resize", onResize);
   renderScreen(state, runtimeRef);
   while (!exiting) {
-    await new Promise((resolve2) => setTimeout(resolve2, 50));
+    await new Promise((resolve5) => setTimeout(resolve5, 50));
   }
   cleanup();
 }
