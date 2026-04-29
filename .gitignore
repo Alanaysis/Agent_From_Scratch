@@ -17,3 +17,19 @@ PLAN.md
 
 # Test coverage output
 coverage/
+
+# Recipe-specific tools (personalized)
+tools/recipe/
+tools/spec-collector.ts
+tools/skills/
+runtime/workmap/
+skills/bundled/
+bin/skills/
+
+# Recipe simulation files
+recipe.md
+recipe_simulator.py
+recipe_simulator_server.py
+start_recipe_system.sh
+env.sh
+interactive_skill.py
