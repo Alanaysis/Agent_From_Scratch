@@ -104,3 +104,4 @@ describe('session', () => {
       expect(session.getMessages()).toHaveLength(2);
     });
   });
+});

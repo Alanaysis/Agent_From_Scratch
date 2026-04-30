@@ -56,12 +56,64 @@ export type PlannedAction =
       text: string;
     };
 
-function stringify(data: unknown): string {
+export function stringify(data: unknown): string {
   try {
     return JSON.stringify(data, null, 2);
   } catch {
     return String(data);
   }
+}
+
+export function truncate(value: string, maxLength = 500): string {
+  if (!value) return '';
+  if (value.length <= maxLength) return value;
+  return value.slice(0, maxLength) + '\n...';
+}
+
+export function summarizeShellResult(result: unknown): string {
+  const standardFields = ['stdout', 'stderr', 'exitCode'];
+  const isStandardFormat =
+    result != null &&
+    typeof result === 'object' &&
+    standardFields.every((field) => field in result);
+
+  if (isStandardFormat) {
+    const r = result as { stdout?: unknown; stderr?: unknown; exitCode?: unknown };
+    const stdout = typeof r.stdout === 'string' ? r.stdout : '';
+    const stderr = typeof r.stderr === 'string' ? r.stderr : '';
+    const exitCode = typeof r.exitCode === 'number' ? r.exitCode : 'unknown';
+    let res = `命令已执行，退出码：${exitCode}。`;
+    if (stdout) {
+      res += '\n\nstdout:\n' + truncate(stdout, 800);
+    }
+    if (stderr) {
+      res += '\n\nstderr:\n' + truncate(stderr, 400);
+    }
+    return res;
+  }
+
+  // Fallback: stringify the result
+  const str =
+    result === undefined
+      ? ''
+      : result == null
+        ? String(result)
+        : JSON.stringify(result, null, 2);
+  return `命令已执行。\n\n${truncate(str, 1200)}`;
+}
+
+export function summarizeReadResult(result: unknown): string {
+  const content =
+    result != null && typeof result === 'object' && 'content' in result
+      ? (result as { content: unknown }).content
+      : result;
+  const str =
+    content == null || content === ''
+      ? String(content)
+      : typeof content === 'string'
+        ? content
+        : JSON.stringify(content, null, 2);
+  return `我已经读取了目标内容。下面是预览：\n\n${truncate(str, 1200)}`;
 }
 
 function createAssistantMessage(
