@@ -831,9 +831,11 @@ function renderScreen(
           const prompt = state.theme === 'dark'
             ? pc.bgCyan(pc.black('Siok>'))
             : pc.bgCyan(pc.white('Siok>'));
+          // Use raw ANSI codes for cursor highlight to ensure background color works
+          const ESC = String.fromCharCode(27);
           const cursorHighlight = state.theme === 'dark'
-            ? pc.bgWhite(pc.black(cursorChar))
-            : pc.bgBlack(pc.white(cursorChar));
+            ? `${ESC}[47m${ESC}[30m${cursorChar}${ESC}[0m`  // white bg, black text
+            : `${ESC}[40m${ESC}[37m${cursorChar}${ESC}[0m`;  // black bg, white text
           return `${prompt} ${pc.cyan(prefix)}${cursorHighlight}${pc.cyan(afterCursor)}`;
         })(),
     // 渲染搜索匹配的命令，并高亮当前选中的命令
