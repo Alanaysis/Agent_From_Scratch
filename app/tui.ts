@@ -826,14 +826,15 @@ function renderScreen(
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`
       : (() => {
           const prefix = state.inputBuffer.slice(0, state.cursorPosition);
-          const suffix = state.inputBuffer.slice(state.cursorPosition);
+          const cursorChar = state.inputBuffer[state.cursorPosition] || ' ';
+          const afterCursor = state.inputBuffer.slice(state.cursorPosition + 1);
           const prompt = state.theme === 'dark'
             ? pc.bgCyan(pc.black('Siok>'))
             : pc.bgCyan(pc.white('Siok>'));
-          const cursor = state.theme === 'dark'
-            ? pc.inverse(' ')
-            : pc.inverse(pc.bgWhite(pc.black(' ')));
-          return `${prompt} ${pc.cyan(prefix)}${cursor}${pc.cyan(suffix)}`;
+          const cursorHighlight = state.theme === 'dark'
+            ? pc.bgWhite(pc.black(cursorChar))
+            : pc.bgBlack(pc.white(cursorChar));
+          return `${prompt} ${pc.cyan(prefix)}${cursorHighlight}${pc.cyan(afterCursor)}`;
         })(),
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
