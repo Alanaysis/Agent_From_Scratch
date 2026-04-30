@@ -156,6 +156,7 @@ type TuiState = {
   workMap: WorkMap | null;
   workMapExecutor: WorkMapExecutor | null;
   selectedWorkMapStep: string | null;  // 当前选中的步骤ID
+  cursorPosition: number;
 };
 
 function getPermissionMode(
@@ -820,10 +821,20 @@ function renderScreen(
       : state.busy
         ? `${state.theme === 'dark' ? pc.yellow(`Status: ${state.status}`) : pc.yellowBright(`Status: ${state.status}`)}`
         : `${state.theme === 'dark' ? pc.green(`Status: ${state.status}`) : pc.greenBright(`Status: ${state.status}`)}`,
-    `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
+    `${pc.gray(`Keys: Enter submit · Up/Down backtrace/forward · PgUp/PgDn page · Left/Right move cursor · Ctrl+E expand · Ctrl+G collapse · Ctrl+F filter · Esc clear · Ctrl+C quit`)}`,
     state.modal
       ? `${state.theme === 'dark' ? pc.yellow(`Modal active`) : pc.yellowBright(`Modal active`)}`
-      : `${state.theme === 'dark' ? pc.bgCyan(pc.black('Siok>')) + pc.cyan(` ${state.inputBuffer}`) : pc.bgCyan(pc.white('Siok>')) + pc.cyanBright(` ${state.inputBuffer}`)}`,
+      : (() => {
+          const prefix = state.inputBuffer.slice(0, state.cursorPosition);
+          const suffix = state.inputBuffer.slice(state.cursorPosition);
+          const prompt = state.theme === 'dark'
+            ? pc.bgCyan(pc.black('Siok>'))
+            : pc.bgCyan(pc.white('Siok>'));
+          const cursor = state.theme === 'dark'
+            ? pc.inverse(' ')
+            : pc.inverse(pc.bgWhite(pc.black(' ')));
+          return `${prompt} ${pc.cyan(prefix)}${cursor}${pc.cyan(suffix)}`;
+        })(),
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
   ];
@@ -1298,6 +1309,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
     workMap: null,
     workMapExecutor: null,
     selectedWorkMapStep: null,
+    cursorPosition: 0,
   };
 
   const availableSessions = await listSessions(options.cwd);
@@ -1812,10 +1824,11 @@ export async function startTui(options: TuiOptions): Promise<void> {
     if (key.name === "return") {
       const current = state.inputBuffer;
 
-      // 重置搜索状态
+      // Reset cursor and search state
       state.isSearching = false;
       state.searchMatches = [];
       state.selectedMatchIndex = -1;
+      state.cursorPosition = 0;
 
       state.inputBuffer = "";
       void submitPrompt(current);
@@ -1826,18 +1839,26 @@ export async function startTui(options: TuiOptions): Promise<void> {
     }
 
     if (key.name === "backspace") {
-      // 使用Array.from处理Unicode字符，确保每次删除一个完整的字符
-      const chars = Array.from(state.inputBuffer);
-      chars.pop();
-      state.inputBuffer = chars.join("");
+      if (state.cursorPosition > 0) {
+        // Delete character before cursor
+        const chars = Array.from(state.inputBuffer);
+        chars.splice(state.cursorPosition - 1, 1);
+        state.inputBuffer = chars.join("");
+        state.cursorPosition -= 1;
+      }
 
       // 如果删除后不再以斜杠开头，退出搜索状态
-      if (!state.inputBuffer.startsWith("/")) {
+      if (state.inputBuffer.length > 0 && !state.inputBuffer.startsWith("/")) {
         state.isSearching = false;
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
         state.status = "Ready";
-      } else {
+      } else if (state.inputBuffer.length === 0) {
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      } else if (state.inputBuffer.startsWith("/")) {
         // 更新搜索匹配
         const matches = autoCompleteSlashCommand(state.inputBuffer);
         if (matches) {
@@ -1898,6 +1919,20 @@ export async function startTui(options: TuiOptions): Promise<void> {
       if (key.name === "down") {
         state.historyIndex = state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
         state.inputBuffer = state.historyIndex < state.history.length ? state.history[state.historyIndex] : "";
+        // Reset cursor to end when navigating history
+        state.cursorPosition = state.inputBuffer.length;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+
+      if (key.name === "left") {
+        state.cursorPosition = Math.max(0, state.cursorPosition - 1);
+        renderScreen(state, runtimeRef);
+        return;
+      }
+
+      if (key.name === "right") {
+        state.cursorPosition = Math.min(state.inputBuffer.length, state.cursorPosition + 1);
         renderScreen(state, runtimeRef);
         return;
       }
@@ -1937,7 +1972,8 @@ export async function startTui(options: TuiOptions): Promise<void> {
       return;
     }
 
-    state.inputBuffer += str;
+    state.inputBuffer = state.inputBuffer.slice(0, state.cursorPosition) + str + state.inputBuffer.slice(state.cursorPosition);
+    state.cursorPosition += str.length;
 
     // 只要输入以斜杠开头，就更新搜索结果
     if (state.inputBuffer.startsWith("/")) {
