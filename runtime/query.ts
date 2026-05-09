@@ -6,7 +6,7 @@ import {
 } from "../tools/Tool";
 import { getTools } from "../tools/registry";
 import { getLlmConfigFromEnv, runLlmTurn, type LlmToolDefinition } from "./llm";
-import { detectRelevantSkills } from "../skills/loader";
+import { detectRelevantSkills, formatSkillMetadataForPrompt, formatSkillInstructionForPrompt, loadSkillInstruction, getLoadedSkills } from "../skills/loader";
 import type {
   AssistantMessage,
   AssistantTextBlock,
@@ -16,6 +16,7 @@ import type {
 } from "./messages";
 import type { ParamConfig } from "../skills/frontmatter";
 import { compressMessages, estimateMessageTokens, type Usage, emptyUsage } from "./usage";
+import { getMemoryForSystemPrompt } from "../storage/memory";
 
 // WorkMap types stubbed out (workmap is recipe-specific, gitignored)
 type WorkMap = any;
@@ -327,25 +328,154 @@ function getToolDefinitions(): LlmToolDefinition[] {
       },
     },
     {
+      name: "WebSearch",
+      description: "Search the web using DuckDuckGo and return results.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "FileTree",
+      description: "List directory tree structure with configurable depth.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path." },
+          maxDepth: { type: "number", description: "Maximum depth to traverse." },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "SearchFiles",
+      description: "Search files by name pattern (glob) or content (regex).",
+      parameters: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["files", "content"], description: "'files' for glob match, 'content' for regex search." },
+          pattern: { type: "string", description: "Glob pattern or regex." },
+          path: { type: "string", description: "Directory to search in." },
+        },
+        required: ["mode", "pattern"],
+        additionalProperties: false,
+      },
+    },
+    {
       name: "Agent",
-      description: "Launch a simple subagent for delegated work.",
+      description:
+        "Launch a subagent for delegated work. The subagent runs in its own context with independent tool access. " +
+        "Available subagent types: 'explore' (read-only codebase search), 'plan' (research for planning), " +
+        "'reflect' (self-reflection and insight extraction), 'general-purpose' (full capabilities, default). " +
+        "Subagents cannot launch other subagents. " +
+        "Launch multiple agents concurrently when possible to maximize performance.",
       parameters: {
         type: "object",
         properties: {
           description: {
             type: "string",
-            description: "Short task description.",
+            description: "A short (3-5 word) description of the task.",
           },
           prompt: {
             type: "string",
-            description: "Prompt to send to the subagent.",
+            description:
+              "The task for the subagent to perform. Provide a highly detailed task description. " +
+              "Specify exactly what information the subagent should return in its final message.",
           },
           subagentType: {
             type: "string",
-            description: "Optional subagent type or role name.",
+            description:
+              "Optional subagent type: 'explore' (fast read-only search), 'plan' (research), 'reflect' (self-reflection), or 'general-purpose' (default).",
           },
         },
         required: ["description", "prompt"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "Team",
+      description:
+        "Launch a team of specialized agents that work in parallel on a complex task. " +
+        "Available teams: 'code-review' (security + performance review), 'research' (codebase + documentation analysis). " +
+        "Team members run concurrently and results are synthesized by a lead agent.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamName: {
+            type: "string",
+            description: "Team to launch: 'code-review' or 'research'.",
+          },
+          task: {
+            type: "string",
+            description: "The task for the team to work on.",
+          },
+        },
+        required: ["teamName", "task"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "Skill",
+      description:
+        "Execute a named skill within the main conversation. Use when you need to invoke a specific skill by name. " +
+        "Skills provide structured workflows for common tasks. Invoke a skill by its name.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "Name of the skill to invoke (e.g. 'recipe-setup', 'github').",
+          },
+          arguments: {
+            type: "string",
+            description: "Optional arguments to pass to the skill.",
+          },
+        },
+        required: ["command"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageUpload",
+      description: "Upload an image (base64) and save it locally for analysis.",
+      parameters: {
+        type: "object",
+        properties: {
+          data: { type: "string", description: "Base64-encoded image data." },
+          filename: { type: "string", description: "Filename to save as." },
+        },
+        required: ["data", "filename"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageAnalyze",
+      description: "Analyze an image using vision-capable LLM models. Supports OpenAI and Anthropic providers.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path to the image file." },
+          prompt: { type: "string", description: "What to analyze in the image." },
+        },
+        required: ["path", "prompt"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageGenerate",
+      description: "Generate an image using DALL-E or Stability AI.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Description of the image to generate." },
+          provider: { type: "string", enum: ["openai", "stability"], description: "Image generation provider." },
+        },
+        required: ["prompt"],
         additionalProperties: false,
       },
     },
@@ -418,6 +548,9 @@ async function* executeToolCall(
       for (const extraMessage of result.extraMessages) {
         yield extraMessage;
       }
+    }
+    if (result.contextModifier) {
+      params.toolUseContext = result.contextModifier(params.toolUseContext);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -492,6 +625,24 @@ async function* queryWithLlm(
   const conversation = [...params.messages];
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+
+  try {
+    const memory = await getMemoryForSystemPrompt(params.toolUseContext.cwd);
+    if (memory.trim()) {
+      systemPrompt.push(memory);
+    }
+  } catch {
+    // memory loading is best-effort
+  }
+
+  const skillsMeta = formatSkillMetadataForPrompt(
+    detectRelevantSkills(params.prompt).length > 0
+      ? []
+      : getLoadedSkills().filter((s: any) => !s.metadata.disableModelInvocation),
+  );
+  if (skillsMeta.trim()) {
+    systemPrompt.push(skillsMeta);
+  }
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
     const llmResponse = await runLlmTurn({
@@ -597,7 +748,7 @@ async function* executeWorkMap(
   let completedCount = 0;
   for (const phase of workMap.phases) {
     for (const stepId of phase.stepIds) {
-      const step = workMap.steps.find(s => s.id === stepId);
+      const step = workMap.steps.find((s: any) => s.id === stepId);
       if (!step) continue;
       
       step.status = 'running';
@@ -662,13 +813,11 @@ export async function* query(
   params: QueryParams,
 ): AsyncGenerator<Message, void> {
   const relevantSkills = detectRelevantSkills(params.prompt);
-  
+
   if (relevantSkills.length > 0) {
     const skill = relevantSkills[0];
-    
+
     try {
-      // WorkMap/recipe-specific code is gitignored - stubbed out
-      // const workMap = parseSkillToWorkMap(skill);
       const workMap: any = { steps: [] };
       if (workMap.steps.length > 0) {
         yield* executeWorkMap(workMap, params);
@@ -677,15 +826,21 @@ export async function* query(
     } catch (e) {
       console.error('[WorkMap] Parse failed, falling back', e);
     }
-    
+
     let enhancedSystemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+
+    const instruction = await loadSkillInstruction(skill);
     enhancedSystemPrompt.push(
-      `\n\n=== RELEVANT SKILL: ${skill.name} ===\n${skill.content}\n\n` +
-      `INSTRUCTIONS: Follow the step-by-step workflow outlined in the skill above.` +
-      `Make sure to complete ALL steps in order, including: property, alignsetting, all mark points, etc.` +
-      `Do not skip any steps! Execute the full workflow automatically without asking for confirmation.`,
+      `\n\n${formatSkillInstructionForPrompt(skill)}`,
     );
-    
+
+    if (instruction.references.length > 0) {
+      enhancedSystemPrompt.push(
+        '\nReference files available in skill directory (use Read tool if needed): ' +
+        instruction.references.join(', '),
+      );
+    }
+
     const enhancedParams = {
       ...params,
       systemPrompt: enhancedSystemPrompt,

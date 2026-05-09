@@ -150,7 +150,7 @@ import { cwd } from "process";
 import { pathToFileURL } from "url";
 
 // app/headless.ts
-import { writeFile as writeFile6 } from "fs/promises";
+import { writeFile as writeFile8 } from "fs/promises";
 import readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 
@@ -184,9 +184,9 @@ async function appendTranscript(cwd2, sessionId, messages) {
 `, "utf8");
 }
 async function readTranscriptMessages(cwd2, sessionId) {
-  const { readFile: readFile6 } = await import("fs/promises");
+  const { readFile: readFile8 } = await import("fs/promises");
   const filePath = getTranscriptPath(cwd2, sessionId);
-  const content = await readFile6(filePath, "utf8");
+  const content = await readFile8(filePath, "utf8");
   return content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
 async function deleteTranscript(cwd2, sessionId) {
@@ -403,7 +403,223 @@ function emptyUsage() {
   };
 }
 
+// storage/knowledge.ts
+import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
+import { join as join3 } from "path";
+
+// shared/ids.ts
+import { randomUUID } from "crypto";
+function createId(prefix = "id") {
+  return `${prefix}-${randomUUID()}`;
+}
+
+// storage/knowledge.ts
+var MAX_ENTRIES = 100;
+var CHAR_LIMIT = 500;
+function getKnowledgePath(cwd2) {
+  return join3(cwd2, ".claude-code-lite", "knowledge.json");
+}
+function emptyStore() {
+  return { entries: [], version: 1 };
+}
+async function loadKnowledgeStore(cwd2) {
+  try {
+    const content = await readFile2(getKnowledgePath(cwd2), "utf8");
+    return JSON.parse(content);
+  } catch {
+    return emptyStore();
+  }
+}
+async function saveKnowledgeStore(cwd2, store) {
+  await mkdir3(join3(cwd2, ".claude-code-lite"), { recursive: true });
+  await writeFile2(
+    getKnowledgePath(cwd2),
+    JSON.stringify(store, null, 2),
+    "utf8"
+  );
+}
+async function addKnowledge(cwd2, category, content, source, tags = [], confidence = 0.7) {
+  if (!content.trim()) return null;
+  const truncated = content.length > CHAR_LIMIT ? content.slice(0, CHAR_LIMIT - 3) + "..." : content;
+  const store = await loadKnowledgeStore(cwd2);
+  const duplicate = store.entries.find(
+    (e) => e.content === truncated && e.category === category
+  );
+  if (duplicate) {
+    duplicate.confidence = Math.min(1, duplicate.confidence + 0.1);
+    duplicate.usageCount += 1;
+    duplicate.lastUsed = (/* @__PURE__ */ new Date()).toISOString();
+    await saveKnowledgeStore(cwd2, store);
+    return duplicate;
+  }
+  if (store.entries.length >= MAX_ENTRIES) {
+    store.entries.sort((a, b) => {
+      const scoreA = a.confidence * 0.6 + a.usageCount / 10 * 0.4;
+      const scoreB = b.confidence * 0.6 + b.usageCount / 10 * 0.4;
+      return scoreA - scoreB;
+    });
+    store.entries = store.entries.slice(1);
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const entry = {
+    id: createId("knowledge"),
+    category,
+    content: truncated,
+    source,
+    confidence,
+    usageCount: 0,
+    lastUsed: now,
+    createdAt: now,
+    tags
+  };
+  store.entries.push(entry);
+  store.version += 1;
+  await saveKnowledgeStore(cwd2, store);
+  return entry;
+}
+function knowledgeToSystemPrompt(entries) {
+  if (entries.length === 0) return "";
+  const lines = ["=== PERSISTENT KNOWLEDGE ==="];
+  const grouped = {
+    fact: [],
+    preference: [],
+    pattern: [],
+    anti_pattern: []
+  };
+  for (const entry of entries) {
+    grouped[entry.category].push(entry);
+  }
+  if (grouped.anti_pattern.length > 0) {
+    lines.push("\n--- Anti-Patterns (AVOID these) ---");
+    for (const entry of grouped.anti_pattern) {
+      lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
+    }
+  }
+  if (grouped.preference.length > 0) {
+    lines.push("\n--- User Preferences ---");
+    for (const entry of grouped.preference) {
+      lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
+    }
+  }
+  if (grouped.fact.length > 0) {
+    lines.push("\n--- Project Facts ---");
+    for (const entry of grouped.fact) {
+      lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
+    }
+  }
+  if (grouped.pattern.length > 0) {
+    lines.push("\n--- Success Patterns ---");
+    for (const entry of grouped.pattern) {
+      lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+// storage/memory.ts
+import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
+import { join as join4 } from "path";
+var MEMORY_CHAR_LIMIT = 3575;
+function getMemoryPath(cwd2) {
+  return join4(cwd2, ".claude-code-lite", "Memory.md");
+}
+async function loadMemory(cwd2) {
+  try {
+    return await readFile3(getMemoryPath(cwd2), "utf8");
+  } catch {
+    return "";
+  }
+}
+async function saveMemory(cwd2, content) {
+  await mkdir4(join4(cwd2, ".claude-code-lite"), { recursive: true });
+  const truncated = content.length > MEMORY_CHAR_LIMIT ? content.slice(0, MEMORY_CHAR_LIMIT) : content;
+  await writeFile3(getMemoryPath(cwd2), truncated, "utf8");
+}
+async function rebuildMemoryFromKnowledge(cwd2) {
+  const store = await loadKnowledgeStore(cwd2);
+  const sorted = [...store.entries].sort((a, b) => {
+    if (a.category === "anti_pattern" && b.category !== "anti_pattern") return -1;
+    if (b.category === "anti_pattern" && a.category !== "anti_pattern") return 1;
+    return b.confidence - a.confidence;
+  });
+  const prompt = knowledgeToSystemPrompt(sorted);
+  await saveMemory(cwd2, prompt);
+  return prompt;
+}
+async function getMemoryForSystemPrompt(cwd2) {
+  const memory = await loadMemory(cwd2);
+  if (memory.trim()) return memory;
+  const rebuilt = await rebuildMemoryFromKnowledge(cwd2);
+  return rebuilt;
+}
+
 // runtime/session.ts
+function extractKnowledgeFromMessages(messages) {
+  const insights = [];
+  let errorCount = 0;
+  let toolUseCount = 0;
+  const toolsUsed = /* @__PURE__ */ new Set();
+  const errorTools = /* @__PURE__ */ new Set();
+  for (const msg of messages) {
+    if (msg.type === "assistant") {
+      const aMsg = msg;
+      for (const block of aMsg.content) {
+        if (block.type === "tool_use") {
+          toolUseCount += 1;
+          toolsUsed.add(block.name);
+        }
+      }
+    }
+    if (msg.type === "tool_result" && msg.isError) {
+      errorCount += 1;
+      for (const prevMsg of messages) {
+        if (prevMsg.type === "assistant") {
+          const aMsg = prevMsg;
+          for (const block of aMsg.content) {
+            if (block.type === "tool_use" && block.id === msg.toolUseId) {
+              errorTools.add(block.name);
+            }
+          }
+        }
+      }
+    }
+  }
+  if (errorTools.size > 0) {
+    for (const tool of errorTools) {
+      insights.push({
+        category: "anti_pattern",
+        content: `Tool "${tool}" produced errors in this session. Consider alternative approaches or verify inputs before using ${tool}.`,
+        tags: ["error", tool, "anti-pattern"]
+      });
+    }
+  }
+  if (toolUseCount > 15) {
+    insights.push({
+      category: "pattern",
+      content: `High tool usage (${toolUseCount} calls) suggests complex task. Consider using sub-agents or teams for similar tasks to reduce context pollution.`,
+      tags: ["efficiency", "tool-usage"]
+    });
+  }
+  const userMessages = messages.filter((m) => m.type === "user");
+  if (userMessages.length > 3) {
+    const userContents = userMessages.map(
+      (m) => m.type === "user" ? m.content : ""
+    );
+    const hasCorrection = userContents.some((c, i) => {
+      if (i === 0) return false;
+      const lower = c.toLowerCase();
+      return lower.includes("no,") || lower.includes("not like that") || lower.includes("wrong") || lower.includes("try again") || lower.includes("different");
+    });
+    if (hasCorrection) {
+      insights.push({
+        category: "anti_pattern",
+        content: "User had to correct the assistant multiple times. Initial approach may not match user expectations. Ask clarifying questions earlier.",
+        tags: ["user-correction", "communication"]
+      });
+    }
+  }
+  return insights;
+}
 var SessionEngine = class {
   constructor(config) {
     this.config = config;
@@ -411,6 +627,7 @@ var SessionEngine = class {
   config;
   messages = [];
   usage = emptyUsage();
+  knowledgeExtracted = false;
   get sessionId() {
     return this.config.id;
   }
@@ -430,12 +647,43 @@ var SessionEngine = class {
     this.messages.push(...messages);
     await appendTranscript(this.cwd, this.sessionId, messages);
     await updateSessionInfo(this.cwd, this.sessionId, this.messages);
+    if (this.config.autoExtractKnowledge && !this.knowledgeExtracted) {
+      const hasAssistantText = messages.some(
+        (m) => m.type === "assistant" && m.content.some(
+          (b) => b.type === "text" && b.text.trim().length > 0
+        )
+      );
+      if (hasAssistantText) {
+        this.knowledgeExtracted = true;
+        this.extractAndPersistKnowledge().catch((err) => {
+          console.error("[Session] Auto knowledge extraction failed:", err);
+        });
+      }
+    }
   }
   getTranscriptPath() {
     return getTranscriptPath(this.cwd, this.sessionId);
   }
   getUsage() {
     return { ...this.usage };
+  }
+  async extractAndPersistKnowledge() {
+    const insights = extractKnowledgeFromMessages(this.messages);
+    let added = 0;
+    for (const insight of insights) {
+      const entry = await addKnowledge(
+        this.cwd,
+        insight.category,
+        insight.content,
+        "user_implicit",
+        insight.tags
+      );
+      if (entry) added += 1;
+    }
+    if (added > 0) {
+      await rebuildMemoryFromKnowledge(this.cwd);
+    }
+    return added;
   }
 };
 
@@ -541,21 +789,357 @@ var canUseTool = async (tool, input3, context, _parentMessage, _toolUseId) => {
   };
 };
 
-// tools/agent/runAgent.ts
-async function runAgent(params) {
-  const subagentType = params.subagentType ?? "general-purpose";
-  return [
-    `Subagent "${subagentType}" accepted the task.`,
-    `Description: ${params.description}`,
-    `Prompt length: ${params.prompt.length} characters`,
-    "This educational runtime does not call a model yet; it only exercises the delegation path."
-  ].join("\n");
+// runtime/llm.ts
+function stripTrailingSlash(value) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
 }
-
-// shared/ids.ts
-import { randomUUID } from "crypto";
-function createId(prefix = "id") {
-  return `${prefix}-${randomUUID()}`;
+function getDefaultBaseUrl(provider) {
+  return provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1";
+}
+function getLlmConfigFromEnv() {
+  const apiKey = process.env.CCL_LLM_API_KEY?.trim();
+  const model = process.env.CCL_LLM_MODEL?.trim();
+  if (!apiKey || !model) {
+    return null;
+  }
+  const provider = process.env.CCL_LLM_PROVIDER?.trim().toLowerCase() === "anthropic" ? "anthropic" : "openai";
+  return {
+    provider,
+    apiKey,
+    model,
+    baseUrl: stripTrailingSlash(
+      process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider)
+    ),
+    systemPrompt: process.env.CCL_LLM_SYSTEM_PROMPT?.trim(),
+    anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01"
+  };
+}
+function extractOpenAiText(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (typeof content === "object" && content !== null && "text" in content && typeof content.text === "string") {
+    return content.text;
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "undefined") {
+        return "";
+      }
+      if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
+        return part.text;
+      }
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+  return "";
+}
+function parseToolArguments(raw) {
+  if (raw === null || raw === void 0) {
+    return {};
+  }
+  const rawType = typeof raw;
+  if (rawType !== "string") {
+    try {
+      return JSON.parse(String(raw));
+    } catch {
+      return {};
+    }
+  }
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return { raw };
+  }
+}
+function toOpenAiMessages(messages, systemPrompt, config) {
+  const apiMessages = [];
+  const allSystem = [...systemPrompt];
+  if (config.systemPrompt) {
+    allSystem.push(config.systemPrompt);
+  }
+  if (allSystem.length > 0) {
+    apiMessages.push({
+      role: "system",
+      content: allSystem.join("\n\n")
+    });
+  }
+  for (const message of messages) {
+    if (message.type === "user") {
+      apiMessages.push({ role: "user", content: message.content });
+      continue;
+    }
+    if (message.type === "tool_result") {
+      apiMessages.push({
+        role: "tool",
+        tool_call_id: message.toolUseId,
+        content: message.content
+      });
+      continue;
+    }
+    const textBlocks = message.content.filter((block) => block.type === "text").map((block) => block.text);
+    const toolBlocks = message.content.filter(
+      (block) => block.type === "tool_use"
+    );
+    apiMessages.push({
+      role: "assistant",
+      content: textBlocks.length > 0 ? textBlocks.join("\n\n") : null,
+      tool_calls: toolBlocks.length > 0 ? toolBlocks.map((block) => ({
+        id: block.id,
+        type: "function",
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input ?? {})
+        }
+      })) : void 0
+    });
+  }
+  return apiMessages;
+}
+function toAnthropicMessages(messages) {
+  const apiMessages = [];
+  for (const message of messages) {
+    if (message.type === "user") {
+      apiMessages.push({
+        role: "user",
+        content: [{ type: "text", text: message.content }]
+      });
+      continue;
+    }
+    if (message.type === "tool_result") {
+      apiMessages.push({
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: message.toolUseId,
+            content: message.content,
+            is_error: message.isError
+          }
+        ]
+      });
+      continue;
+    }
+    apiMessages.push({
+      role: "assistant",
+      content: message.content.map(
+        (block) => block.type === "text" ? { type: "text", text: block.text } : {
+          type: "tool_use",
+          id: block.id,
+          name: block.name,
+          input: block.input
+        }
+      )
+    });
+  }
+  return apiMessages;
+}
+async function readSseEvents(response, onEvent) {
+  if (!response.body) {
+    throw new Error("Streaming response body is missing");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      let eventName = null;
+      for (const line of frame.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        if (trimmed.startsWith("event:")) {
+          eventName = trimmed.slice(6).trim();
+          continue;
+        }
+        if (!trimmed.startsWith("data:")) {
+          continue;
+        }
+        const data = trimmed.slice(5).trim();
+        if (!data || data === "[DONE]") {
+          continue;
+        }
+        onEvent(eventName, data);
+      }
+    }
+  }
+}
+var openAiProvider = {
+  async runTurn(params, config) {
+    const toolCallsByIndex = /* @__PURE__ */ new Map();
+    let accumulatedText = "";
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        temperature: 0.2,
+        stream: true,
+        messages: toOpenAiMessages(
+          params.messages,
+          params.systemPrompt,
+          config
+        ),
+        tools: params.tools.map((tool) => ({
+          type: "function",
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters
+          }
+        }))
+      })
+    });
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(
+        payload.error?.message || `LLM request failed with status ${response.status}`
+      );
+    }
+    await readSseEvents(response, (_event, data) => {
+      const payload = JSON.parse(data);
+      const delta = payload.choices?.[0]?.delta;
+      if (!delta) {
+        return;
+      }
+      if (delta.content !== void 0 && delta.content !== null) {
+        const textContent = extractOpenAiText(delta.content);
+        if (textContent.length > 0) {
+          accumulatedText += textContent;
+          params.onTextDelta?.(accumulatedText);
+        }
+      }
+      for (const partial of delta.tool_calls ?? []) {
+        const existing = toolCallsByIndex.get(partial.index) ?? {
+          id: "",
+          name: "",
+          arguments: ""
+        };
+        if (partial.id) {
+          existing.id = partial.id;
+        }
+        if (partial.function?.name) {
+          existing.name = partial.function.name;
+        }
+        if (partial.function?.arguments) {
+          existing.arguments += partial.function.arguments;
+        }
+        toolCallsByIndex.set(partial.index, existing);
+      }
+    });
+    return {
+      text: accumulatedText.trim(),
+      toolCalls: [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, toolCall]) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        input: parseToolArguments(toolCall.arguments)
+      }))
+    };
+  }
+};
+var anthropicProvider = {
+  async runTurn(params, config) {
+    const systemParts = [...params.systemPrompt];
+    if (config.systemPrompt) {
+      systemParts.push(config.systemPrompt);
+    }
+    const response = await fetch(`${config.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.apiKey,
+        "anthropic-version": config.anthropicVersion || "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: 2048,
+        stream: true,
+        system: systemParts.join("\n\n"),
+        messages: toAnthropicMessages(params.messages),
+        tools: params.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters
+        }))
+      })
+    });
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(
+        payload.error?.message || `LLM request failed with status ${response.status}`
+      );
+    }
+    let accumulatedText = "";
+    const toolCallsByIndex = /* @__PURE__ */ new Map();
+    await readSseEvents(response, (event, data) => {
+      if (event === "error") {
+        const payload2 = JSON.parse(data);
+        throw new Error(payload2.error?.message || "Anthropic streaming error");
+      }
+      const payload = JSON.parse(data);
+      if (event === "content_block_start" && payload.content_block) {
+        if (payload.content_block.type === "tool_use") {
+          toolCallsByIndex.set(payload.index ?? 0, {
+            id: payload.content_block.id ?? "",
+            name: payload.content_block.name ?? "",
+            inputJson: payload.content_block.input ? JSON.stringify(payload.content_block.input) : "",
+            input: payload.content_block.input
+          });
+          return;
+        }
+        if (payload.content_block.type === "text" && typeof payload.content_block.text === "string" && payload.content_block.text.length > 0) {
+          accumulatedText += payload.content_block.text;
+          params.onTextDelta?.(accumulatedText);
+        }
+        return;
+      }
+      if (event === "content_block_delta" && payload.delta) {
+        if (payload.delta.type === "text_delta" && typeof payload.delta.text === "string") {
+          accumulatedText += payload.delta.text;
+          params.onTextDelta?.(accumulatedText);
+          return;
+        }
+        if (payload.delta.type === "input_json_delta" && typeof payload.delta.partial_json === "string") {
+          const existing = toolCallsByIndex.get(payload.index ?? 0) ?? {
+            id: "",
+            name: "",
+            inputJson: ""
+          };
+          existing.inputJson += payload.delta.partial_json;
+          toolCallsByIndex.set(payload.index ?? 0, existing);
+        }
+      }
+    });
+    return {
+      text: accumulatedText.trim(),
+      toolCalls: [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, toolCall]) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input !== void 0 ? toolCall.input : parseToolArguments(toolCall.inputJson)
+      }))
+    };
+  }
+};
+function getProvider(config) {
+  return config.provider === "anthropic" ? anthropicProvider : openAiProvider;
+}
+async function runLlmTurn(params) {
+  const config = getLlmConfigFromEnv();
+  if (!config) {
+    throw new Error("LLM is not configured");
+  }
+  return getProvider(config).runTurn(params, config);
 }
 
 // tools/agent/subagentContext.ts
@@ -571,6 +1155,368 @@ function createSubagentContext(parent, overrides) {
   };
 }
 
+// tools/agent/agentRegistry.ts
+var BUILTIN_AGENTS = {
+  "general-purpose": {
+    name: "general-purpose",
+    description: "A general-purpose agent for complex multi-step tasks that require both exploration and modification.",
+    systemPrompt: [
+      "You are a sub-agent working on a delegated task.",
+      "Complete the task autonomously using the tools available to you.",
+      "Be thorough but concise in your findings.",
+      "When you are done, provide a clear summary of what you found or did."
+    ],
+    allowedTools: "*",
+    maxTurns: 8
+  },
+  explore: {
+    name: "explore",
+    description: "A fast, read-only agent optimized for searching and analyzing codebases. Use for file discovery, code search, and codebase exploration.",
+    systemPrompt: [
+      "You are an exploration agent. Your job is to search and analyze the codebase.",
+      "You are READ-ONLY \u2014 you cannot modify any files.",
+      "Be thorough: check multiple locations, follow imports, trace references.",
+      "When you are done, provide a structured summary of your findings."
+    ],
+    allowedTools: ["Read", "FileTree", "SearchFiles", "WebFetch", "WebSearch"],
+    isReadOnly: true,
+    maxTurns: 10
+  },
+  plan: {
+    name: "plan",
+    description: "A research agent for gathering context during planning. Use when you need to understand the codebase before creating a plan.",
+    systemPrompt: [
+      "You are a planning research agent. Your job is to gather context about the codebase to support planning.",
+      "You are READ-ONLY \u2014 you cannot modify any files.",
+      "Focus on understanding the current state, dependencies, and potential impact areas.",
+      "Provide a structured research summary that can be used for planning."
+    ],
+    allowedTools: ["Read", "FileTree", "SearchFiles"],
+    isReadOnly: true,
+    maxTurns: 6
+  },
+  reflect: {
+    name: "reflect",
+    description: "A reflection agent that analyzes past interactions and extracts actionable insights for self-improvement.",
+    systemPrompt: [
+      "You are a reflection agent. Your job is to analyze past interactions and extract actionable insights.",
+      "For each interaction, identify:",
+      "1. What went well (success patterns to reinforce)",
+      "2. What went wrong (anti-patterns to avoid)",
+      "3. What could be improved (optimization opportunities)",
+      "4. Whether a new skill should be created or an existing one updated",
+      "You are READ-ONLY \u2014 you cannot modify any files.",
+      "IMPORTANT: You cannot launch other sub-agents or trigger further reflections.",
+      "Output your findings in this structured format:",
+      "## Success Patterns",
+      "- [pattern description]",
+      "## Anti-Patterns",
+      "- [anti-pattern description]",
+      "## Optimization Opportunities",
+      "- [improvement suggestion]",
+      "## Skill Suggestions",
+      "- [skill name]: [description of what this skill should do]"
+    ],
+    allowedTools: ["Read", "FileTree", "SearchFiles"],
+    isReadOnly: true,
+    maxTurns: 4
+  }
+};
+function getAgentDefinition(subagentType) {
+  const key = (subagentType?.trim() || "general-purpose").toLowerCase();
+  return BUILTIN_AGENTS[key] ?? BUILTIN_AGENTS["general-purpose"];
+}
+function getToolDefinitionsForAgent(agentDef, allToolDefs) {
+  const blockedTools = ["Agent", "Team", "Reflect", "Skill"];
+  if (agentDef.allowedTools === "*") {
+    return allToolDefs.filter((t) => !blockedTools.includes(t.name));
+  }
+  return allToolDefs.filter(
+    (t) => agentDef.allowedTools.includes(t.name) && !blockedTools.includes(t.name)
+  );
+}
+
+// tools/agent/resultCompressor.ts
+function compressSubagentResult(messages) {
+  const assistantTexts = [];
+  for (const msg of messages) {
+    if (msg.type !== "assistant") continue;
+    const aMsg = msg;
+    for (const block of aMsg.content) {
+      if (block.type === "text" && block.text.trim()) {
+        assistantTexts.push(block.text.trim());
+      }
+    }
+  }
+  if (assistantTexts.length === 0) {
+    return "Subagent completed with no text output.";
+  }
+  return assistantTexts.join("\n\n");
+}
+
+// tools/Tool.ts
+function findToolByName(tools, name) {
+  return tools.find((tool) => tool.name === name);
+}
+
+// tools/agent/runAgent.ts
+function buildSubagentSystemPrompt(agentDef) {
+  return [
+    ...agentDef.systemPrompt,
+    "IMPORTANT: You are a sub-agent. You cannot launch other sub-agents. Complete your task independently.",
+    "When you finish, provide a concise summary of your findings or actions as your final message."
+  ];
+}
+function getFilteredTools(agentDef) {
+  const allTools = getTools();
+  const blockedTools = ["Agent", "Team", "Reflect", "Skill"];
+  if (agentDef.allowedTools === "*") {
+    return allTools.filter((t) => !blockedTools.includes(t.name));
+  }
+  return allTools.filter(
+    (t) => agentDef.allowedTools.includes(t.name) && !blockedTools.includes(t.name)
+  );
+}
+function getSubagentToolDefinitions(agentDef) {
+  const allDefs = buildAllToolDefinitions();
+  return getToolDefinitionsForAgent(agentDef, allDefs);
+}
+function buildAllToolDefinitions() {
+  return [
+    {
+      name: "Read",
+      description: "Read a text file from the current working directory.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative or absolute file path." }
+        },
+        required: ["path"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Write",
+      description: "Write text content to a file, creating or overwriting it.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path to write." },
+          content: { type: "string", description: "Full file content." }
+        },
+        required: ["path", "content"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Edit",
+      description: "Replace one string with another inside a file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path to edit." },
+          oldString: { type: "string", description: "Existing text to replace." },
+          newString: { type: "string", description: "Replacement text." }
+        },
+        required: ["path", "oldString", "newString"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Shell",
+      description: "Run a shell command in the current working directory.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Shell command to execute." }
+        },
+        required: ["command"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "WebFetch",
+      description: "Fetch a URL and return a processed text snippet.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "HTTP or HTTPS URL." },
+          prompt: { type: "string", description: "Optional guidance describing what to extract from the page." }
+        },
+        required: ["url", "prompt"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "WebSearch",
+      description: "Search the web using DuckDuckGo.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query." }
+        },
+        required: ["query"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "FileTree",
+      description: "List directory tree structure.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path." },
+          maxDepth: { type: "number", description: "Maximum depth to traverse." }
+        },
+        required: ["path"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "SearchFiles",
+      description: "Search files by name pattern or content regex.",
+      parameters: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["files", "content"], description: "Search mode." },
+          pattern: { type: "string", description: "Glob pattern or regex." },
+          path: { type: "string", description: "Directory to search in." }
+        },
+        required: ["mode", "pattern"],
+        additionalProperties: false
+      }
+    }
+  ];
+}
+function createAssistantMessage(blocks) {
+  return {
+    id: createId("assistant"),
+    type: "assistant",
+    content: blocks
+  };
+}
+function createToolResultMessage(toolUseId, content, isError = false) {
+  return {
+    id: createId("tool-result"),
+    type: "tool_result",
+    toolUseId,
+    content,
+    isError
+  };
+}
+function stringify(data) {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+async function* executeSubagentToolCall(toolName, toolInput, toolUseId, context, permissionFn, filteredTools) {
+  const tool = findToolByName(filteredTools, toolName);
+  if (!tool) {
+    yield createToolResultMessage(toolUseId, stringify({ error: `Unknown tool ${toolName}` }), true);
+    return;
+  }
+  const parentMessage = createAssistantMessage([
+    { type: "tool_use", id: toolUseId, name: toolName, input: toolInput }
+  ]);
+  const permission = await permissionFn(tool, toolInput, context, parentMessage, toolUseId);
+  if (permission.behavior === "deny") {
+    yield createToolResultMessage(toolUseId, stringify({ error: permission.message }), true);
+    return;
+  }
+  let effectiveInput = toolInput;
+  if (permission.updatedInput !== void 0) {
+    effectiveInput = permission.updatedInput;
+  }
+  try {
+    const result = await tool.call(
+      effectiveInput,
+      context,
+      permissionFn,
+      parentMessage
+    );
+    yield createToolResultMessage(toolUseId, stringify(result.data));
+    if (result.extraMessages) {
+      for (const extraMessage of result.extraMessages) {
+        yield extraMessage;
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield createToolResultMessage(toolUseId, stringify({ error: message }), true);
+  }
+}
+async function runAgent(params) {
+  const agentDef = getAgentDefinition(params.subagentType);
+  const maxTurns = params.maxTurns ?? agentDef.maxTurns ?? 8;
+  const permissionFn = params.canUseTool ?? canUseTool;
+  const subContext = createSubagentContext(params.parentContext, {
+    agentType: agentDef.name
+  });
+  const filteredTools = getFilteredTools(agentDef);
+  if (!getLlmConfigFromEnv()) {
+    return [
+      `Subagent "${agentDef.name}" accepted the task.`,
+      `Description: ${params.description}`,
+      `Prompt length: ${params.prompt.length} characters`,
+      "No LLM configured \u2014 subagent cannot execute without a model."
+    ].join("\n");
+  }
+  const messages = [
+    { id: createId("user"), type: "user", content: params.prompt }
+  ];
+  const systemPrompt = buildSubagentSystemPrompt(agentDef);
+  const toolDefs = getSubagentToolDefinitions(agentDef);
+  const allResultMessages = [];
+  for (let turn = 0; turn < maxTurns; turn += 1) {
+    const llmResponse = await runLlmTurn({
+      messages,
+      systemPrompt,
+      tools: toolDefs,
+      onTextDelta: params.onProgress
+    });
+    if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
+      break;
+    }
+    const assistantBlocks = [];
+    if (llmResponse.text) {
+      assistantBlocks.push({ type: "text", text: llmResponse.text });
+    }
+    for (const toolCall of llmResponse.toolCalls) {
+      assistantBlocks.push({
+        type: "tool_use",
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input
+      });
+    }
+    const assistantMessage = createAssistantMessage(assistantBlocks);
+    messages.push(assistantMessage);
+    allResultMessages.push(assistantMessage);
+    const toolCalls = assistantBlocks.filter(
+      (block) => block.type === "tool_use"
+    );
+    if (toolCalls.length === 0) {
+      break;
+    }
+    for (const toolCall of toolCalls) {
+      for await (const msg of executeSubagentToolCall(
+        toolCall.name,
+        toolCall.input,
+        toolCall.id,
+        subContext,
+        permissionFn,
+        filteredTools
+      )) {
+        messages.push(msg);
+        allResultMessages.push(msg);
+      }
+    }
+  }
+  return compressSubagentResult(allResultMessages);
+}
+
 // tools/agent/agentTool.ts
 var AgentTool = {
   name: "Agent",
@@ -579,14 +1525,16 @@ var AgentTool = {
   async description() {
     return "Launch a subagent";
   },
-  async call(args, context, _canUseTool, _parentMessage) {
+  async call(args, context, canUseTool2, _parentMessage) {
     createSubagentContext(context, {
       agentType: args.subagentType
     });
     const result = await runAgent({
       description: args.description,
       prompt: args.prompt,
-      subagentType: args.subagentType
+      subagentType: args.subagentType,
+      parentContext: context,
+      canUseTool: canUseTool2
     });
     return {
       data: {
@@ -624,24 +1572,517 @@ var AgentTool = {
   }
 };
 
+// tools/agent/team.ts
+var BUILTIN_TEAMS = {
+  "code-review": {
+    name: "code-review",
+    description: "A code review team with specialized reviewers for security, performance, and style.",
+    lead: {
+      name: "review-coordinator",
+      role: "coordinator",
+      description: "Coordinates the code review process and synthesizes findings.",
+      systemPrompt: [
+        "You are the coordinator of a code review team.",
+        "Your job is to synthesize the findings from all reviewers into a coherent, actionable report.",
+        "Prioritize findings by severity: critical bugs > security issues > performance > style.",
+        "Provide clear, actionable recommendations."
+      ],
+      allowedTools: ["Read", "FileTree", "SearchFiles"],
+      isReadOnly: true
+    },
+    members: [
+      {
+        name: "security-reviewer",
+        role: "reviewer",
+        description: "Reviews code for security vulnerabilities and best practices.",
+        systemPrompt: [
+          "You are a security-focused code reviewer.",
+          "Look for: injection vulnerabilities, authentication issues, data exposure, insecure defaults.",
+          "Rate each finding as critical, high, medium, or low severity.",
+          "Provide specific remediation advice for each finding."
+        ],
+        allowedTools: ["Read", "SearchFiles"],
+        isReadOnly: true
+      },
+      {
+        name: "performance-reviewer",
+        role: "reviewer",
+        description: "Reviews code for performance issues and optimization opportunities.",
+        systemPrompt: [
+          "You are a performance-focused code reviewer.",
+          "Look for: inefficient algorithms, unnecessary re-renders, memory leaks, N+1 queries, blocking operations.",
+          "Suggest specific optimizations with expected impact."
+        ],
+        allowedTools: ["Read", "SearchFiles"],
+        isReadOnly: true
+      }
+    ]
+  },
+  "research": {
+    name: "research",
+    description: "A research team for comprehensive analysis of codebases or topics.",
+    lead: {
+      name: "research-lead",
+      role: "coordinator",
+      description: "Leads research efforts and synthesizes findings from team members.",
+      systemPrompt: [
+        "You are the lead researcher coordinating a research team.",
+        "Synthesize findings from all researchers into a comprehensive report.",
+        "Identify patterns, contradictions, and gaps in the research.",
+        "Provide clear conclusions and actionable next steps."
+      ],
+      allowedTools: ["Read", "FileTree", "SearchFiles", "WebFetch", "WebSearch"],
+      isReadOnly: true
+    },
+    members: [
+      {
+        name: "codebase-analyst",
+        role: "researcher",
+        description: "Analyzes the codebase structure, patterns, and dependencies.",
+        systemPrompt: [
+          "You are a codebase analyst.",
+          "Focus on understanding the architecture, module dependencies, and code patterns.",
+          "Map out the key components and their relationships.",
+          "Identify potential areas of concern or improvement."
+        ],
+        allowedTools: ["Read", "FileTree", "SearchFiles"],
+        isReadOnly: true
+      },
+      {
+        name: "documentation-analyst",
+        role: "researcher",
+        description: "Analyzes documentation and external resources.",
+        systemPrompt: [
+          "You are a documentation and external resource analyst.",
+          "Search for relevant documentation, API references, and external resources.",
+          "Cross-reference findings with the codebase analysis.",
+          "Identify documentation gaps and inconsistencies."
+        ],
+        allowedTools: ["Read", "WebFetch", "WebSearch"],
+        isReadOnly: true
+      }
+    ]
+  }
+};
+function getTeamDefinition(teamName) {
+  if (!teamName?.trim()) return null;
+  return BUILTIN_TEAMS[teamName.toLowerCase()] ?? null;
+}
+function getToolDefsForTeamMember(member, allToolDefs) {
+  const blockedTools = ["Agent", "Team", "Reflect", "Skill"];
+  if (member.allowedTools === "*") {
+    return allToolDefs.filter((t) => !blockedTools.includes(t.name));
+  }
+  return allToolDefs.filter(
+    (t) => member.allowedTools.includes(t.name) && !blockedTools.includes(t.name)
+  );
+}
+
+// tools/agent/teamOrchestrator.ts
+function buildMemberSystemPrompt(member, task) {
+  return [
+    ...member.systemPrompt,
+    "IMPORTANT: You are a team member. You cannot launch other sub-agents.",
+    "Focus on your specific role and expertise.",
+    "When you finish, provide a clear summary of your findings or actions.",
+    `The overall task is: ${task}`
+  ];
+}
+function getFilteredToolsForMember(member) {
+  const allTools = getTools();
+  const blockedTools = ["Agent", "Team", "Reflect", "Skill"];
+  if (member.allowedTools === "*") {
+    return allTools.filter((t) => !blockedTools.includes(t.name));
+  }
+  return allTools.filter(
+    (t) => member.allowedTools.includes(t.name) && !blockedTools.includes(t.name)
+  );
+}
+function buildAllToolDefinitions2() {
+  return [
+    {
+      name: "Read",
+      description: "Read a text file from the current working directory.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: "File path." } },
+        required: ["path"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Write",
+      description: "Write text content to a file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path." },
+          content: { type: "string", description: "File content." }
+        },
+        required: ["path", "content"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Edit",
+      description: "Replace one string with another inside a file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path." },
+          oldString: { type: "string", description: "Text to replace." },
+          newString: { type: "string", description: "Replacement text." }
+        },
+        required: ["path", "oldString", "newString"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Shell",
+      description: "Run a shell command.",
+      parameters: {
+        type: "object",
+        properties: { command: { type: "string", description: "Shell command." } },
+        required: ["command"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "WebFetch",
+      description: "Fetch a URL and return processed text.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "URL." },
+          prompt: { type: "string", description: "What to extract." }
+        },
+        required: ["url", "prompt"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "WebSearch",
+      description: "Search the web.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "Search query." } },
+        required: ["query"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "FileTree",
+      description: "List directory tree.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path." },
+          maxDepth: { type: "number", description: "Max depth." }
+        },
+        required: ["path"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "SearchFiles",
+      description: "Search files by name or content.",
+      parameters: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["files", "content"] },
+          pattern: { type: "string", description: "Pattern." },
+          path: { type: "string", description: "Directory." }
+        },
+        required: ["mode", "pattern"],
+        additionalProperties: false
+      }
+    }
+  ];
+}
+function createAssistantMessage2(blocks) {
+  return {
+    id: createId("assistant"),
+    type: "assistant",
+    content: blocks
+  };
+}
+function createToolResultMessage2(toolUseId, content, isError = false) {
+  return {
+    id: createId("tool-result"),
+    type: "tool_result",
+    toolUseId,
+    content,
+    isError
+  };
+}
+function stringify2(data) {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+async function* executeMemberToolCall(toolName, toolInput, toolUseId, context, permissionFn, filteredTools) {
+  const tool = findToolByName(filteredTools, toolName);
+  if (!tool) {
+    yield createToolResultMessage2(toolUseId, stringify2({ error: `Unknown tool ${toolName}` }), true);
+    return;
+  }
+  const parentMessage = createAssistantMessage2([
+    { type: "tool_use", id: toolUseId, name: toolName, input: toolInput }
+  ]);
+  const permission = await permissionFn(tool, toolInput, context, parentMessage, toolUseId);
+  if (permission.behavior === "deny") {
+    yield createToolResultMessage2(toolUseId, stringify2({ error: permission.message }), true);
+    return;
+  }
+  let effectiveInput = toolInput;
+  if (permission.updatedInput !== void 0) {
+    effectiveInput = permission.updatedInput;
+  }
+  try {
+    const result = await tool.call(effectiveInput, context, permissionFn, parentMessage);
+    yield createToolResultMessage2(toolUseId, stringify2(result.data));
+    if (result.extraMessages) {
+      for (const extraMessage of result.extraMessages) {
+        yield extraMessage;
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield createToolResultMessage2(toolUseId, stringify2({ error: message }), true);
+  }
+}
+async function runMemberAgent(member, task, parentContext, permissionFn, maxTurns, onProgress) {
+  const subContext = createSubagentContext(parentContext, {
+    agentType: member.name
+  });
+  const filteredTools = getFilteredToolsForMember(member);
+  const systemPrompt = buildMemberSystemPrompt(member, task);
+  const allToolDefs = buildAllToolDefinitions2();
+  const toolDefs = getToolDefsForTeamMember(member, allToolDefs);
+  const messages = [
+    { id: createId("user"), type: "user", content: task }
+  ];
+  const allResultMessages = [];
+  onProgress?.({
+    member: member.name,
+    phase: "started",
+    message: `${member.name} starting task...`
+  });
+  for (let turn = 0; turn < maxTurns; turn += 1) {
+    const llmResponse = await runLlmTurn({
+      messages,
+      systemPrompt,
+      tools: toolDefs
+    });
+    if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
+      break;
+    }
+    const assistantBlocks = [];
+    if (llmResponse.text) {
+      assistantBlocks.push({ type: "text", text: llmResponse.text });
+    }
+    for (const toolCall of llmResponse.toolCalls) {
+      assistantBlocks.push({
+        type: "tool_use",
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input
+      });
+    }
+    const assistantMessage = createAssistantMessage2(assistantBlocks);
+    messages.push(assistantMessage);
+    allResultMessages.push(assistantMessage);
+    const toolCalls = assistantBlocks.filter(
+      (block) => block.type === "tool_use"
+    );
+    if (toolCalls.length === 0) {
+      break;
+    }
+    for (const toolCall of toolCalls) {
+      for await (const msg of executeMemberToolCall(
+        toolCall.name,
+        toolCall.input,
+        toolCall.id,
+        subContext,
+        permissionFn,
+        filteredTools
+      )) {
+        messages.push(msg);
+        allResultMessages.push(msg);
+      }
+    }
+  }
+  onProgress?.({
+    member: member.name,
+    phase: "completed",
+    message: `${member.name} completed task.`
+  });
+  return compressSubagentResult(allResultMessages);
+}
+async function runTeam(params) {
+  const { teamName, task, parentContext } = params;
+  const permissionFn = params.canUseTool ?? canUseTool;
+  const maxTurnsPerMember = params.maxTurnsPerMember ?? 6;
+  if (!getLlmConfigFromEnv()) {
+    return {
+      summary: `Team "${teamName}" cannot run without LLM configuration.`,
+      taskResults: {},
+      messages: []
+    };
+  }
+  const teamDef = getTeamDefinition(teamName);
+  if (!teamDef) {
+    return {
+      summary: `Team "${teamName}" not found. Available teams: ${Object.keys(BUILTIN_TEAMS).join(", ")}`,
+      taskResults: {},
+      messages: []
+    };
+  }
+  const taskResults = {};
+  const teamMessages = [];
+  const now = () => Date.now();
+  params.onProgress?.({
+    member: teamDef.lead.name,
+    phase: "team_started",
+    message: `Team "${teamDef.name}" starting task: ${task}`
+  });
+  const memberResults = await Promise.all(
+    teamDef.members.map(async (member) => {
+      const memberTask = `[Team: ${teamDef.name}] ${task}
+
+Your role: ${member.role} (${member.description})`;
+      const result = await runMemberAgent(
+        member,
+        memberTask,
+        parentContext,
+        permissionFn,
+        maxTurnsPerMember,
+        params.onProgress
+      );
+      taskResults[member.name] = result;
+      teamMessages.push({
+        from: member.name,
+        to: teamDef.lead.name,
+        type: "task_result",
+        content: result,
+        timestamp: now()
+      });
+      return { member, result };
+    })
+  );
+  const memberSummaries = memberResults.map(({ member, result }) => `## ${member.name} (${member.role})
+${result}`).join("\n\n");
+  const leadTask = [
+    `[Team: ${teamDef.name}] Synthesize the following team findings into a coherent report.`,
+    "",
+    `Original task: ${task}`,
+    "",
+    "## Team Member Reports",
+    memberSummaries,
+    "",
+    "Please provide a unified summary with key findings, prioritized by importance."
+  ].join("\n");
+  const leadResult = await runMemberAgent(
+    teamDef.lead,
+    leadTask,
+    parentContext,
+    permissionFn,
+    maxTurnsPerMember,
+    params.onProgress
+  );
+  taskResults[teamDef.lead.name] = leadResult;
+  teamMessages.push({
+    from: teamDef.lead.name,
+    to: "all",
+    type: "status_update",
+    content: leadResult,
+    timestamp: now()
+  });
+  params.onProgress?.({
+    member: teamDef.lead.name,
+    phase: "team_completed",
+    message: `Team "${teamDef.name}" completed task.`
+  });
+  return {
+    summary: leadResult,
+    taskResults,
+    messages: teamMessages
+  };
+}
+
+// tools/agent/teamTool.ts
+var TeamTool = {
+  name: "Team",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Launch a team of specialized agents that work in parallel on a complex task";
+  },
+  async call(args, context, canUseTool2, _parentMessage) {
+    const result = await runTeam({
+      teamName: args.teamName,
+      task: args.task,
+      parentContext: context,
+      canUseTool: canUseTool2
+    });
+    const hasError = result.summary.includes("cannot run") || result.summary.includes("not found");
+    return {
+      data: {
+        status: hasError ? "error" : "completed",
+        summary: result.summary,
+        memberResults: result.taskResults
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3.teamName?.trim()) {
+      return { result: false, message: "Team name is required" };
+    }
+    if (!input3.task?.trim()) {
+      return { result: false, message: "Task description is required" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3, context) {
+    if (context.getAppState().permissionContext.mode === "default") {
+      return {
+        behavior: "ask",
+        message: `Team launch requires confirmation for team "${input3.teamName}"`
+      };
+    }
+    return {
+      behavior: "allow",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  }
+};
+
 // shared/fs.ts
-import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
+import { mkdir as mkdir5, readFile as readFile4, writeFile as writeFile4 } from "fs/promises";
 import { dirname, resolve } from "path";
 function resolvePathFromCwd(cwd2, inputPath) {
   return resolve(cwd2, inputPath);
 }
 async function readTextFile(path) {
-  return readFile2(path, "utf8");
+  return readFile4(path, "utf8");
 }
 async function writeTextFile(path, content) {
-  await mkdir3(dirname(path), { recursive: true });
-  await writeFile2(path, content, "utf8");
+  await mkdir5(dirname(path), { recursive: true });
+  await writeFile4(path, content, "utf8");
   return Buffer.byteLength(content, "utf8");
 }
 
 // tools/files/editTool.ts
-import { mkdir as mkdir4, writeFile as writeFile3 } from "fs/promises";
-import { join as join3 } from "path";
+import { mkdir as mkdir6, writeFile as writeFile5 } from "fs/promises";
+import { join as join5 } from "path";
 function generateUnifiedDiff(oldLines, newLines, filename) {
   let diff = `--- a/${filename}
 +++ b/${filename}
@@ -693,10 +2134,10 @@ var EditTool = {
     const newContent = content.replace(args.oldString, args.newString);
     const newLines = newContent.split("\n");
     const diff = generateUnifiedDiff(oldLines, newLines, args.path);
-    const backupDir = join3(context.cwd, ".claude-code-lite", "backups");
-    const backupPath = join3(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
-    await mkdir4(backupDir, { recursive: true });
-    await writeFile3(backupPath, content, "utf8");
+    const backupDir = join5(context.cwd, ".claude-code-lite", "backups");
+    const backupPath = join5(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
+    await mkdir6(backupDir, { recursive: true });
+    await writeFile5(backupPath, content, "utf8");
     await writeTextFile(absolutePath, newContent);
     return {
       data: {
@@ -1146,7 +2587,7 @@ var FileTreeTool = {
 };
 
 // tools/files/searchFilesTool.ts
-import { readdir as readdir3, stat as stat3, readFile as readFile3 } from "fs/promises";
+import { readdir as readdir3, stat as stat3, readFile as readFile5 } from "fs/promises";
 import { resolve as resolve3, relative as relative2, dirname as dirname2 } from "path";
 function getFileType2(mode) {
   if (mode & 40960) return "symlink";
@@ -1218,7 +2659,7 @@ async function searchFilesInDir(dirPath, cwd2, glob, pattern, limit, counter, ty
         });
       } else if (type === "content" && pattern) {
         try {
-          const content = await readFile3(fullPath, "utf8");
+          const content = await readFile5(fullPath, "utf8");
           const lines = content.split("\n");
           const regex = new RegExp(pattern, "i");
           for (let i = 0; i < lines.length; i++) {
@@ -1442,8 +2883,8 @@ var WebSearchTool = {
 };
 
 // tools/web/imageUploadTool.ts
-import { mkdir as mkdir5, writeFile as writeFile4 } from "fs/promises";
-import { join as join4 } from "path";
+import { mkdir as mkdir7, writeFile as writeFile6 } from "fs/promises";
+import { join as join6 } from "path";
 var ImageUploadTool = {
   name: "ImageUpload",
   inputSchema: null,
@@ -1462,11 +2903,11 @@ var ImageUploadTool = {
     else if (mimeType.includes("png")) ext = "png";
     const timestamp = Date.now();
     const filename = `image_${timestamp}.${ext}`;
-    const imageDir = join4(context.cwd, ".claude-code-lite", "images");
-    await mkdir5(imageDir, { recursive: true });
-    const filePath = join4(imageDir, filename);
+    const imageDir = join6(context.cwd, ".claude-code-lite", "images");
+    await mkdir7(imageDir, { recursive: true });
+    const filePath = join6(imageDir, filename);
     const buffer = Buffer.from(imageData, "base64");
-    await writeFile4(filePath, buffer);
+    await writeFile6(filePath, buffer);
     return {
       data: {
         path: filePath,
@@ -1503,363 +2944,8 @@ var ImageUploadTool = {
 };
 
 // tools/web/imageAnalyzeTool.ts
-import { readdir as readdir4, readFile as readFile4, stat as stat4 } from "fs/promises";
-import { join as join5 } from "path";
-
-// runtime/llm.ts
-function stripTrailingSlash(value) {
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-function getDefaultBaseUrl(provider) {
-  return provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1";
-}
-function getLlmConfigFromEnv() {
-  const apiKey = process.env.CCL_LLM_API_KEY?.trim();
-  const model = process.env.CCL_LLM_MODEL?.trim();
-  if (!apiKey || !model) {
-    return null;
-  }
-  const provider = process.env.CCL_LLM_PROVIDER?.trim().toLowerCase() === "anthropic" ? "anthropic" : "openai";
-  return {
-    provider,
-    apiKey,
-    model,
-    baseUrl: stripTrailingSlash(
-      process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider)
-    ),
-    systemPrompt: process.env.CCL_LLM_SYSTEM_PROMPT?.trim(),
-    anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01"
-  };
-}
-function extractOpenAiText(content) {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (typeof content === "object" && content !== null && "text" in content && typeof content.text === "string") {
-    return content.text;
-  }
-  if (Array.isArray(content)) {
-    return content.map((part) => {
-      if (typeof part === "undefined") {
-        return "";
-      }
-      if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
-        return part.text;
-      }
-      return "";
-    }).filter(Boolean).join("\n");
-  }
-  return "";
-}
-function parseToolArguments(raw) {
-  if (raw === null || raw === void 0) {
-    return {};
-  }
-  const rawType = typeof raw;
-  if (rawType !== "string") {
-    try {
-      return JSON.parse(String(raw));
-    } catch {
-      return {};
-    }
-  }
-  try {
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return { raw };
-  }
-}
-function toOpenAiMessages(messages, systemPrompt, config) {
-  const apiMessages = [];
-  const allSystem = [...systemPrompt];
-  if (config.systemPrompt) {
-    allSystem.push(config.systemPrompt);
-  }
-  if (allSystem.length > 0) {
-    apiMessages.push({
-      role: "system",
-      content: allSystem.join("\n\n")
-    });
-  }
-  for (const message of messages) {
-    if (message.type === "user") {
-      apiMessages.push({ role: "user", content: message.content });
-      continue;
-    }
-    if (message.type === "tool_result") {
-      apiMessages.push({
-        role: "tool",
-        tool_call_id: message.toolUseId,
-        content: message.content
-      });
-      continue;
-    }
-    const textBlocks = message.content.filter((block) => block.type === "text").map((block) => block.text);
-    const toolBlocks = message.content.filter(
-      (block) => block.type === "tool_use"
-    );
-    apiMessages.push({
-      role: "assistant",
-      content: textBlocks.length > 0 ? textBlocks.join("\n\n") : null,
-      tool_calls: toolBlocks.length > 0 ? toolBlocks.map((block) => ({
-        id: block.id,
-        type: "function",
-        function: {
-          name: block.name,
-          arguments: JSON.stringify(block.input ?? {})
-        }
-      })) : void 0
-    });
-  }
-  return apiMessages;
-}
-function toAnthropicMessages(messages) {
-  const apiMessages = [];
-  for (const message of messages) {
-    if (message.type === "user") {
-      apiMessages.push({
-        role: "user",
-        content: [{ type: "text", text: message.content }]
-      });
-      continue;
-    }
-    if (message.type === "tool_result") {
-      apiMessages.push({
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: message.toolUseId,
-            content: message.content,
-            is_error: message.isError
-          }
-        ]
-      });
-      continue;
-    }
-    apiMessages.push({
-      role: "assistant",
-      content: message.content.map(
-        (block) => block.type === "text" ? { type: "text", text: block.text } : {
-          type: "tool_use",
-          id: block.id,
-          name: block.name,
-          input: block.input
-        }
-      )
-    });
-  }
-  return apiMessages;
-}
-async function readSseEvents(response, onEvent) {
-  if (!response.body) {
-    throw new Error("Streaming response body is missing");
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      let eventName = null;
-      for (const line of frame.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          continue;
-        }
-        if (trimmed.startsWith("event:")) {
-          eventName = trimmed.slice(6).trim();
-          continue;
-        }
-        if (!trimmed.startsWith("data:")) {
-          continue;
-        }
-        const data = trimmed.slice(5).trim();
-        if (!data || data === "[DONE]") {
-          continue;
-        }
-        onEvent(eventName, data);
-      }
-    }
-  }
-}
-var openAiProvider = {
-  async runTurn(params, config) {
-    const toolCallsByIndex = /* @__PURE__ */ new Map();
-    let accumulatedText = "";
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${config.apiKey}`
-      },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0.2,
-        stream: true,
-        messages: toOpenAiMessages(
-          params.messages,
-          params.systemPrompt,
-          config
-        ),
-        tools: params.tools.map((tool) => ({
-          type: "function",
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters
-          }
-        }))
-      })
-    });
-    if (!response.ok) {
-      const payload = await response.json();
-      throw new Error(
-        payload.error?.message || `LLM request failed with status ${response.status}`
-      );
-    }
-    await readSseEvents(response, (_event, data) => {
-      const payload = JSON.parse(data);
-      const delta = payload.choices?.[0]?.delta;
-      if (!delta) {
-        return;
-      }
-      if (delta.content !== void 0 && delta.content !== null) {
-        const textContent = extractOpenAiText(delta.content);
-        if (textContent.length > 0) {
-          accumulatedText += textContent;
-          params.onTextDelta?.(accumulatedText);
-        }
-      }
-      for (const partial of delta.tool_calls ?? []) {
-        const existing = toolCallsByIndex.get(partial.index) ?? {
-          id: "",
-          name: "",
-          arguments: ""
-        };
-        if (partial.id) {
-          existing.id = partial.id;
-        }
-        if (partial.function?.name) {
-          existing.name = partial.function.name;
-        }
-        if (partial.function?.arguments) {
-          existing.arguments += partial.function.arguments;
-        }
-        toolCallsByIndex.set(partial.index, existing);
-      }
-    });
-    return {
-      text: accumulatedText.trim(),
-      toolCalls: [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, toolCall]) => ({
-        id: toolCall.id,
-        name: toolCall.name,
-        input: parseToolArguments(toolCall.arguments)
-      }))
-    };
-  }
-};
-var anthropicProvider = {
-  async runTurn(params, config) {
-    const systemParts = [...params.systemPrompt];
-    if (config.systemPrompt) {
-      systemParts.push(config.systemPrompt);
-    }
-    const response = await fetch(`${config.baseUrl}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": config.apiKey,
-        "anthropic-version": config.anthropicVersion || "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: 2048,
-        stream: true,
-        system: systemParts.join("\n\n"),
-        messages: toAnthropicMessages(params.messages),
-        tools: params.tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          input_schema: tool.parameters
-        }))
-      })
-    });
-    if (!response.ok) {
-      const payload = await response.json();
-      throw new Error(
-        payload.error?.message || `LLM request failed with status ${response.status}`
-      );
-    }
-    let accumulatedText = "";
-    const toolCallsByIndex = /* @__PURE__ */ new Map();
-    await readSseEvents(response, (event, data) => {
-      if (event === "error") {
-        const payload2 = JSON.parse(data);
-        throw new Error(payload2.error?.message || "Anthropic streaming error");
-      }
-      const payload = JSON.parse(data);
-      if (event === "content_block_start" && payload.content_block) {
-        if (payload.content_block.type === "tool_use") {
-          toolCallsByIndex.set(payload.index ?? 0, {
-            id: payload.content_block.id ?? "",
-            name: payload.content_block.name ?? "",
-            inputJson: payload.content_block.input ? JSON.stringify(payload.content_block.input) : "",
-            input: payload.content_block.input
-          });
-          return;
-        }
-        if (payload.content_block.type === "text" && typeof payload.content_block.text === "string" && payload.content_block.text.length > 0) {
-          accumulatedText += payload.content_block.text;
-          params.onTextDelta?.(accumulatedText);
-        }
-        return;
-      }
-      if (event === "content_block_delta" && payload.delta) {
-        if (payload.delta.type === "text_delta" && typeof payload.delta.text === "string") {
-          accumulatedText += payload.delta.text;
-          params.onTextDelta?.(accumulatedText);
-          return;
-        }
-        if (payload.delta.type === "input_json_delta" && typeof payload.delta.partial_json === "string") {
-          const existing = toolCallsByIndex.get(payload.index ?? 0) ?? {
-            id: "",
-            name: "",
-            inputJson: ""
-          };
-          existing.inputJson += payload.delta.partial_json;
-          toolCallsByIndex.set(payload.index ?? 0, existing);
-        }
-      }
-    });
-    return {
-      text: accumulatedText.trim(),
-      toolCalls: [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, toolCall]) => ({
-        id: toolCall.id,
-        name: toolCall.name,
-        input: toolCall.input !== void 0 ? toolCall.input : parseToolArguments(toolCall.inputJson)
-      }))
-    };
-  }
-};
-function getProvider(config) {
-  return config.provider === "anthropic" ? anthropicProvider : openAiProvider;
-}
-async function runLlmTurn(params) {
-  const config = getLlmConfigFromEnv();
-  if (!config) {
-    throw new Error("LLM is not configured");
-  }
-  return getProvider(config).runTurn(params, config);
-}
-
-// tools/web/imageAnalyzeTool.ts
+import { readdir as readdir4, readFile as readFile6, stat as stat4 } from "fs/promises";
+import { join as join7 } from "path";
 async function analyzeWithAnthropic(imageData, mimeType, prompt, config) {
   const response = await fetch(`${config.baseUrl}/messages`, {
     method: "POST",
@@ -1952,7 +3038,7 @@ var ImageAnalyzeTool = {
     let mimeType;
     let imageUrl;
     if (args.imagePath) {
-      const filePath = args.imagePath.startsWith("/") ? args.imagePath : join5(context.cwd, args.imagePath);
+      const filePath = args.imagePath.startsWith("/") ? args.imagePath : join7(context.cwd, args.imagePath);
       const fileStat = await stat4(filePath).catch(() => null);
       if (!fileStat) {
         return {
@@ -1964,12 +3050,12 @@ var ImageAnalyzeTool = {
           }
         };
       }
-      const buffer = await readFile4(filePath);
+      const buffer = await readFile6(filePath);
       imageData = buffer.toString("base64");
       mimeType = fileStat.mode & 32767 ? "image/png" : "image/png";
       imageUrl = filePath;
     } else if (args.imageId) {
-      const imageDir = join5(context.cwd, ".claude-code-lite", "images");
+      const imageDir = join7(context.cwd, ".claude-code-lite", "images");
       const files = await readdir4(imageDir).catch(() => []);
       const matchingFile = files.find((f) => f.startsWith(args.imageId));
       if (!matchingFile) {
@@ -1982,8 +3068,8 @@ var ImageAnalyzeTool = {
           }
         };
       }
-      const filePath = join5(imageDir, matchingFile);
-      const buffer = await readFile4(filePath);
+      const filePath = join7(imageDir, matchingFile);
+      const buffer = await readFile6(filePath);
       imageData = buffer.toString("base64");
       mimeType = matchingFile.endsWith(".jpg") || matchingFile.endsWith(".jpeg") ? "image/jpeg" : "image/png";
       imageUrl = filePath;
@@ -2043,8 +3129,8 @@ var ImageAnalyzeTool = {
 };
 
 // tools/web/imageGenerateTool.ts
-import { mkdir as mkdir6, writeFile as writeFile5 } from "fs/promises";
-import { join as join6 } from "path";
+import { mkdir as mkdir8, writeFile as writeFile7 } from "fs/promises";
+import { join as join8 } from "path";
 async function generateWithOpenAI(prompt, size, model, quality, apiKey, n) {
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -2115,8 +3201,8 @@ var ImageGenerateTool = {
     const model = args.model || "dall-e-3";
     const quality = args.quality || "standard";
     const n = args.n || 1;
-    const imageDir = join6(context.cwd, ".claude-code-lite", "images");
-    await mkdir6(imageDir, { recursive: true });
+    const imageDir = join8(context.cwd, ".claude-code-lite", "images");
+    await mkdir8(imageDir, { recursive: true });
     let images = [];
     if (provider === "openai") {
       images = await generateWithOpenAI(
@@ -2135,9 +3221,9 @@ var ImageGenerateTool = {
         if (img.b64_json) {
           const timestamp = Date.now();
           const filename = `generated_${timestamp}_${i}.png`;
-          const filePath = join6(imageDir, filename);
+          const filePath = join8(imageDir, filename);
           const buffer = Buffer.from(img.b64_json, "base64");
-          await writeFile5(filePath, buffer);
+          await writeFile7(filePath, buffer);
           return { path: filePath, b64_json: img.b64_json };
         }
         return { url: img.url };
@@ -2183,34 +3269,30 @@ var ImageGenerateTool = {
   }
 };
 
-// tools/registry.ts
-function getTools() {
-  return [
-    ReadTool,
-    WriteTool,
-    EditTool,
-    ShellTool,
-    WebFetchTool,
-    WebSearchTool,
-    FileTreeTool,
-    SearchFilesTool,
-    AgentTool,
-    ImageUploadTool,
-    ImageAnalyzeTool,
-    ImageGenerateTool
-  ];
-}
-
-// tools/Tool.ts
-function findToolByName(tools, name) {
-  return tools.find((tool) => tool.name === name);
-}
-
 // skills/loader.ts
-import { readFile as readFile5, readdir as readdir5, access } from "fs/promises";
-import { join as join7, dirname as dirname3 } from "path";
+import { readFile as readFile7, readdir as readdir5, access } from "fs/promises";
+import { join as join9, dirname as dirname3 } from "path";
 import { fileURLToPath } from "url";
+import { execSync } from "child_process";
+import { platform } from "os";
 var LoadedSkills = [];
+var KEBAB_CAMEL_MAP = {
+  "user-invocable": "userInvocable",
+  "disable-model-invocation": "disableModelInvocation",
+  "argument-hint": "argumentHint",
+  "allowed-tools": "allowedTools",
+  "command-dispatch": "commandDispatch",
+  "command-tool": "commandTool",
+  "command-arg-mode": "commandArgMode"
+};
+function normalizeKeys(parsed) {
+  const result = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalizedKey = KEBAB_CAMEL_MAP[key] || key;
+    result[normalizedKey] = value;
+  }
+  return result;
+}
 function parseSimpleYaml(yamlContent) {
   const result = {};
   const lines = yamlContent.split("\n");
@@ -2222,6 +3304,14 @@ function parseSimpleYaml(yamlContent) {
     if (colonIndex === -1) continue;
     const key = trimmed.slice(0, colonIndex).trim();
     let value = trimmed.slice(colonIndex + 1).trim();
+    if (value.startsWith("{")) {
+      try {
+        value = JSON.parse(value);
+        result[key] = value;
+        continue;
+      } catch {
+      }
+    }
     if (value.startsWith("[")) {
       let jsonStr = value;
       let openBrackets = (value.match(/\[/g) || []).length;
@@ -2246,59 +3336,178 @@ function parseSimpleYaml(yamlContent) {
       value = value.slice(1, -1);
     } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1);
+    } else if (value === "true") {
+      value = true;
+    } else if (value === "false") {
+      value = false;
+    } else if (/^\d+$/.test(value)) {
+      value = Number(value);
     }
     result[key] = value;
   }
-  return result;
+  return normalizeKeys(result);
 }
-async function parseSkillFrontmatter(skillPath) {
+function extractGating(parsed) {
+  if (parsed.metadata && typeof parsed.metadata === "object") {
+    const meta = parsed.metadata;
+    const openclaw = meta.openclaw || meta;
+    return {
+      always: openclaw.always === true,
+      os: Array.isArray(openclaw.os) ? openclaw.os : void 0,
+      requires: openclaw.requires ? {
+        bins: Array.isArray(openclaw.requires.bins) ? openclaw.requires.bins : void 0,
+        anyBins: Array.isArray(openclaw.requires.anyBins) ? openclaw.requires.anyBins : void 0,
+        env: Array.isArray(openclaw.requires.env) ? openclaw.requires.env : void 0,
+        config: Array.isArray(openclaw.requires.config) ? openclaw.requires.config : void 0
+      } : void 0,
+      primaryEnv: openclaw.primaryEnv,
+      emoji: openclaw.emoji,
+      homepage: openclaw.homepage || parsed.homepage
+    };
+  }
+  return void 0;
+}
+function checkGating(gating) {
+  if (!gating) return true;
+  if (gating.always) return true;
+  if (gating.os && gating.os.length > 0) {
+    const currentOs = platform();
+    if (!gating.os.includes(currentOs)) return false;
+  }
+  if (gating.requires) {
+    if (gating.requires.bins) {
+      for (const bin of gating.requires.bins) {
+        try {
+          execSync(`which ${bin} 2>/dev/null`, { stdio: "pipe" });
+        } catch {
+          return false;
+        }
+      }
+    }
+    if (gating.requires.anyBins && gating.requires.anyBins.length > 0) {
+      let found = false;
+      for (const bin of gating.requires.anyBins) {
+        try {
+          execSync(`which ${bin} 2>/dev/null`, { stdio: "pipe" });
+          found = true;
+          break;
+        } catch {
+        }
+      }
+      if (!found) return false;
+    }
+    if (gating.requires.env) {
+      for (const envVar of gating.requires.env) {
+        if (!process.env[envVar]) return false;
+      }
+    }
+  }
+  return true;
+}
+function toMetadata(parsed, name, trigger) {
+  const gating = extractGating(parsed);
+  return {
+    name,
+    description: parsed.description || "",
+    trigger,
+    paths: Array.isArray(parsed.paths) ? parsed.paths : [],
+    userInvocable: parsed.userInvocable !== false,
+    disableModelInvocation: parsed.disableModelInvocation === true,
+    argumentHint: parsed.argumentHint,
+    context: parsed.context === "inline" || parsed.context === "fork" ? parsed.context : void 0,
+    agent: parsed.agent,
+    allowedTools: Array.isArray(parsed.allowedTools) ? parsed.allowedTools : void 0,
+    model: parsed.model,
+    params: Array.isArray(parsed.params) ? parsed.params : void 0,
+    homepage: parsed.homepage,
+    commandDispatch: parsed.commandDispatch === "tool" ? "tool" : void 0,
+    commandTool: parsed.commandTool,
+    commandArgMode: parsed.commandArgMode === "raw" ? "raw" : void 0,
+    gating
+  };
+}
+function replaceBaseDir(content, dirPath) {
+  if (!dirPath || !content.includes("{baseDir}")) return content;
+  return content.replace(/\{baseDir\}/g, dirPath);
+}
+async function parseSkillFile(skillPath, dirPath) {
   try {
-    const content = await readFile5(skillPath, "utf-8");
+    const content = await readFile7(skillPath, "utf-8");
     const parts = content.split("---");
     if (parts.length < 3) {
       console.error(`Invalid skill file format: ${skillPath}`);
       return null;
     }
     const frontmatterRaw = parts[1].trim();
-    const body = parts[2].trim();
+    const rawBody = parts.slice(2).join("---").trim();
     const parsed = parseSimpleYaml(frontmatterRaw);
     const frontmatterObj = {};
-    let name = parsed.name || "";
-    let trigger = Array.isArray(parsed.trigger) ? parsed.trigger : [];
+    const name = parsed.name || "";
+    const trigger = Array.isArray(parsed.trigger) ? parsed.trigger : [];
     if (parsed.description) frontmatterObj.description = parsed.description;
     if (parsed.model) frontmatterObj.model = parsed.model;
     if (parsed.context === "inline" || parsed.context === "fork") {
       frontmatterObj.context = parsed.context;
     }
-    if (Array.isArray(parsed.allowedTools)) {
-      frontmatterObj.allowedTools = parsed.allowedTools;
+    if (Array.isArray(parsed.allowedTools)) frontmatterObj.allowedTools = parsed.allowedTools;
+    if (Array.isArray(parsed.params)) frontmatterObj.params = parsed.params;
+    if (Array.isArray(parsed.paths)) frontmatterObj.paths = parsed.paths;
+    if (parsed.userInvocable !== void 0) frontmatterObj.userInvocable = parsed.userInvocable;
+    if (parsed.disableModelInvocation !== void 0) frontmatterObj.disableModelInvocation = parsed.disableModelInvocation;
+    if (parsed.argumentHint) frontmatterObj.argumentHint = parsed.argumentHint;
+    if (parsed.agent) frontmatterObj.agent = parsed.agent;
+    if (parsed.homepage) frontmatterObj.homepage = parsed.homepage;
+    if (parsed.commandDispatch) frontmatterObj.commandDispatch = parsed.commandDispatch;
+    if (parsed.commandTool) frontmatterObj.commandTool = parsed.commandTool;
+    if (parsed.commandArgMode) frontmatterObj.commandArgMode = parsed.commandArgMode;
+    const gating = extractGating(parsed);
+    if (gating) frontmatterObj.metadata = gating;
+    const metadata = toMetadata(parsed, name, trigger);
+    if (!checkGating(metadata.gating)) {
+      return null;
     }
-    if (Array.isArray(parsed.params)) {
-      frontmatterObj.params = parsed.params;
-    }
+    const body = replaceBaseDir(rawBody, dirPath);
     return {
       name,
       trigger,
+      paths: metadata.paths,
       frontmatter: frontmatterObj,
-      content: body
+      content: body,
+      dirPath,
+      metadata
     };
   } catch (error) {
     console.error(`Error parsing skill ${skillPath}:`, error);
     return null;
   }
 }
-async function registerSkill(skillPath) {
-  const skill = await parseSkillFrontmatter(skillPath);
+async function registerSkill(skillPath, dirPath) {
+  const skill = await parseSkillFile(skillPath, dirPath);
   if (skill) {
     LoadedSkills.push(skill);
   }
 }
 async function registerSkillsFromDirectory(dirPath) {
   try {
-    const files = await readdir5(dirPath);
-    const mdFiles = files.filter((file) => file.endsWith(".md"));
-    for (const file of mdFiles) {
-      await registerSkill(join7(dirPath, file));
+    const entries = await readdir5(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join9(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        const skillMdPath = join9(fullPath, "SKILL.md");
+        try {
+          await access(skillMdPath);
+          await registerSkill(skillMdPath, fullPath);
+        } catch {
+          const altMdPath = join9(fullPath, entry.name + ".md");
+          try {
+            await access(altMdPath);
+            await registerSkill(altMdPath, fullPath);
+          } catch {
+          }
+        }
+      } else if (entry.name.endsWith(".md")) {
+        await registerSkill(fullPath);
+      }
     }
   } catch (error) {
     console.error(`Error reading skills directory ${dirPath}:`, error);
@@ -2317,12 +3526,9 @@ async function loadSkills() {
   const currentFilePath = fileURLToPath(import.meta.url);
   const currentDir = dirname3(currentFilePath);
   const possiblePaths = [
-    // 源代码目录 (TypeScript)
-    join7(currentDir, "bundled"),
-    // 编译后的目录 (JavaScript in bin)
-    join7(dirname3(dirname3(currentDir)), "skills", "bundled"),
-    // 项目根目录的 skills
-    join7(process.cwd(), "skills", "bundled")
+    join9(currentDir, "bundled"),
+    join9(dirname3(dirname3(currentDir)), "skills", "bundled"),
+    join9(process.cwd(), "skills", "bundled")
   ];
   let skillsLoaded = false;
   for (const skillsPath of possiblePaths) {
@@ -2337,32 +3543,222 @@ async function loadSkills() {
     console.warn("Could not find skills directory in any of the expected locations");
     console.warn("Tried paths:", possiblePaths);
   }
+  const userSkillsPath = join9(process.cwd(), ".claude-code-lite", "skills");
+  if (await directoryExists(userSkillsPath)) {
+    console.log(`Loading user skills from: ${userSkillsPath}`);
+    await registerSkillsFromDirectory(userSkillsPath);
+  }
   return LoadedSkills;
 }
 function getLoadedSkills() {
   return LoadedSkills;
 }
-function shouldTriggerSkill(skill, prompt) {
+function shouldTriggerByKeyword(skill, prompt) {
   if (!skill.trigger || skill.trigger.length === 0) return false;
   const lowerPrompt = prompt.toLowerCase();
-  return skill.trigger.some(
-    (trigger) => lowerPrompt.includes(trigger.toLowerCase())
-  );
+  return skill.trigger.some((t) => lowerPrompt.includes(t.toLowerCase()));
+}
+function simpleGlobMatch(str, pattern) {
+  const regexStr = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "{{DOUBLESTAR}}").replace(/\*/g, "[^/]*").replace(/{{DOUBLESTAR}}/g, ".*").replace(/\?/g, "[^/]");
+  try {
+    const regex = new RegExp(`^${regexStr}$`, "i");
+    return regex.test(str);
+  } catch {
+    return false;
+  }
+}
+function shouldTriggerByPaths(skill, prompt) {
+  if (!skill.paths || skill.paths.length === 0) return false;
+  const lowerPrompt = prompt.toLowerCase();
+  for (const pattern of skill.paths) {
+    const fileRefs = lowerPrompt.match(/[\w/.-]+\.\w+/g) || [];
+    for (const ref of fileRefs) {
+      if (simpleGlobMatch(ref, pattern)) return true;
+    }
+  }
+  return false;
+}
+function shouldTriggerByDescription(skill, prompt) {
+  if (!skill.metadata.description) return false;
+  const descLower = skill.metadata.description.toLowerCase();
+  const promptWords = prompt.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  let matchCount = 0;
+  for (const word of promptWords) {
+    if (descLower.includes(word)) matchCount += 1;
+  }
+  return matchCount >= Math.max(1, Math.ceil(promptWords.length * 0.3));
 }
 function detectRelevantSkills(prompt) {
   const skills = getLoadedSkills();
-  return skills.filter((skill) => shouldTriggerSkill(skill, prompt));
+  return skills.filter((skill) => {
+    if (skill.metadata.disableModelInvocation) return false;
+    return shouldTriggerByKeyword(skill, prompt) || shouldTriggerByPaths(skill, prompt) || shouldTriggerByDescription(skill, prompt);
+  });
+}
+function findSkillByName(name) {
+  const lowerName = name.toLowerCase();
+  return LoadedSkills.find(
+    (s) => s.name.toLowerCase() === lowerName || s.name.toLowerCase().replace(/\s+/g, "-") === lowerName
+  );
+}
+async function loadSkillInstruction(skill) {
+  if (skill._instructionCache) return skill._instructionCache;
+  const references = [];
+  if (skill.dirPath) {
+    try {
+      const refDir = join9(skill.dirPath, "references");
+      const entries = await readdir5(refDir);
+      for (const entry of entries) {
+        if (entry.endsWith(".md") || entry.endsWith(".txt")) {
+          references.push(join9(refDir, entry));
+        }
+      }
+    } catch {
+    }
+  }
+  const instruction = {
+    content: skill.content,
+    references
+  };
+  skill._instructionCache = instruction;
+  return instruction;
+}
+function formatSkillMetadataForPrompt(skills) {
+  if (skills.length === 0) return "";
+  const lines = ["<available_skills>"];
+  for (const skill of skills) {
+    if (skill.metadata.disableModelInvocation) continue;
+    let line = `- ${skill.name}: ${skill.metadata.description || "No description"}`;
+    if (skill.metadata.argumentHint) {
+      line += ` (Usage: /${skill.name} ${skill.metadata.argumentHint})`;
+    }
+    lines.push(line);
+  }
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
+function formatSkillInstructionForPrompt(skill) {
+  const parts = [];
+  parts.push(`=== SKILL: ${skill.name} ===`);
+  if (skill.metadata.description) {
+    parts.push(`Description: ${skill.metadata.description}`);
+  }
+  parts.push("");
+  parts.push(skill.content);
+  if (skill.metadata.allowedTools && skill.metadata.allowedTools.length > 0) {
+    parts.push("");
+    parts.push(`Allowed tools: ${skill.metadata.allowedTools.join(", ")}`);
+  }
+  if (skill.dirPath) {
+    parts.push("");
+    parts.push(`Skill directory: ${skill.dirPath}`);
+    parts.push("Reference files, scripts, and templates are available in this directory.");
+    parts.push("Use Read tool to inspect reference files. Use Shell tool to execute scripts.");
+  }
+  parts.push("");
+  parts.push("INSTRUCTIONS: Follow the workflow outlined above. Complete ALL steps in order.");
+  return parts.join("\n");
+}
+
+// skills/skillTool.ts
+var SkillTool = {
+  name: "Skill",
+  inputSchema: null,
+  outputSchema: null,
+  async description(_input, _context) {
+    const skills = getLoadedSkills();
+    const metaList = formatSkillMetadataForPrompt(
+      skills.filter((s) => !s.metadata.disableModelInvocation)
+    );
+    return [
+      "Execute a skill within the main conversation. Use this tool when you need to invoke a specific skill by name.",
+      metaList
+    ].join("\n\n");
+  },
+  async call(args, context, canUseTool2, _parentMessage) {
+    const skill = findSkillByName(args.command);
+    if (!skill) {
+      return {
+        data: {
+          status: "not_found"
+        }
+      };
+    }
+    const instruction = await loadSkillInstruction(skill);
+    const formatted = formatSkillInstructionForPrompt(skill);
+    let fullInstruction = formatted;
+    if (args.arguments?.trim()) {
+      fullInstruction += `
+
+User arguments: ${args.arguments}`;
+    }
+    if (instruction.references.length > 0) {
+      fullInstruction += "\n\nAvailable reference files (read them if needed):";
+      for (const ref of instruction.references) {
+        fullInstruction += `
+- ${ref}`;
+      }
+    }
+    return {
+      data: {
+        status: "invoked",
+        skillName: skill.name,
+        instruction: fullInstruction
+      },
+      contextModifier: (ctx) => {
+        return {
+          ...ctx,
+          agentType: skill.metadata.agent || ctx.agentType
+        };
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3.command?.trim()) {
+      return { result: false, message: "Skill command name is required" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(_input, _context) {
+    return { behavior: "allow" };
+  },
+  isReadOnly() {
+    return true;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
+// tools/registry.ts
+function getTools() {
+  return [
+    ReadTool,
+    WriteTool,
+    EditTool,
+    ShellTool,
+    WebFetchTool,
+    WebSearchTool,
+    FileTreeTool,
+    SearchFilesTool,
+    AgentTool,
+    TeamTool,
+    SkillTool,
+    ImageUploadTool,
+    ImageAnalyzeTool,
+    ImageGenerateTool
+  ];
 }
 
 // runtime/query.ts
-function stringify(data) {
+function stringify3(data) {
   try {
     return JSON.stringify(data, null, 2);
   } catch {
     return String(data);
   }
 }
-function createAssistantMessage(blocks) {
+function createAssistantMessage3(blocks) {
   return {
     id: createId("assistant"),
     type: "assistant",
@@ -2370,14 +3766,14 @@ function createAssistantMessage(blocks) {
   };
 }
 function createAssistantTextMessage(text) {
-  return createAssistantMessage([
+  return createAssistantMessage3([
     {
       type: "text",
       text
     }
   ]);
 }
-function createToolResultMessage(toolUseId, content, isError = false) {
+function createToolResultMessage3(toolUseId, content, isError = false) {
   return {
     id: createId("tool-result"),
     type: "tool_result",
@@ -2555,25 +3951,141 @@ function getToolDefinitions() {
       }
     },
     {
+      name: "WebSearch",
+      description: "Search the web using DuckDuckGo and return results.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query." }
+        },
+        required: ["query"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "FileTree",
+      description: "List directory tree structure with configurable depth.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path." },
+          maxDepth: { type: "number", description: "Maximum depth to traverse." }
+        },
+        required: ["path"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "SearchFiles",
+      description: "Search files by name pattern (glob) or content (regex).",
+      parameters: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["files", "content"], description: "'files' for glob match, 'content' for regex search." },
+          pattern: { type: "string", description: "Glob pattern or regex." },
+          path: { type: "string", description: "Directory to search in." }
+        },
+        required: ["mode", "pattern"],
+        additionalProperties: false
+      }
+    },
+    {
       name: "Agent",
-      description: "Launch a simple subagent for delegated work.",
+      description: "Launch a subagent for delegated work. The subagent runs in its own context with independent tool access. Available subagent types: 'explore' (read-only codebase search), 'plan' (research for planning), 'reflect' (self-reflection and insight extraction), 'general-purpose' (full capabilities, default). Subagents cannot launch other subagents. Launch multiple agents concurrently when possible to maximize performance.",
       parameters: {
         type: "object",
         properties: {
           description: {
             type: "string",
-            description: "Short task description."
+            description: "A short (3-5 word) description of the task."
           },
           prompt: {
             type: "string",
-            description: "Prompt to send to the subagent."
+            description: "The task for the subagent to perform. Provide a highly detailed task description. Specify exactly what information the subagent should return in its final message."
           },
           subagentType: {
             type: "string",
-            description: "Optional subagent type or role name."
+            description: "Optional subagent type: 'explore' (fast read-only search), 'plan' (research), 'reflect' (self-reflection), or 'general-purpose' (default)."
           }
         },
         required: ["description", "prompt"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Team",
+      description: "Launch a team of specialized agents that work in parallel on a complex task. Available teams: 'code-review' (security + performance review), 'research' (codebase + documentation analysis). Team members run concurrently and results are synthesized by a lead agent.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamName: {
+            type: "string",
+            description: "Team to launch: 'code-review' or 'research'."
+          },
+          task: {
+            type: "string",
+            description: "The task for the team to work on."
+          }
+        },
+        required: ["teamName", "task"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Skill",
+      description: "Execute a named skill within the main conversation. Use when you need to invoke a specific skill by name. Skills provide structured workflows for common tasks. Invoke a skill by its name.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "Name of the skill to invoke (e.g. 'recipe-setup', 'github')."
+          },
+          arguments: {
+            type: "string",
+            description: "Optional arguments to pass to the skill."
+          }
+        },
+        required: ["command"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "ImageUpload",
+      description: "Upload an image (base64) and save it locally for analysis.",
+      parameters: {
+        type: "object",
+        properties: {
+          data: { type: "string", description: "Base64-encoded image data." },
+          filename: { type: "string", description: "Filename to save as." }
+        },
+        required: ["data", "filename"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "ImageAnalyze",
+      description: "Analyze an image using vision-capable LLM models. Supports OpenAI and Anthropic providers.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path to the image file." },
+          prompt: { type: "string", description: "What to analyze in the image." }
+        },
+        required: ["path", "prompt"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "ImageGenerate",
+      description: "Generate an image using DALL-E or Stability AI.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Description of the image to generate." },
+          provider: { type: "string", enum: ["openai", "stability"], description: "Image generation provider." }
+        },
+        required: ["prompt"],
         additionalProperties: false
       }
     }
@@ -2582,9 +4094,9 @@ function getToolDefinitions() {
 async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
   const tool = findToolByName(getTools(), toolUseBlock.name);
   if (!tool) {
-    yield createToolResultMessage(
+    yield createToolResultMessage3(
       toolUseBlock.id,
-      stringify({ error: `Unknown tool ${toolUseBlock.name}` }),
+      stringify3({ error: `Unknown tool ${toolUseBlock.name}` }),
       true
     );
     return;
@@ -2598,9 +4110,9 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
     toolUseBlock.id
   );
   if (permission.behavior === "deny") {
-    yield createToolResultMessage(
+    yield createToolResultMessage3(
       toolUseBlock.id,
-      stringify({ error: permission.message }),
+      stringify3({ error: permission.message }),
       true
     );
     return;
@@ -2612,9 +4124,9 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
       message: permission.message
     });
     if (!allowed) {
-      yield createToolResultMessage(
+      yield createToolResultMessage3(
         toolUseBlock.id,
-        stringify({ error: `User rejected ${toolUseBlock.name}` }),
+        stringify3({ error: `User rejected ${toolUseBlock.name}` }),
         true
       );
       return;
@@ -2632,17 +4144,20 @@ async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
       params.canUseTool,
       toolUseMessage
     );
-    yield createToolResultMessage(toolUseBlock.id, stringify(result.data));
+    yield createToolResultMessage3(toolUseBlock.id, stringify3(result.data));
     if (result.extraMessages) {
       for (const extraMessage of result.extraMessages) {
         yield extraMessage;
       }
     }
+    if (result.contextModifier) {
+      params.toolUseContext = result.contextModifier(params.toolUseContext);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    yield createToolResultMessage(
+    yield createToolResultMessage3(
       toolUseBlock.id,
-      stringify({ error: message }),
+      stringify3({ error: message }),
       true
     );
   }
@@ -2655,7 +4170,7 @@ async function* queryWithPlanner(params) {
   }
   const introMessage = createAssistantTextMessage(planned.intro);
   yield introMessage;
-  const toolUseMessage = createAssistantMessage([
+  const toolUseMessage = createAssistantMessage3([
     {
       type: "tool_use",
       id: createId("tool-use"),
@@ -2698,6 +4213,19 @@ async function* queryWithLlm(params) {
   const conversation = [...params.messages];
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+  try {
+    const memory = await getMemoryForSystemPrompt(params.toolUseContext.cwd);
+    if (memory.trim()) {
+      systemPrompt.push(memory);
+    }
+  } catch {
+  }
+  const skillsMeta = formatSkillMetadataForPrompt(
+    detectRelevantSkills(params.prompt).length > 0 ? [] : getLoadedSkills().filter((s) => !s.metadata.disableModelInvocation)
+  );
+  if (skillsMeta.trim()) {
+    systemPrompt.push(skillsMeta);
+  }
   for (let turn = 0; turn < maxTurns; turn += 1) {
     const llmResponse = await runLlmTurn({
       messages: conversation,
@@ -2724,7 +4252,7 @@ async function* queryWithLlm(params) {
         input: toolCall.input
       });
     }
-    const assistantMessage = createAssistantMessage(assistantBlocks);
+    const assistantMessage = createAssistantMessage3(assistantBlocks);
     conversation.push(assistantMessage);
     yield assistantMessage;
     const toolCalls = assistantBlocks.filter(
@@ -2808,7 +4336,7 @@ async function* executeWorkMap(workMap, params) {
             name: step.toolName,
             input: toolInput
           };
-          const toolUseMessage = createAssistantMessage([toolUseBlock]);
+          const toolUseMessage = createAssistantMessage3([toolUseBlock]);
           yield toolUseMessage;
           for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
             yield message;
@@ -2853,14 +4381,17 @@ async function* query(params) {
       console.error("[WorkMap] Parse failed, falling back", e);
     }
     let enhancedSystemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+    const instruction = await loadSkillInstruction(skill);
     enhancedSystemPrompt.push(
       `
 
-=== RELEVANT SKILL: ${skill.name} ===
-${skill.content}
-
-INSTRUCTIONS: Follow the step-by-step workflow outlined in the skill above.Make sure to complete ALL steps in order, including: property, alignsetting, all mark points, etc.Do not skip any steps! Execute the full workflow automatically without asking for confirmation.`
+${formatSkillInstructionForPrompt(skill)}`
     );
+    if (instruction.references.length > 0) {
+      enhancedSystemPrompt.push(
+        "\nReference files available in skill directory (use Read tool if needed): " + instruction.references.join(", ")
+      );
+    }
     const enhancedParams = {
       ...params,
       systemPrompt: enhancedSystemPrompt
@@ -3589,7 +5120,7 @@ async function executeCliCommand(cwd2, argv, autoApprove = false, hooks) {
       }
       const content = options.format === "json" ? formatJsonExport(info, messages) : formatMarkdownExport(info, messages);
       if (options.outputPath) {
-        await writeFile6(options.outputPath, `${content}
+        await writeFile8(options.outputPath, `${content}
 `, "utf8");
       }
       return {
@@ -4750,8 +6281,16 @@ function renderScreen(state, runtimeRef) {
     "",
     `${state.theme === "dark" ? import_picocolors.default.gray("\u2500".repeat(width)) : import_picocolors.default.gray("\u2500".repeat(width))}`,
     state.status.includes("Error") || state.status.includes("failed") ? `${state.theme === "dark" ? import_picocolors.default.red(`Status: ${state.status}`) : import_picocolors.default.redBright(`Status: ${state.status}`)}` : state.busy ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Status: ${state.status}`) : import_picocolors.default.yellowBright(`Status: ${state.status}`)}` : `${state.theme === "dark" ? import_picocolors.default.green(`Status: ${state.status}`) : import_picocolors.default.greenBright(`Status: ${state.status}`)}`,
-    `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
-    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : `${state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) + import_picocolors.default.cyan(` ${state.inputBuffer}`) : import_picocolors.default.bgCyan(import_picocolors.default.white("Siok>")) + import_picocolors.default.cyanBright(` ${state.inputBuffer}`)}`,
+    `${import_picocolors.default.gray(`Keys: Enter submit \xB7 Up/Down backtrace/forward \xB7 PgUp/PgDn page \xB7 Left/Right move cursor \xB7 Ctrl+E expand \xB7 Ctrl+G collapse \xB7 Ctrl+F filter \xB7 Esc clear \xB7 Ctrl+C quit`)}`,
+    state.modal ? `${state.theme === "dark" ? import_picocolors.default.yellow(`Modal active`) : import_picocolors.default.yellowBright(`Modal active`)}` : (() => {
+      const prefix = state.inputBuffer.slice(0, state.cursorPosition);
+      const cursorChar = state.inputBuffer[state.cursorPosition] || " ";
+      const afterCursor = state.inputBuffer.slice(state.cursorPosition + 1);
+      const prompt = state.theme === "dark" ? import_picocolors.default.bgCyan(import_picocolors.default.black("Siok>")) : import_picocolors.default.bgCyan(import_picocolors.default.white("Siok>"));
+      const ESC = String.fromCharCode(27);
+      const cursorHighlight = state.theme === "dark" ? `${ESC}[47m${ESC}[30m${cursorChar}${ESC}[0m` : `${ESC}[40m${ESC}[37m${cursorChar}${ESC}[0m`;
+      return `${prompt} ${import_picocolors.default.cyan(prefix)}${cursorHighlight}${import_picocolors.default.cyan(afterCursor)}`;
+    })(),
     // 渲染搜索匹配的命令，并高亮当前选中的命令
     ...helpMessages.length > 0 ? helpMessages : ""
   ];
@@ -5130,7 +6669,8 @@ async function startTui(options) {
     historyIndex: -1,
     workMap: null,
     workMapExecutor: null,
-    selectedWorkMapStep: null
+    selectedWorkMapStep: null,
+    cursorPosition: 0
   };
   const availableSessions = await listSessions(options.cwd);
   if (availableSessions.length > 0) {
@@ -5570,6 +7110,7 @@ async function startTui(options) {
       state.isSearching = false;
       state.searchMatches = [];
       state.selectedMatchIndex = -1;
+      state.cursorPosition = 0;
       state.inputBuffer = "";
       void submitPrompt(current);
       state.history.push(current);
@@ -5577,15 +7118,23 @@ async function startTui(options) {
       return;
     }
     if (key.name === "backspace") {
-      const chars = Array.from(state.inputBuffer);
-      chars.pop();
-      state.inputBuffer = chars.join("");
-      if (!state.inputBuffer.startsWith("/")) {
+      if (state.cursorPosition > 0) {
+        const chars = Array.from(state.inputBuffer);
+        chars.splice(state.cursorPosition - 1, 1);
+        state.inputBuffer = chars.join("");
+        state.cursorPosition -= 1;
+      }
+      if (state.inputBuffer.length > 0 && !state.inputBuffer.startsWith("/")) {
         state.isSearching = false;
         state.searchMatches = [];
         state.selectedMatchIndex = -1;
         state.status = "Ready";
-      } else {
+      } else if (state.inputBuffer.length === 0) {
+        state.isSearching = false;
+        state.searchMatches = [];
+        state.selectedMatchIndex = -1;
+        state.status = "Ready";
+      } else if (state.inputBuffer.startsWith("/")) {
         const matches = autoCompleteSlashCommand(state.inputBuffer);
         if (matches) {
           state.searchMatches = matches;
@@ -5630,6 +7179,17 @@ async function startTui(options) {
       if (key.name === "down") {
         state.historyIndex = state.historyIndex == state.history.length ? state.historyIndex : state.historyIndex + 1;
         state.inputBuffer = state.historyIndex < state.history.length ? state.history[state.historyIndex] : "";
+        state.cursorPosition = state.inputBuffer.length;
+        renderScreen(state, runtimeRef);
+        return;
+      }
+      if (key.name === "left") {
+        state.cursorPosition = Math.max(0, state.cursorPosition - 1);
+        renderScreen(state, runtimeRef);
+        return;
+      }
+      if (key.name === "right") {
+        state.cursorPosition = Math.min(state.inputBuffer.length, state.cursorPosition + 1);
         renderScreen(state, runtimeRef);
         return;
       }
@@ -5660,7 +7220,8 @@ async function startTui(options) {
     if (!str || key.ctrl || key.meta) {
       return;
     }
-    state.inputBuffer += str;
+    state.inputBuffer = state.inputBuffer.slice(0, state.cursorPosition) + str + state.inputBuffer.slice(state.cursorPosition);
+    state.cursorPosition += str.length;
     if (state.inputBuffer.startsWith("/")) {
       state.isSearching = true;
       const matches = autoCompleteSlashCommand(state.inputBuffer);

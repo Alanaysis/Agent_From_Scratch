@@ -1,0 +1,688 @@
+import { createId } from "../shared/ids";
+import { findToolByName, } from "../tools/Tool";
+import { getTools } from "../tools/registry";
+import { getLlmConfigFromEnv, runLlmTurn } from "./llm";
+import { detectRelevantSkills, formatSkillMetadataForPrompt, formatSkillInstructionForPrompt, loadSkillInstruction, getLoadedSkills } from "../skills/loader";
+import { getMemoryForSystemPrompt } from "../storage/memory";
+export { executeToolCall, executeWorkMap };
+export function stringify(data) {
+    try {
+        return JSON.stringify(data, null, 2);
+    }
+    catch {
+        return String(data);
+    }
+}
+export function truncate(value, maxLength = 500) {
+    if (!value)
+        return '';
+    if (value.length <= maxLength)
+        return value;
+    return value.slice(0, maxLength) + '\n...';
+}
+export function summarizeShellResult(result) {
+    const standardFields = ['stdout', 'stderr', 'exitCode'];
+    const isStandardFormat = result != null &&
+        typeof result === 'object' &&
+        standardFields.every((field) => field in result);
+    if (isStandardFormat) {
+        const r = result;
+        const stdout = typeof r.stdout === 'string' ? r.stdout : '';
+        const stderr = typeof r.stderr === 'string' ? r.stderr : '';
+        const exitCode = typeof r.exitCode === 'number' ? r.exitCode : 'unknown';
+        let res = `命令已执行，退出码：${exitCode}。`;
+        if (stdout) {
+            res += '\n\nstdout:\n' + truncate(stdout, 800);
+        }
+        if (stderr) {
+            res += '\n\nstderr:\n' + truncate(stderr, 400);
+        }
+        return res;
+    }
+    // Fallback: stringify the result
+    const str = result === undefined
+        ? ''
+        : result == null
+            ? String(result)
+            : JSON.stringify(result, null, 2);
+    return `命令已执行。\n\n${truncate(str, 1200)}`;
+}
+export function summarizeReadResult(result) {
+    const content = result != null && typeof result === 'object' && 'content' in result
+        ? result.content
+        : result;
+    const str = content == null || content === ''
+        ? String(content)
+        : typeof content === 'string'
+            ? content
+            : JSON.stringify(content, null, 2);
+    return `我已经读取了目标内容。下面是预览：\n\n${truncate(str, 1200)}`;
+}
+function createAssistantMessage(blocks) {
+    return {
+        id: createId("assistant"),
+        type: "assistant",
+        content: blocks,
+    };
+}
+function createAssistantTextMessage(text) {
+    return createAssistantMessage([
+        {
+            type: "text",
+            text,
+        },
+    ]);
+}
+function createToolResultMessage(toolUseId, content, isError = false) {
+    return {
+        id: createId("tool-result"),
+        type: "tool_result",
+        toolUseId,
+        content,
+        isError,
+    };
+}
+function planPrompt(prompt) {
+    const trimmed = prompt.trim();
+    const readMatch = trimmed.match(/^read\s+(.+)$/i);
+    if (readMatch) {
+        const path = readMatch[1].trim();
+        return {
+            kind: "tool",
+            toolName: "Read",
+            input: { path },
+            intro: `我来读取 ${path} 的内容。`,
+            summarizeResult: () => `读取完成：\`${path}\``,
+            summarizeError: (message) => `读取 \`${path}\` 失败：${message}`,
+        };
+    }
+    const writeMatch = trimmed.match(/^write\s+(\S+)\s+(.+)$/s);
+    if (writeMatch) {
+        const path = writeMatch[1].trim();
+        const content = writeMatch[2].trimStart();
+        return {
+            kind: "tool",
+            toolName: "Write",
+            input: { path, content },
+            intro: `我来写入 ${path}。`,
+            summarizeResult: () => `写入完成：\`${path}\``,
+            summarizeError: (message) => `写入 \`${path}\` 失败：${message}`,
+        };
+    }
+    const editMatch = trimmed.match(/^edit\s+(\S+)\s+(.+?)\s*=>\s*(.+)$/s);
+    if (editMatch) {
+        const path = editMatch[1].trim();
+        const oldString = editMatch[2].trim();
+        const newString = editMatch[3].trim();
+        return {
+            kind: "tool",
+            toolName: "Edit",
+            input: { path, oldString, newString },
+            intro: `我来编辑 ${path} 的内容。`,
+            summarizeResult: () => `编辑完成：\`${path}\` 已更新。`,
+            summarizeError: (message) => `编辑 \`${path}\` 失败：${message}`,
+        };
+    }
+    const runMatch = trimmed.match(/^run\s+(.+)$/i);
+    if (runMatch) {
+        const command = runMatch[1].trim();
+        return {
+            kind: "tool",
+            toolName: "Shell",
+            input: { command },
+            intro: `我来执行 \`${command}\`。`,
+            summarizeResult: () => `执行完成：\`${command}\``,
+            summarizeError: (message) => `执行 \`${command}\` 失败：${message}`,
+        };
+    }
+    const fetchMatch = trimmed.match(/^fetch\s+(.+?)(?:\s+(.+))?$/i);
+    if (fetchMatch) {
+        const url = fetchMatch[1].trim();
+        const prompt = fetchMatch[2]?.trim() ?? "";
+        return {
+            kind: "tool",
+            toolName: "WebFetch",
+            input: { url, prompt },
+            intro: `我来获取 ${url} 的内容。`,
+            summarizeResult: () => `获取完成：${url}`,
+            summarizeError: (message) => `获取 ${url} 失败：${message}`,
+        };
+    }
+    return {
+        kind: "text",
+        text: [
+            "我现在支持一组本地 agent 动作，但当前没有可用的远程 LLM 配置。",
+            "你可以设置这些环境变量来接入兼容 OpenAI Chat Completions 的模型：",
+            "- `CCL_LLM_API_KEY`",
+            "- `CCL_LLM_MODEL`",
+            "- `CCL_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
+            "在未配置 LLM 时，也可以直接给我这些格式的提示：",
+            "- `read README.md`",
+            "- `run pwd`",
+            "- `fetch https://example.com`",
+            "- `write notes.txt hello world`",
+            "- `edit notes.txt hello => hi`",
+            "也可以输入 `/help` 查看 TUI 内建命令。",
+        ].join("\n"),
+    };
+}
+function getDefaultSystemPrompt() {
+    return [
+        "You are Claude Code-lite, a local CLI coding assistant.",
+        "Use tools when the user asks you to inspect files, edit files, run shell commands, fetch URLs, or delegate to an agent.",
+        "Prefer concise Chinese responses for user-facing text.",
+        "When a tool is needed, emit tool calls instead of describing what you would do.",
+        "After receiving tool results, continue until you can answer the user clearly.",
+    ];
+}
+function getToolDefinitions() {
+    return [
+        {
+            name: "Read",
+            description: "Read a text file from the current working directory.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: {
+                        type: "string",
+                        description: "Relative or absolute file path.",
+                    },
+                },
+                required: ["path"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Write",
+            description: "Write text content to a file, creating or overwriting it.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "File path to write." },
+                    content: { type: "string", description: "Full file content." },
+                },
+                required: ["path", "content"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Edit",
+            description: "Replace one string with another inside a file.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "File path to edit." },
+                    oldString: {
+                        type: "string",
+                        description: "Existing text to replace.",
+                    },
+                    newString: { type: "string", description: "Replacement text." },
+                },
+                required: ["path", "oldString", "newString"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Shell",
+            description: "Run a shell command in the current working directory.",
+            parameters: {
+                type: "object",
+                properties: {
+                    command: { type: "string", description: "Shell command to execute." },
+                },
+                required: ["command"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "WebFetch",
+            description: "Fetch a URL and return a processed text snippet.",
+            parameters: {
+                type: "object",
+                properties: {
+                    url: { type: "string", description: "HTTP or HTTPS URL." },
+                    prompt: {
+                        type: "string",
+                        description: "Optional guidance describing what to extract from the page.",
+                    },
+                },
+                required: ["url", "prompt"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "WebSearch",
+            description: "Search the web using DuckDuckGo and return results.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "Search query." },
+                },
+                required: ["query"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "FileTree",
+            description: "List directory tree structure with configurable depth.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "Directory path." },
+                    maxDepth: { type: "number", description: "Maximum depth to traverse." },
+                },
+                required: ["path"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "SearchFiles",
+            description: "Search files by name pattern (glob) or content (regex).",
+            parameters: {
+                type: "object",
+                properties: {
+                    mode: { type: "string", enum: ["files", "content"], description: "'files' for glob match, 'content' for regex search." },
+                    pattern: { type: "string", description: "Glob pattern or regex." },
+                    path: { type: "string", description: "Directory to search in." },
+                },
+                required: ["mode", "pattern"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Agent",
+            description: "Launch a subagent for delegated work. The subagent runs in its own context with independent tool access. " +
+                "Available subagent types: 'explore' (read-only codebase search), 'plan' (research for planning), " +
+                "'reflect' (self-reflection and insight extraction), 'general-purpose' (full capabilities, default). " +
+                "Subagents cannot launch other subagents. " +
+                "Launch multiple agents concurrently when possible to maximize performance.",
+            parameters: {
+                type: "object",
+                properties: {
+                    description: {
+                        type: "string",
+                        description: "A short (3-5 word) description of the task.",
+                    },
+                    prompt: {
+                        type: "string",
+                        description: "The task for the subagent to perform. Provide a highly detailed task description. " +
+                            "Specify exactly what information the subagent should return in its final message.",
+                    },
+                    subagentType: {
+                        type: "string",
+                        description: "Optional subagent type: 'explore' (fast read-only search), 'plan' (research), 'reflect' (self-reflection), or 'general-purpose' (default).",
+                    },
+                },
+                required: ["description", "prompt"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Team",
+            description: "Launch a team of specialized agents that work in parallel on a complex task. " +
+                "Available teams: 'code-review' (security + performance review), 'research' (codebase + documentation analysis). " +
+                "Team members run concurrently and results are synthesized by a lead agent.",
+            parameters: {
+                type: "object",
+                properties: {
+                    teamName: {
+                        type: "string",
+                        description: "Team to launch: 'code-review' or 'research'.",
+                    },
+                    task: {
+                        type: "string",
+                        description: "The task for the team to work on.",
+                    },
+                },
+                required: ["teamName", "task"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Skill",
+            description: "Execute a named skill within the main conversation. Use when you need to invoke a specific skill by name. " +
+                "Skills provide structured workflows for common tasks. Invoke a skill by its name.",
+            parameters: {
+                type: "object",
+                properties: {
+                    command: {
+                        type: "string",
+                        description: "Name of the skill to invoke (e.g. 'recipe-setup', 'github').",
+                    },
+                    arguments: {
+                        type: "string",
+                        description: "Optional arguments to pass to the skill.",
+                    },
+                },
+                required: ["command"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "ImageUpload",
+            description: "Upload an image (base64) and save it locally for analysis.",
+            parameters: {
+                type: "object",
+                properties: {
+                    data: { type: "string", description: "Base64-encoded image data." },
+                    filename: { type: "string", description: "Filename to save as." },
+                },
+                required: ["data", "filename"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "ImageAnalyze",
+            description: "Analyze an image using vision-capable LLM models. Supports OpenAI and Anthropic providers.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "Path to the image file." },
+                    prompt: { type: "string", description: "What to analyze in the image." },
+                },
+                required: ["path", "prompt"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "ImageGenerate",
+            description: "Generate an image using DALL-E or Stability AI.",
+            parameters: {
+                type: "object",
+                properties: {
+                    prompt: { type: "string", description: "Description of the image to generate." },
+                    provider: { type: "string", enum: ["openai", "stability"], description: "Image generation provider." },
+                },
+                required: ["prompt"],
+                additionalProperties: false,
+            },
+        },
+    ];
+}
+async function* executeToolCall(params, toolUseMessage, toolUseBlock) {
+    const tool = findToolByName(getTools(), toolUseBlock.name);
+    if (!tool) {
+        yield createToolResultMessage(toolUseBlock.id, stringify({ error: `Unknown tool ${toolUseBlock.name}` }), true);
+        return;
+    }
+    let effectiveInput = toolUseBlock.input;
+    const permission = await params.canUseTool(tool, effectiveInput, params.toolUseContext, toolUseMessage, toolUseBlock.id);
+    if (permission.behavior === "deny") {
+        yield createToolResultMessage(toolUseBlock.id, stringify({ error: permission.message }), true);
+        return;
+    }
+    if (permission.behavior === "ask") {
+        const allowed = await params.onPermissionRequest?.({
+            toolName: toolUseBlock.name,
+            input: effectiveInput,
+            message: permission.message,
+        });
+        if (!allowed) {
+            yield createToolResultMessage(toolUseBlock.id, stringify({ error: `User rejected ${toolUseBlock.name}` }), true);
+            return;
+        }
+        if (permission.updatedInput) {
+            effectiveInput = permission.updatedInput;
+        }
+    }
+    else if (permission.updatedInput) {
+        effectiveInput = permission.updatedInput;
+    }
+    try {
+        const result = await tool.call(effectiveInput, params.toolUseContext, params.canUseTool, toolUseMessage);
+        yield createToolResultMessage(toolUseBlock.id, stringify(result.data));
+        if (result.extraMessages) {
+            for (const extraMessage of result.extraMessages) {
+                yield extraMessage;
+            }
+        }
+        if (result.contextModifier) {
+            params.toolUseContext = result.contextModifier(params.toolUseContext);
+        }
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        yield createToolResultMessage(toolUseBlock.id, stringify({ error: message }), true);
+    }
+}
+async function* queryWithPlanner(params) {
+    const planned = planPrompt(params.prompt);
+    if (planned.kind === "text") {
+        yield createAssistantTextMessage(planned.text);
+        return;
+    }
+    const introMessage = createAssistantTextMessage(planned.intro);
+    yield introMessage;
+    const toolUseMessage = createAssistantMessage([
+        {
+            type: "tool_use",
+            id: createId("tool-use"),
+            name: planned.toolName,
+            input: planned.input,
+        },
+    ]);
+    yield toolUseMessage;
+    const toolUseBlock = toolUseMessage.content[0];
+    if (toolUseBlock.type !== "tool_use") {
+        yield createAssistantTextMessage("内部错误：tool_use block 缺失。");
+        return;
+    }
+    let toolResultMessage = null;
+    for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
+        toolResultMessage =
+            message.type === "tool_result" ? message : toolResultMessage;
+        yield message;
+    }
+    if (!toolResultMessage) {
+        yield createAssistantTextMessage(`执行 ${planned.toolName} 时没有产生结果。`);
+        return;
+    }
+    if (toolResultMessage.isError) {
+        const content = JSON.parse(toolResultMessage.content);
+        yield createAssistantTextMessage(planned.summarizeError(content.error ?? "Unknown error"));
+        return;
+    }
+    const result = JSON.parse(toolResultMessage.content);
+    yield createAssistantTextMessage(planned.summarizeResult(result));
+}
+async function* queryWithLlm(params) {
+    const conversation = [...params.messages];
+    const maxTurns = params.maxTurns ?? 8;
+    const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+    try {
+        const memory = await getMemoryForSystemPrompt(params.toolUseContext.cwd);
+        if (memory.trim()) {
+            systemPrompt.push(memory);
+        }
+    }
+    catch {
+        // memory loading is best-effort
+    }
+    const skillsMeta = formatSkillMetadataForPrompt(detectRelevantSkills(params.prompt).length > 0
+        ? []
+        : getLoadedSkills().filter((s) => !s.metadata.disableModelInvocation));
+    if (skillsMeta.trim()) {
+        systemPrompt.push(skillsMeta);
+    }
+    for (let turn = 0; turn < maxTurns; turn += 1) {
+        const llmResponse = await runLlmTurn({
+            messages: conversation,
+            systemPrompt,
+            tools: getToolDefinitions(),
+            onTextDelta: params.onAssistantTextDelta,
+        });
+        if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
+            yield createAssistantTextMessage("模型没有返回任何内容。");
+            return;
+        }
+        const assistantBlocks = [];
+        if (llmResponse.text) {
+            assistantBlocks.push({
+                type: "text",
+                text: llmResponse.text,
+            });
+        }
+        for (const toolCall of llmResponse.toolCalls) {
+            assistantBlocks.push({
+                type: "tool_use",
+                id: toolCall.id,
+                name: toolCall.name,
+                input: toolCall.input,
+            });
+        }
+        const assistantMessage = createAssistantMessage(assistantBlocks);
+        conversation.push(assistantMessage);
+        yield assistantMessage;
+        const toolCalls = assistantBlocks.filter((block) => block.type === "tool_use");
+        if (toolCalls.length === 0) {
+            return;
+        }
+        for (const toolCall of toolCalls) {
+            for await (const message of executeToolCall(params, assistantMessage, toolCall)) {
+                conversation.push(message);
+                yield message;
+            }
+        }
+    }
+    yield createAssistantTextMessage("达到最大工具轮次限制，已停止继续执行。");
+}
+function replaceParams(input, values) {
+    if (typeof input === 'string') {
+        let result = input;
+        for (const [key, value] of Object.entries(values)) {
+            const regex = new RegExp(`\\{${key}\\}`, 'g');
+            result = result.replace(regex, String(value));
+        }
+        return result;
+    }
+    else if (Array.isArray(input)) {
+        return input.map(item => replaceParams(item, values));
+    }
+    else if (typeof input === 'object' && input !== null) {
+        const result = {};
+        for (const key of Object.keys(input)) {
+            result[key] = replaceParams(input[key], values);
+        }
+        return result;
+    }
+    return input;
+}
+async function* executeWorkMap(workMap, params) {
+    yield createAssistantTextMessage(`🧭 检测到技能 "${workMap.name}"，正在生成工作图...\n\n` +
+        `共 ${workMap.phases.length} 个阶段，${workMap.steps.length} 个步骤`);
+    if (params.onWorkMapUpdate) {
+        params.onWorkMapUpdate(workMap);
+    }
+    // 收集参数值
+    let collectedValues = {};
+    if (workMap.globalParams && workMap.globalParams.length > 0) {
+        if (params.onSpecRequest) {
+            collectedValues = await params.onSpecRequest({
+                skillId: workMap.skillName,
+                params: workMap.globalParams,
+            });
+            workMap.globalParamValues = collectedValues;
+        }
+    }
+    let completedCount = 0;
+    for (const phase of workMap.phases) {
+        for (const stepId of phase.stepIds) {
+            const step = workMap.steps.find((s) => s.id === stepId);
+            if (!step)
+                continue;
+            step.status = 'running';
+            if (params.onWorkMapUpdate) {
+                params.onWorkMapUpdate(workMap);
+            }
+            yield createAssistantTextMessage(`[${phase.name}] 执行: ${step.name}`);
+            try {
+                if (step.toolName) {
+                    // 替换参数值到工具输入
+                    let toolInput = step.toolInputTemplate || {};
+                    if (Object.keys(collectedValues).length > 0) {
+                        toolInput = replaceParams(toolInput, collectedValues);
+                    }
+                    const toolUseBlock = {
+                        type: 'tool_use',
+                        id: createId('tool-use'),
+                        name: step.toolName,
+                        input: toolInput,
+                    };
+                    const toolUseMessage = createAssistantMessage([toolUseBlock]);
+                    yield toolUseMessage;
+                    for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
+                        yield message;
+                    }
+                }
+                step.status = 'completed';
+                completedCount++;
+            }
+            catch (error) {
+                step.status = 'failed';
+                step.error = error instanceof Error ? error.message : String(error);
+                yield createAssistantTextMessage(`⚠️ 步骤 "${step.name}" 执行失败: ${step.error}`);
+                if (params.onWorkMapUpdate) {
+                    params.onWorkMapUpdate(workMap);
+                }
+                break;
+            }
+            if (params.onWorkMapUpdate) {
+                params.onWorkMapUpdate(workMap);
+            }
+        }
+    }
+    yield createAssistantTextMessage(`\n🎉 WorkMap "${workMap.name}" 执行完成！\n\n` +
+        `✅ 共完成 ${completedCount} 个步骤`);
+}
+export async function* query(params) {
+    const relevantSkills = detectRelevantSkills(params.prompt);
+    if (relevantSkills.length > 0) {
+        const skill = relevantSkills[0];
+        try {
+            const workMap = { steps: [] };
+            if (workMap.steps.length > 0) {
+                yield* executeWorkMap(workMap, params);
+                return;
+            }
+        }
+        catch (e) {
+            console.error('[WorkMap] Parse failed, falling back', e);
+        }
+        let enhancedSystemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+        const instruction = await loadSkillInstruction(skill);
+        enhancedSystemPrompt.push(`\n\n${formatSkillInstructionForPrompt(skill)}`);
+        if (instruction.references.length > 0) {
+            enhancedSystemPrompt.push('\nReference files available in skill directory (use Read tool if needed): ' +
+                instruction.references.join(', '));
+        }
+        const enhancedParams = {
+            ...params,
+            systemPrompt: enhancedSystemPrompt,
+        };
+        if (!getLlmConfigFromEnv()) {
+            yield* queryWithPlanner(enhancedParams);
+            return;
+        }
+        try {
+            yield* queryWithLlm(enhancedParams);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            yield createAssistantTextMessage(`LLM 调用失败，已回退到本地 planner。\n\n${message}`);
+            yield* queryWithPlanner(enhancedParams);
+        }
+        return;
+    }
+    if (!getLlmConfigFromEnv()) {
+        yield* queryWithPlanner(params);
+        return;
+    }
+    try {
+        yield* queryWithLlm(params);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        yield createAssistantTextMessage(`LLM 调用失败，已回退到本地 planner。\n\n${message}`);
+        yield* queryWithPlanner(params);
+    }
+}

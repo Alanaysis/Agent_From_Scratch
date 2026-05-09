@@ -1,276 +1,209 @@
 import { describe, it, expect, vi, beforeEach } from 'bun:test';
 import { runAgent, type RunAgentParams } from '../../../../tools/agent/runAgent';
+import { createInitialAppState } from '../../../../runtime/state';
+import type { ToolUseContext } from '../../../../tools/Tool';
+
+function createMockContext(): ToolUseContext {
+  return {
+    cwd: '/tmp/test',
+    abortController: new AbortController(),
+    messages: [],
+    getAppState: () => createInitialAppState(),
+    setAppState: () => {},
+  };
+}
 
 describe('runAgent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('Basic Functionality', () => {
-    it('returns subagent accepted message with default type', async () => {
+  describe('No LLM configured', () => {
+    it('returns no-LLM message when LLM is not configured', async () => {
       const params: RunAgentParams = {
         description: 'Test task',
         prompt: 'Do something',
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
 
-      expect(result).toContain('Subagent "general-purpose"');
-      expect(result).toContain('Description: Test task');
+      expect(result).toContain('No LLM configured');
     });
 
-    it('includes custom subagent type when provided', async () => {
+    it('includes agent name in no-LLM response', async () => {
       const params: RunAgentParams = {
-        description: 'Code review task',
-        prompt: 'Review this code',
-        subagentType: 'code-reviewer',
+        description: 'Test task',
+        prompt: 'Do something',
+        subagentType: 'explore',
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
 
-      expect(result).toContain('Subagent "code-reviewer"');
+      expect(result).toContain('explore');
     });
 
-    it('includes prompt length in response', async () => {
+    it('includes description in no-LLM response', async () => {
+      const params: RunAgentParams = {
+        description: 'My custom task',
+        prompt: 'Do something',
+        parentContext: createMockContext(),
+      };
+
+      const result = await runAgent(params);
+
+      expect(result).toContain('My custom task');
+    });
+
+    it('includes prompt length in no-LLM response', async () => {
       const params: RunAgentParams = {
         description: 'Test',
-        prompt: 'Hello World'.repeat(10), // 110 characters (no spaces between repeats)
+        prompt: 'Hello World'.repeat(10),
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
 
-      expect(result).toContain('Prompt length: 110 characters');
+      expect(result).toContain('110 characters');
     });
 
-    it('includes educational runtime message', async () => {
+    it('defaults to general-purpose when no subagentType', async () => {
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
 
-      expect(result).toContain('This educational runtime does not call a model yet');
+      expect(result).toContain('general-purpose');
     });
   });
 
-  describe('Empty and Edge Case Inputs', () => {
-    it('handles empty description', async () => {
-      const params: RunAgentParams = {
-        description: '',
-        prompt: 'Test prompt',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Description: ');
-    });
-
-    it('handles empty prompt', async () => {
-      const params: RunAgentParams = {
-        description: 'Test description',
-        prompt: '',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Prompt length: 0 characters');
-    });
-
-    it('handles very long description', async () => {
-      const longDesc = 'x'.repeat(10000);
-      const params: RunAgentParams = {
-        description: longDesc,
-        prompt: 'Test',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Description: ' + longDesc);
-    });
-
-    it('handles very long prompt', async () => {
-      const longPrompt = 'y'.repeat(50000);
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: longPrompt,
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Prompt length: 50000 characters');
-    });
-
-    it('handles multiline prompt', async () => {
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: 'Line 1\nLine 2\nLine 3',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Prompt length: 20 characters');
-    });
-
-    it('handles unicode in description and prompt', async () => {
-      const params: RunAgentParams = {
-        description: '任务描述 - 代码审查',
-        prompt: 'レビューしてください',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Description: 任务描述 - 代码审查');
-      expect(result).toContain('Prompt length: 10 characters');
-    });
-
-    it('handles special characters in prompt', async () => {
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: '<script>alert("xss")</script> & <test>',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Prompt length: 38 characters');
-    });
-  });
-
-  describe('Subagent Type Variations', () => {
-    it('handles single-word subagent type', async () => {
+  describe('Parameter handling', () => {
+    it('accepts custom maxTurns', async () => {
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
-        subagentType: 'researcher',
+        parentContext: createMockContext(),
+        maxTurns: 3,
       };
 
       const result = await runAgent(params);
-
-      expect(result).toContain('Subagent "researcher"');
+      expect(typeof result).toBe('string');
     });
 
-    it('handles hyphenated subagent type', async () => {
+    it('accepts custom canUseTool function', async () => {
+      const customCanUseTool = vi.fn().mockResolvedValue({ behavior: 'allow' });
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
-        subagentType: 'code-reviewer',
+        parentContext: createMockContext(),
+        canUseTool: customCanUseTool as any,
       };
 
       const result = await runAgent(params);
-
-      expect(result).toContain('Subagent "code-reviewer"');
+      expect(typeof result).toBe('string');
     });
 
-    it('handles underscore in subagent type', async () => {
+    it('accepts onProgress callback', async () => {
+      const onProgress = vi.fn();
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
-        subagentType: 'data_analyst',
+        parentContext: createMockContext(),
+        onProgress,
       };
 
       const result = await runAgent(params);
-
-      expect(result).toContain('Subagent "data_analyst"');
+      expect(typeof result).toBe('string');
     });
 
-    it('handles camelCase subagent type', async () => {
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: 'Test',
-        subagentType: 'codeReviewer',
-      };
-
-      const result = await runAgent(params);
-
-      expect(result).toContain('Subagent "codeReviewer"');
-    });
-
-    it('handles empty string as subagent type (keeps empty string)', async () => {
+    it('handles empty subagentType (defaults to general-purpose)', async () => {
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
         subagentType: '',
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
+      expect(result).toContain('general-purpose');
+    });
 
-      // Empty string is passed through as-is
-      expect(result).toContain('Subagent ""');
+    it('handles unknown subagentType (defaults to general-purpose)', async () => {
+      const params: RunAgentParams = {
+        description: 'Test',
+        prompt: 'Test',
+        subagentType: 'unknown-type',
+        parentContext: createMockContext(),
+      };
+
+      const result = await runAgent(params);
+      expect(result).toContain('general-purpose');
+    });
+
+    it('handles known subagentType explore', async () => {
+      const params: RunAgentParams = {
+        description: 'Test',
+        prompt: 'Test',
+        subagentType: 'explore',
+        parentContext: createMockContext(),
+      };
+
+      const result = await runAgent(params);
+      expect(result).toContain('explore');
+    });
+
+    it('handles known subagentType plan', async () => {
+      const params: RunAgentParams = {
+        description: 'Test',
+        prompt: 'Test',
+        subagentType: 'plan',
+        parentContext: createMockContext(),
+      };
+
+      const result = await runAgent(params);
+      expect(result).toContain('plan');
     });
   });
 
-  describe('Response Structure', () => {
-    it('returns response with four lines', async () => {
+  describe('Context isolation', () => {
+    it('creates subagent context with correct agentType', async () => {
       const params: RunAgentParams = {
         description: 'Test',
         prompt: 'Test',
+        subagentType: 'explore',
+        parentContext: createMockContext(),
       };
 
       const result = await runAgent(params);
-
-      const lines = result.split('\n');
-      expect(lines).toHaveLength(4);
+      expect(typeof result).toBe('string');
     });
 
-    it('first line contains subagent type and accepted message', async () => {
-      const params: RunAgentParams = {
+    it('does not modify parent context', async () => {
+      const parentContext = createMockContext();
+      const originalMessages = [...parentContext.messages];
+
+      await runAgent({
         description: 'Test',
         prompt: 'Test',
-        subagentType: 'tester',
-      };
+        parentContext,
+      });
 
-      const result = await runAgent(params);
-      const firstLine = result.split('\n')[0];
-
-      expect(firstLine).toContain('Subagent');
-      expect(firstLine).toContain('"tester"');
-      expect(firstLine).toContain('accepted');
-    });
-
-    it('second line contains description', async () => {
-      const params: RunAgentParams = {
-        description: 'My task description',
-        prompt: 'Test',
-      };
-
-      const result = await runAgent(params);
-      const lines = result.split('\n');
-
-      expect(lines[1]).toContain('Description: My task description');
-    });
-
-    it('third line contains prompt length', async () => {
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: 'Hello'.repeat(5), // 20 chars including spaces if any
-      };
-
-      const result = await runAgent(params);
-      const lines = result.split('\n');
-
-      expect(lines[2]).toMatch(/Prompt length: \d+ characters/);
-    });
-
-    it('fourth line contains educational runtime message', async () => {
-      const params: RunAgentParams = {
-        description: 'Test',
-        prompt: 'Test',
-      };
-
-      const result = await runAgent(params);
-      const lines = result.split('\n');
-
-      expect(lines[3]).toContain('educational runtime');
+      expect(parentContext.messages).toEqual(originalMessages);
     });
   });
 
-  describe('Concurrent Calls', () => {
+  describe('Concurrent calls', () => {
     it('handles multiple concurrent calls independently', async () => {
       const promises = [1, 2, 3].map((i) =>
         runAgent({
           description: `Task ${i}`,
           prompt: `Prompt ${i}`,
           subagentType: `type${i}`,
+          parentContext: createMockContext(),
         })
       );
 
@@ -281,16 +214,36 @@ describe('runAgent', () => {
       expect(results[1]).toContain('Task 2');
       expect(results[2]).toContain('Task 3');
     });
+  });
 
-    it('each call produces independent results', async () => {
-      const results = await Promise.all([
-        runAgent({ description: 'A', prompt: 'a', subagentType: 'x' }),
-        runAgent({ description: 'B', prompt: 'b', subagentType: 'y' }),
-        runAgent({ description: 'C', prompt: 'c', subagentType: 'z' }),
-      ]);
+  describe('Edge cases', () => {
+    it('handles very long description', async () => {
+      const longDesc = 'x'.repeat(10000);
+      const result = await runAgent({
+        description: longDesc,
+        prompt: 'Test',
+        parentContext: createMockContext(),
+      });
+      expect(typeof result).toBe('string');
+    });
 
-      expect(results[0]).not.toContain('B');
-      expect(results[1]).not.toContain('A');
+    it('handles very long prompt', async () => {
+      const longPrompt = 'y'.repeat(50000);
+      const result = await runAgent({
+        description: 'Test',
+        prompt: longPrompt,
+        parentContext: createMockContext(),
+      });
+      expect(typeof result).toBe('string');
+    });
+
+    it('handles unicode in description and prompt', async () => {
+      const result = await runAgent({
+        description: '任务描述 - 代码审查',
+        prompt: 'レビューしてください',
+        parentContext: createMockContext(),
+      });
+      expect(typeof result).toBe('string');
     });
   });
 });

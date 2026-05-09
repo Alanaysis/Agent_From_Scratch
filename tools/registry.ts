@@ -1,5 +1,6 @@
 import type { Tools } from "./Tool";
 import { AgentTool } from "./agent/agentTool";
+import { TeamTool } from "./agent/teamTool";
 import { EditTool } from "./files/editTool";
 import { ReadTool } from "./files/readTool";
 import { WriteTool } from "./files/writeTool";
@@ -11,6 +12,7 @@ import { WebSearchTool } from "./web/webSearchTool";
 import { ImageUploadTool } from "./web/imageUploadTool";
 import { ImageAnalyzeTool } from "./web/imageAnalyzeTool";
 import { ImageGenerateTool } from "./web/imageGenerateTool";
+import { SkillTool } from "../skills/skillTool";
 
 export function getTools(): Tools {
   return [
@@ -23,6 +25,8 @@ export function getTools(): Tools {
     FileTreeTool,
     SearchFilesTool,
     AgentTool,
+    TeamTool,
+    SkillTool,
     ImageUploadTool,
     ImageAnalyzeTool,
     ImageGenerateTool,

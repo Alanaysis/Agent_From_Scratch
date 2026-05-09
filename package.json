@@ -19,14 +19,21 @@
     "build": "esbuild ./app/main.ts --bundle --platform=node --format=esm --outfile=./bin/claude-code-lite.js --external:playwright --external:chromium-bidi --external:readline/promises && cp -r ./skills ./bin/ 2>/dev/null || true",
     "build:exe": "mkdir -p ./dist && bun build --compile --outfile ./dist/claude-code-lite ./app/main.ts",
     "dev": "bun ./app/main.ts",
+    "dev:gui": "vite --config gui/vite.config.ts",
+    "build:gui": "vite build --config gui/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json",
+    "typecheck:gui": "tsc -p gui/tsconfig.renderer.json --noEmit",
     "check": "bun run build && node ./bin/claude-code-lite.js --help",
     "prepack": "bun run build"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "esbuild": "^0.28.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.11"
   },
   "engines": {
     "node": ">=18"
@@ -43,7 +50,13 @@
     "c8": "^11.0.0",
     "electron": "^41.2.0",
     "is-dark": "^1.0.4",
+    "opencode-ai": "^1.14.40",
     "picocolors": "^1.1.1",
-    "playwright": "^1.59.1"
+    "pixi.js": "^8.18.1",
+    "playwright": "^1.59.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "xstate": "^5.31.0",
+    "zustand": "^5.0.13"
   }
 }

@@ -4,7 +4,7 @@ import { join } from "path";
 export type CronJob = {
   id: string;
   name: string;
-  schedule: string; // cron expression or interval
+  schedule: string;
   prompt: string;
   enabled: boolean;
   createdAt: string;
@@ -14,12 +14,23 @@ export type CronJob = {
   runCount: number;
 };
 
+export type CronRunRecord = {
+  status: "running" | "completed" | "failed";
+  startedAt?: string;
+  completedAt?: string;
+  result?: string;
+};
+
 function getCronDir(cwd: string): string {
   return join(cwd, ".claude-code-lite", "cron");
 }
 
 function getJobFilePath(cwd: string, jobId: string): string {
   return join(getCronDir(cwd), `${jobId}.json`);
+}
+
+function getRunLogPath(cwd: string, jobId: string): string {
+  return join(getCronDir(cwd), `${jobId}-runs.jsonl`);
 }
 
 export async function initCronDir(cwd: string): Promise<void> {
@@ -54,7 +65,7 @@ export async function listCronJobs(cwd: string): Promise<CronJob[]> {
     const entries = await readdir(getCronDir(cwd));
     const jobs: CronJob[] = [];
     for (const entry of entries) {
-      if (!entry.endsWith(".json")) continue;
+      if (!entry.endsWith(".json") || entry.endsWith("-runs.jsonl")) continue;
       const content = await readFile(getJobFilePath(cwd, entry.replace(/\.json$/, "")), "utf8");
       jobs.push(JSON.parse(content) as CronJob);
     }
@@ -76,7 +87,7 @@ export async function getCronJob(cwd: string, jobId: string): Promise<CronJob | 
 export async function updateCronJob(
   cwd: string,
   jobId: string,
-  updates: Partial<Pick<CronJob, "name" | "schedule" | "prompt" | "enabled">>,
+  updates: Partial<CronJob>,
 ): Promise<CronJob> {
   const job = await getCronJob(cwd, jobId);
   if (!job) throw new Error(`Cron job not found: ${jobId}`);
@@ -84,6 +95,7 @@ export async function updateCronJob(
   const updated = {
     ...job,
     ...updates,
+    id: job.id,
     updatedAt: new Date().toISOString(),
   };
   await writeFile(getJobFilePath(cwd, jobId), JSON.stringify(updated, null, 2), "utf8");
@@ -94,7 +106,21 @@ export async function removeCronJob(cwd: string, jobId: string): Promise<void> {
   await rm(getJobFilePath(cwd, jobId), { force: true });
 }
 
-export async function recordCronRun(cwd: string, jobId: string): Promise<void> {
+export async function recordCronRun(
+  cwd: string,
+  jobId: string,
+  record?: CronRunRecord,
+): Promise<void> {
+  if (record) {
+    await initCronDir(cwd);
+    const logLine = JSON.stringify({
+      jobId,
+      ...record,
+      timestamp: new Date().toISOString(),
+    });
+    await appendFile(getRunLogPath(cwd, jobId), logLine + "\n", "utf8");
+  }
+
   const job = await getCronJob(cwd, jobId);
   if (!job) return;
 
@@ -109,4 +135,9 @@ export async function recordCronRun(cwd: string, jobId: string): Promise<void> {
 
 export async function deleteCronJob(cwd: string, jobId: string): Promise<void> {
   await rm(getJobFilePath(cwd, jobId), { force: true });
+  try {
+    await rm(getRunLogPath(cwd, jobId), { force: true });
+  } catch {
+    // ignore
+  }
 }
