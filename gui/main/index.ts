@@ -1,68 +1,99 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import path from 'path';
+import { app, BrowserWindow, shell } from "electron";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { registerSessionHandlers } from "./handlers/sessions";
+import { registerChatHandlers } from "./handlers/chat";
+import { registerConfigHandlers } from "./handlers/config";
+import { log } from "./logger";
+
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow() {
+const isDev = !app.isPackaged;
+
+async function createWindow() {
+  log('INFO', 'Main', 'Creating main window')
+
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    minWidth: 1280,
-    minHeight: 720,
-    backgroundColor: '#0a0e14',
-    title: 'Wafer Inspection AI Copilot',
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    title: "IRG",
     webPreferences: {
-      nodeIntegration: false,
+      preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      sandbox: false,
     },
   });
 
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/renderer/index.html'));
-  }
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https:")) {
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  if (isDev) {
+    log('INFO', 'Main', 'Loading dev URL: http://localhost:3001')
+    await mainWindow.loadURL("http://localhost:3001");
+  } else {
+    const htmlPath = join(__dirname, "../../.next/exported/index.html");
+    log('INFO', 'Main', `Loading production file: ${htmlPath}`)
+    await mainWindow.loadFile(htmlPath);
+  }
+
+  log('INFO', 'Main', 'Window loaded successfully')
 }
 
-app.whenReady().then(createWindow);
+function registerHandlers() {
+  log('INFO', 'Main', 'Registering IPC handlers')
+  registerSessionHandlers();
+  registerChatHandlers();
+  registerConfigHandlers();
+  log('INFO', 'Main', 'All IPC handlers registered')
+}
+
+app.whenReady().then(() => {
+  log('INFO', 'Main', 'App ready, starting initialization')
+
+  try {
+    registerHandlers();
+    createWindow();
+    log('INFO', 'Main', 'Initialization complete')
+  } catch (e) {
+    log('ERROR', 'Main', 'Initialization failed', e)
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
 
 app.on('window-all-closed', () => {
+  log('INFO', 'Main', 'All windows closed')
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
+process.on('uncaughtException', (e) => {
+  log('ERROR', 'Main', 'Uncaught exception', { message: e.message, stack: e.stack })
 });
 
-ipcMain.handle('workflow:getState', () => {
-  return { currentStep: 'roiGeneration' };
-});
-
-ipcMain.handle('workflow:transition', (_event, step: string) => {
-  console.log('[IPC] Workflow transition to:', step);
-  return { success: true, step };
-});
-
-ipcMain.handle('copilot:sendMessage', (_event, message: string) => {
-  console.log('[IPC] Copilot message:', message);
-  return { response: `Acknowledged: ${message}` };
-});
-
-ipcMain.handle('copilot:applySuggestion', (_event, id: string) => {
-  console.log('[IPC] Apply suggestion:', id);
-  return { success: true };
-});
-
-ipcMain.handle('visualization:getData', () => {
-  return { waferId: 'WF-2024-001', diameter: 300 };
+process.on('unhandledRejection', (e) => {
+  log('ERROR', 'Main', 'Unhandled rejection', e)
 });

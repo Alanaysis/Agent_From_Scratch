@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+.markdown-content { @apply text-sm leading-relaxed; }
+.markdown-content p { @apply mb-3; }
+.markdown-content code { @apply rounded bg-muted px-1.5 py-0.5 font-mono text-xs; }
+.markdown-content pre { @apply mb-3 rounded-lg bg-muted p-3 overflow-x-auto; }
+.markdown-content pre code { @apply bg-transparent p-0; }
+.markdown-content ul, .markdown-content ol { @apply list-disc list-inside mb-3 space-y-1; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3 { @apply font-semibold mb-2 mt-4; }
+.markdown-content h1 { @apply text-lg; }
+.markdown-content h2 { @apply text-base; }
+.markdown-content h3 { @apply text-sm; }
+.markdown-content a { @apply text-primary underline underline-offset-2; }
+.markdown-content blockquote { @apply border-l-2 border-muted-foreground/50 pl-3 italic text-muted-foreground mb-3; }
