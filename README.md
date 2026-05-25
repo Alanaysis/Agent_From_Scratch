@@ -1,6 +1,6 @@
-# Claude Code-lite
+# IRG
 
-![Claude Code-lite TUI Preview](./assets/tui-preview.svg)
+![IRG TUI Preview](./assets/tui-preview.svg)
 
 一个面向学习、拆解和二次开发的最小 AI 编程 agent CLI。
 
@@ -8,7 +8,7 @@
 
 ## 项目背景
 
-这个 `claude-code-lite`，它的最小实现来自于这个仓库[goozi/claude-code-lite](https://github.com/goozi/claude-code-lite)，目前已经实现了：
+这个 `irg`，它的最小实现来自于这个仓库[goozi/irg](https://github.com/goozi/irg)，目前已经实现了：
 
 - 可安装、可打包、可运行的 CLI 结构
 - TUI、REPL、headless chat 三种交互入口
@@ -75,24 +75,24 @@ This will install all dependencies listed in `package.json`.
 ### 本地开发
 
 ```bash
-cd claude-code-lite
+cd irg
 npm install
 bun run build
-node ./bin/claude-code-lite.js
+node ./bin/irg.js
 ```
 
 ### 全局安装
 
 ```bash
 npm install -g .
-claude-code-lite --help
+irg --help
 ```
 
 ### 独立可执行文件
 
 ```bash
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```
 
 说明：
@@ -105,22 +105,22 @@ bun run build:exe
 
 ```bash
 # 启动 TUI
-claude-code-lite
+irg
 
 # 启动持久 REPL
-claude-code-lite repl
+irg repl
 
 # 直接对话
-claude-code-lite chat "read README.md"
+irg chat "read README.md"
 
 # 查看会话
-claude-code-lite sessions --limit 10
+irg sessions --limit 10
 
 # 检查最近会话
-claude-code-lite inspect latest
+irg inspect latest
 
 # 导出会话
-claude-code-lite export-session latest --format markdown --output /tmp/session.md
+irg export-session latest --format markdown --output /tmp/session.md
 
 # 构建独立可执行文件
 bun run build:exe
@@ -129,7 +129,7 @@ bun run build:exe
 ## 目录说明
 
 ```text
-claude-code-lite/
+irg/
   app/
   runtime/
   tools/
@@ -166,7 +166,7 @@ claude-code-lite/
 
 ### npm 包
 
-在 `claude-code-lite/` 目录下执行：
+在 `irg/` 目录下执行：
 
 ```bash
 npm pack
@@ -175,8 +175,8 @@ npm pack
 然后别人可以直接安装生成的 `.tgz` 包：
 
 ```bash
-npm install -g claude-code-lite-0.1.0.tgz
-claude-code-lite tools
+npm install -g irg-0.1.0.tgz
+irg tools
 ```
 
 ### 独立可执行文件
@@ -185,7 +185,7 @@ claude-code-lite tools
 
 ```bash
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```
 
 ## 仓库文件
@@ -206,62 +206,62 @@ bun run build:exe
 可以直接运行源码版本：
 
 ```bash
-bun claude-code-lite/app/main.ts read README.md
-bun claude-code-lite/app/main.ts write tmp.txt "hello world"
-bun claude-code-lite/app/main.ts edit tmp.txt "hello" "hi"
-bun claude-code-lite/app/main.ts shell "pwd"
-bun claude-code-lite/app/main.ts fetch https://example.com
-bun claude-code-lite/app/main.ts agent "review" "inspect this change" reviewer
-bun claude-code-lite/app/main.ts repl
+bun irg/app/main.ts read README.md
+bun irg/app/main.ts write tmp.txt "hello world"
+bun irg/app/main.ts edit tmp.txt "hello" "hi"
+bun irg/app/main.ts shell "pwd"
+bun irg/app/main.ts fetch https://example.com
+bun irg/app/main.ts agent "review" "inspect this change" reviewer
+bun irg/app/main.ts repl
 ```
 
 也可以运行构建后的安装版：
 
 ```bash
-claude-code-lite
-claude-code-lite tui
-claude-code-lite tools
-claude-code-lite sessions
-claude-code-lite sessions --status needs_attention
-claude-code-lite sessions --limit 10
-claude-code-lite inspect <session-id>
-claude-code-lite export-session <session-id> --format markdown --output /tmp/session.md
-claude-code-lite transcript <session-id>
-claude-code-lite rm-session <session-id>
-claude-code-lite cleanup-sessions --keep 20
-claude-code-lite cleanup-sessions --status needs_attention --dry-run
-claude-code-lite chat --resume-failed "继续刚才失败的任务"
-claude-code-lite chat "read README.md"
-claude-code-lite chat --resume latest "继续刚才的任务"
-claude-code-lite read README.md
-claude-code-lite shell "pwd"
+irg
+irg tui
+irg tools
+irg sessions
+irg sessions --status needs_attention
+irg sessions --limit 10
+irg inspect <session-id>
+irg export-session <session-id> --format markdown --output /tmp/session.md
+irg transcript <session-id>
+irg rm-session <session-id>
+irg cleanup-sessions --keep 20
+irg cleanup-sessions --status needs_attention --dry-run
+irg chat --resume-failed "继续刚才失败的任务"
+irg chat "read README.md"
+irg chat --resume latest "继续刚才的任务"
+irg read README.md
+irg shell "pwd"
 ```
 
 默认权限模式会对修改类工具要求确认。可以用 `--yes` 自动批准：
 
 ```bash
-claude-code-lite --yes write tmp.txt "hello world"
+irg --yes write tmp.txt "hello world"
 ```
 
 `chat` 现在支持 headless 流式 stdout：
 
 ```bash
-claude-code-lite --stream chat "帮我阅读 README 并总结"
-claude-code-lite --no-stream chat "帮我阅读 README 并总结"
-claude-code-lite --stream chat --resume latest "根据刚才结果继续编辑"
-claude-code-lite --stream chat --resume-failed "继续刚才失败的任务"
+irg --stream chat "帮我阅读 README 并总结"
+irg --no-stream chat "帮我阅读 README 并总结"
+irg --stream chat --resume latest "根据刚才结果继续编辑"
+irg --stream chat --resume-failed "继续刚才失败的任务"
 ```
 
 每次执行会把 transcript 写到：
 
 ```text
-.claude-code-lite/transcripts/<session-id>.jsonl
+.irg/transcripts/<session-id>.jsonl
 ```
 
 同时会维护 session 元数据索引：
 
 ```text
-.claude-code-lite/sessions/<session-id>.json
+.irg/sessions/<session-id>.json
 ```
 
 里面会记录：
@@ -284,8 +284,8 @@ claude-code-lite --stream chat --resume-failed "继续刚才失败的任务"
 也支持基础筛选：
 
 ```bash
-claude-code-lite sessions --status needs_attention
-claude-code-lite sessions --limit 10
+irg sessions --status needs_attention
+irg sessions --limit 10
 ```
 
 默认排序会优先把 `needs_attention` 会话排在前面，便于先处理异常会话。
@@ -293,18 +293,18 @@ claude-code-lite sessions --limit 10
 `transcript` 还支持紧凑视图：
 
 ```bash
-claude-code-lite transcript <session-id> --compact
+irg transcript <session-id> --compact
 ```
 
 现在还支持更完整的 session 管理：
 
 ```bash
-claude-code-lite inspect <session-id>
-claude-code-lite export-session <session-id> --format markdown --output /tmp/session.md
-claude-code-lite rm-session <session-id>
-claude-code-lite cleanup-sessions --keep 20
-claude-code-lite cleanup-sessions --older-than 30
-claude-code-lite cleanup-sessions --status needs_attention --dry-run
+irg inspect <session-id>
+irg export-session <session-id> --format markdown --output /tmp/session.md
+irg rm-session <session-id>
+irg cleanup-sessions --keep 20
+irg cleanup-sessions --older-than 30
+irg cleanup-sessions --status needs_attention --dry-run
 ```
 
 - `inspect` 会聚合元数据、最近消息和最近错误
@@ -322,23 +322,23 @@ claude-code-lite cleanup-sessions --status needs_attention --dry-run
 最小配置：
 
 ```bash
-export CCL_LLM_PROVIDER=openai
-export CCL_LLM_API_KEY=your_api_key
-export CCL_LLM_MODEL=gpt-4o-mini
+export IRG_LLM_PROVIDER=openai
+export IRG_LLM_API_KEY=your_api_key
+export IRG_LLM_MODEL=gpt-4o-mini
 ```
 
 可选配置：
 
 ```bash
-export CCL_LLM_BASE_URL=https://api.openai.com/v1
-export CCL_LLM_SYSTEM_PROMPT="You are a precise coding assistant."
-export CCL_ANTHROPIC_VERSION=2023-06-01
+export IRG_LLM_BASE_URL=https://api.openai.com/v1
+export IRG_LLM_SYSTEM_PROMPT="You are a precise coding assistant."
+export IRG_ANTHROPIC_VERSION=2023-06-01
 ```
 
 说明：
 
-- `CCL_LLM_PROVIDER=openai` 时，走 OpenAI-compatible `chat/completions`
-- `CCL_LLM_PROVIDER=anthropic` 时，走 Anthropic `messages`
+- `IRG_LLM_PROVIDER=openai` 时，走 OpenAI-compatible `chat/completions`
+- `IRG_LLM_PROVIDER=anthropic` 时，走 Anthropic `messages`
 - provider 抽象已经独立，不再把协议写死在 OpenAI-compatible
 - 未配置 LLM 时，系统会回退到本地 planner，只支持 `read/run/fetch/write/edit` 这类显式提示格式
 - 已配置 LLM 但调用失败时，也会自动回退到本地 planner
@@ -351,7 +351,7 @@ export CCL_ANTHROPIC_VERSION=2023-06-01
 这个包现在包含标准 CLI 发布形态：
 
 - `package.json`
-- `bin/claude-code-lite.js`
+- `bin/irg.js`
 - `app/main.js`
 - `npm pack` / `npm install -g .` 可用
 
@@ -359,11 +359,28 @@ export CCL_ANTHROPIC_VERSION=2023-06-01
 
 - 构建依赖 Bun
 - 运行依赖 Node 18+
-- 安装后的终端命令名是 `claude-code-lite`
+- 安装后的终端命令名是 `irg`
+
+## GUI 交互
+
+IRG 还提供了一个基于 Electron 的图形界面客户端：
+
+```bash
+npm run dev:electron:gui  # 开发模式
+npm run build:electron    # 构建生产版本
+```
+
+GUI 特性：
+- 实时流式文本输出
+- 会话历史管理
+- 配置管理（API Key、模型、Base URL）
+- 深色主题界面
+
+配置保存在 `~/.irg/config.json`。
 
 ## TUI 交互
 
-默认直接运行 `claude-code-lite` 会进入全屏 TUI。
+默认直接运行 `irg` 会进入全屏 TUI。
 
 当前 TUI 支持两类交互：
 
@@ -413,7 +430,7 @@ export CCL_ANTHROPIC_VERSION=2023-06-01
 可用命令：
 
 ```bash
-claude-code-lite repl
+irg repl
 ```
 
 REPL 内支持：
