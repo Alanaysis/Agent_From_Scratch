@@ -4,6 +4,7 @@ node_modules/
 .DS_Store
 .claude-code-lite/
 bin/claude-code-lite.js
+.vscode/
 
 # Claude-related settings and agent memory
 .claude/
@@ -16,3 +17,38 @@ PLAN.md
 
 # Test coverage output
 coverage/
+
+# Recipe-specific tools (personalized)
+tools/recipe/
+tools/spec-collector.ts
+tools/skills/
+runtime/workmap/
+skills/bundled/
+bin/skills/
+
+# Recipe simulation files
+recipe.md
+recipe_simulator.py
+recipe_simulator_server.py
+start_recipe_system.sh
+env.sh
+interactive_skill.py
+
+# IRG config and runtime data
+.irg/
+
+# IDE and personal config files
+opencode.json
+Gui\ Design\ Template.png
+wafermap.png
+
+# Build artifacts
+gui/.next/
+gui/dist/
+gui/tsconfig.tsbuildinfo
+discovery/
+env-qwen3.6.sh
+bun.lock
+
+# Test artifacts
+undefined/

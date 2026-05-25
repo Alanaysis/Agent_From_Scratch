@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'bun:test';
-import type { ToolUseContext, CanUseToolFn, AssistantMessage } from '../../../../runtime/messages';
+import type { ToolUseContext, CanUseToolFn } from '../../../../tools/Tool';
+import type { AssistantMessage } from '../../../../runtime/messages';
 import { AgentTool, type AgentInput } from '../../../../tools/agent/agentTool';
 import { runAgent } from '../../../../tools/agent/runAgent';
 import { createSubagentContext } from '../../../../tools/agent/subagentContext';
+import { createInitialAppState } from '../../../../runtime/state';
 
 vi.mock('../../../../tools/agent/runAgent', () => ({
   runAgent: vi.fn(),
@@ -11,6 +13,16 @@ vi.mock('../../../../tools/agent/runAgent', () => ({
 vi.mock('../../../../tools/agent/subagentContext', () => ({
   createSubagentContext: vi.fn(),
 }));
+
+function createMockContext(): ToolUseContext {
+  return {
+    cwd: '/tmp/test',
+    abortController: new AbortController(),
+    messages: [],
+    getAppState: () => createInitialAppState(),
+    setAppState: () => {},
+  };
+}
 
 describe('AgentTool - Tool definition and validation', () => {
   it('has correct tool properties', () => {
@@ -329,7 +341,7 @@ describe('AgentTool - checkPermissions', () => {
     };
 
     const result = await AgentTool.checkPermissions(input, mockContext);
-    expect(result.behavior).toBe('ask'); // Agent tool not in allow rules, still asks
+    expect(result.behavior).toBe('ask');
   });
 
   it('works with denyRules present', async () => {
@@ -350,7 +362,7 @@ describe('AgentTool - checkPermissions', () => {
     };
 
     const result = await AgentTool.checkPermissions(input, mockContext);
-    expect(result.behavior).toBe('ask'); // Not denied, but still asks in default mode
+    expect(result.behavior).toBe('ask');
   });
 
   it('works with askRules present', async () => {
@@ -371,17 +383,20 @@ describe('AgentTool - checkPermissions', () => {
     };
 
     const result = await AgentTool.checkPermissions(input, mockContext);
-    expect(result.behavior).toBe('ask'); // Already asks in default mode
+    expect(result.behavior).toBe('ask');
   });
 });
 
 describe('AgentTool - call', () => {
-  let mockContext: any;
+  let mockContext: ToolUseContext;
   let mockCanUseTool: CanUseToolFn;
   let mockParentMessage: AssistantMessage;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockContext = createMockContext();
+    mockCanUseTool = vi.fn().mockResolvedValue({ behavior: 'allow' }) as any;
+    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
   });
 
   it('calls createSubagentContext with correct params', async () => {
@@ -391,50 +406,35 @@ describe('AgentTool - call', () => {
       subagentType: 'researcher',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     (runAgent as any).mockResolvedValue('Subagent completed the task successfully.');
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(createSubagentContext).toHaveBeenCalledWith(mockContext, {
       agentType: 'researcher',
     });
   });
 
-  it('calls runAgent with correct params', async () => {
+  it('calls runAgent with correct params including parentContext and canUseTool', async () => {
     const input: AgentInput = {
       description: 'Research task',
       prompt: 'Analyze this data thoroughly',
       subagentType: 'analyst',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
+    (runAgent as any).mockResolvedValue('Analysis complete. Found 3 key insights.');
 
-    const expectedResult = 'Analysis complete. Found 3 key insights.';
-    (runAgent as any).mockResolvedValue(expectedResult);
+    await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
-    await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
+    expect(runAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'Research task',
+        prompt: 'Analyze this data thoroughly',
+        subagentType: 'analyst',
+        parentContext: mockContext,
+        canUseTool: mockCanUseTool,
+      }),
     );
-
-    expect(runAgent).toHaveBeenCalledWith({
-      description: 'Research task',
-      prompt: 'Analyze this data thoroughly',
-      subagentType: 'analyst',
-    });
   });
 
   it('returns correct result structure on success', async () => {
@@ -443,18 +443,9 @@ describe('AgentTool - call', () => {
       prompt: 'do work',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     (runAgent as any).mockResolvedValue('Task completed.');
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(result).toEqual({
       data: {
@@ -471,18 +462,9 @@ describe('AgentTool - call', () => {
       subagentType: '',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     (runAgent as any).mockResolvedValue('Done.');
 
-    await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(createSubagentContext).toHaveBeenCalledWith(mockContext, {
       agentType: '',
@@ -496,18 +478,9 @@ describe('AgentTool - call', () => {
       subagentType: 'translator',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     (runAgent as any).mockResolvedValue('翻译完成。');
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(result.data.result).toBe('翻译完成。');
   });
@@ -518,19 +491,10 @@ describe('AgentTool - call', () => {
       prompt: 'Generate a comprehensive report',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     const longResult = 'x'.repeat(50000);
     (runAgent as any).mockResolvedValue(longResult);
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(result.data.result.length).toBe(50000);
   });
@@ -541,19 +505,10 @@ describe('AgentTool - call', () => {
       prompt: 'write report',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     const multilineResult = 'Line 1\nLine 2\nLine 3';
     (runAgent as any).mockResolvedValue(multilineResult);
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(result.data.result).toBe(multilineResult);
   });
@@ -564,19 +519,10 @@ describe('AgentTool - call', () => {
       prompt: 'parse data',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     const specialResult = '<html><body>Data & more</body></html>';
     (runAgent as any).mockResolvedValue(specialResult);
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(result.data.result).toBe(specialResult);
   });
@@ -593,10 +539,6 @@ describe('AgentTool - call', () => {
       prompt: 'do B',
       subagentType: 'typeB',
     };
-
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
 
     (runAgent as any).mockImplementation((params: any) =>
       Promise.resolve(`Result for ${params.description}`),
@@ -617,18 +559,9 @@ describe('AgentTool - call', () => {
       prompt: 'test',
     };
 
-    mockContext = {} as any;
-    mockCanUseTool = vi.fn();
-    mockParentMessage = { id: 'msg-1', type: 'assistant', content: [] } as AssistantMessage;
-
     (runAgent as any).mockResolvedValue('result');
 
-    const result = await AgentTool.call(
-      input,
-      mockContext,
-      mockCanUseTool,
-      mockParentMessage,
-    );
+    const result = await AgentTool.call(input, mockContext, mockCanUseTool, mockParentMessage);
 
     expect(typeof result.data).toBe('object');
     if (result.data) {

@@ -8,9 +8,23 @@ describe('tools registry', () => {
       expect(Array.isArray(tools)).toBe(true);
     });
 
-    it('returns the expected number of tools (6)', () => {
+    it('returns the expected number of tools', () => {
       const tools = getTools();
-      expect(tools).toHaveLength(6);
+      expect(tools.length).toBeGreaterThanOrEqual(12);
+    });
+
+    it('includes TeamTool', () => {
+      const tools = getTools();
+      const teamTool = tools.find(t => t.name === 'Team');
+      expect(teamTool).toBeDefined();
+      expect(teamTool?.name).toBe('Team');
+    });
+
+    it('includes SkillTool', () => {
+      const tools = getTools();
+      const skillTool = tools.find(t => t.name === 'Skill');
+      expect(skillTool).toBeDefined();
+      expect(skillTool?.name).toBe('Skill');
     });
 
     it('includes ReadTool', () => {

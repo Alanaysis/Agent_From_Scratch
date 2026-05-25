@@ -24,7 +24,7 @@ export const AgentTool: Tool<AgentInput, AgentOutput> = {
   async call(
     args: AgentInput,
     context: ToolUseContext,
-    _canUseTool: CanUseToolFn,
+    canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<AgentOutput>> {
     createSubagentContext(context, {
@@ -34,6 +34,8 @@ export const AgentTool: Tool<AgentInput, AgentOutput> = {
       description: args.description,
       prompt: args.prompt,
       subagentType: args.subagentType,
+      parentContext: context,
+      canUseTool,
     });
     return {
       data: {

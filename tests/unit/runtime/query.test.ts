@@ -3964,7 +3964,7 @@ describe('query function - LLM fallback behavior', () => {
     // Should have at least intro message and tool use
     const hasIntro = messages.some(m =>
       m.type === 'assistant' &&
-      (m.content as any[]).some((c: any) => c.text?.includes('我会先读取'))
+      (m.content as any[]).some((c: any) => c.text?.includes('我来读取'))
     );
     expect(hasIntro).toBe(true);
   });
@@ -4159,7 +4159,7 @@ describe('queryWithPlanner - complete flow', () => {
 
     const hasIntro = messages.some(m =>
       m.type === 'assistant' &&
-      (m.content as any[]).some((c: any) => c.text?.includes('我会先读取'))
+      (m.content as any[]).some((c: any) => c.text?.includes('我来读取'))
     );
     expect(hasIntro).toBe(true);
 
@@ -4192,7 +4192,7 @@ describe('queryWithPlanner - complete flow', () => {
 
     const hasIntro = messages.some(m =>
       m.type === 'assistant' &&
-      (m.content as any[]).some((c: any) => c.text?.includes('我会执行命令'))
+      (m.content as any[]).some((c: any) => c.text?.includes('我来执行'))
     );
     expect(hasIntro).toBe(true);
 

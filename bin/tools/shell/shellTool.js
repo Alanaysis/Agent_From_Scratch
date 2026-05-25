@@ -1,0 +1,61 @@
+import { spawn } from "child_process";
+export const ShellTool = {
+    name: "Shell",
+    inputSchema: null,
+    outputSchema: null,
+    async description() {
+        return "Run a shell command";
+    },
+    async call(args, context, _canUseTool, _parentMessage) {
+        const data = await new Promise((resolve, reject) => {
+            const child = spawn(args.command, {
+                cwd: context.cwd,
+                shell: true,
+                signal: context.abortController.signal,
+            });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.on("data", (chunk) => {
+                stdout += String(chunk);
+            });
+            child.stderr.on("data", (chunk) => {
+                stderr += String(chunk);
+            });
+            child.on("error", reject);
+            child.on("close", (code) => {
+                resolve({
+                    stdout,
+                    stderr,
+                    exitCode: code ?? 0,
+                });
+            });
+        });
+        return {
+            data,
+        };
+    },
+    async validateInput(input) {
+        if (!input?.command || !String(input.command).trim()) {
+            return { result: false, message: "Command is required" };
+        }
+        return { result: true };
+    },
+    async checkPermissions(input, context) {
+        if (context.getAppState().permissionContext.mode === "default") {
+            return {
+                behavior: "ask",
+                message: `Shell requires confirmation for "${input.command}"`,
+            };
+        }
+        return {
+            behavior: "allow",
+            updatedInput: input,
+        };
+    },
+    isReadOnly() {
+        return false;
+    },
+    isConcurrencySafe() {
+        return false;
+    },
+};

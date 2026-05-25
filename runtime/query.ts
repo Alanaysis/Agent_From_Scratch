@@ -6,6 +6,7 @@ import {
 } from "../tools/Tool";
 import { getTools } from "../tools/registry";
 import { getLlmConfigFromEnv, runLlmTurn, type LlmToolDefinition } from "./llm";
+import { detectRelevantSkills, formatSkillMetadataForPrompt, formatSkillInstructionForPrompt, loadSkillInstruction, getLoadedSkills } from "../skills/loader";
 import type {
   AssistantMessage,
   AssistantTextBlock,
@@ -13,6 +14,12 @@ import type {
   Message,
   ToolResultMessage,
 } from "./messages";
+import type { ParamConfig } from "../skills/frontmatter";
+import { compressMessages, estimateMessageTokens, type Usage, emptyUsage } from "./usage";
+import { getMemoryForSystemPrompt } from "../storage/memory";
+
+// WorkMap types stubbed out (workmap is recipe-specific, gitignored)
+type WorkMap = any;
 
 export type QueryParams = {
   prompt: string;
@@ -27,7 +34,14 @@ export type QueryParams = {
     input: unknown;
     message: string;
   }) => Promise<boolean>;
+  onSpecRequest?: (request: {
+    skillId: string;
+    params: ParamConfig[];
+  }) => Promise<Record<string, any>>;
+  onWorkMapUpdate?: (workMap: WorkMap | null) => void;
 };
+
+export { executeToolCall, executeWorkMap };
 
 export type PlannedAction =
   | {
@@ -43,18 +57,64 @@ export type PlannedAction =
       text: string;
     };
 
-export function truncate(value: string | undefined | null, maxLength = 500): string {
-  if (!value || value.length === 0) {
-    return "";
+export function stringify(data: unknown): string {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
   }
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, maxLength)}\n...`;
 }
 
-export function stringify(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+export function truncate(value: string, maxLength = 500): string {
+  if (!value) return '';
+  if (value.length <= maxLength) return value;
+  return value.slice(0, maxLength) + '\n...';
+}
+
+export function summarizeShellResult(result: unknown): string {
+  const standardFields = ['stdout', 'stderr', 'exitCode'];
+  const isStandardFormat =
+    result != null &&
+    typeof result === 'object' &&
+    standardFields.every((field) => field in result);
+
+  if (isStandardFormat) {
+    const r = result as { stdout?: unknown; stderr?: unknown; exitCode?: unknown };
+    const stdout = typeof r.stdout === 'string' ? r.stdout : '';
+    const stderr = typeof r.stderr === 'string' ? r.stderr : '';
+    const exitCode = typeof r.exitCode === 'number' ? r.exitCode : 'unknown';
+    let res = `命令已执行，退出码：${exitCode}。`;
+    if (stdout) {
+      res += '\n\nstdout:\n' + truncate(stdout, 800);
+    }
+    if (stderr) {
+      res += '\n\nstderr:\n' + truncate(stderr, 400);
+    }
+    return res;
+  }
+
+  // Fallback: stringify the result
+  const str =
+    result === undefined
+      ? ''
+      : result == null
+        ? String(result)
+        : JSON.stringify(result, null, 2);
+  return `命令已执行。\n\n${truncate(str, 1200)}`;
+}
+
+export function summarizeReadResult(result: unknown): string {
+  const content =
+    result != null && typeof result === 'object' && 'content' in result
+      ? (result as { content: unknown }).content
+      : result;
+  const str =
+    content == null || content === ''
+      ? String(content)
+      : typeof content === 'string'
+        ? content
+        : JSON.stringify(content, null, 2);
+  return `我已经读取了目标内容。下面是预览：\n\n${truncate(str, 1200)}`;
 }
 
 function createAssistantMessage(
@@ -90,126 +150,75 @@ function createToolResultMessage(
   };
 }
 
-export function summarizeReadResult(result: unknown): string {
-  const content =
-    typeof result === "object" &&
-    result !== null &&
-    "content" in result &&
-    typeof result.content === "string"
-      ? result.content
-      : stringify(result);
-  return `我已经读取了目标内容。下面是预览：\n\n${truncate(content, 1200)}`;
-}
-
-export function summarizeShellResult(result: unknown): string {
-  if (
-    typeof result === "object" &&
-    result !== null &&
-    "stdout" in result &&
-    "stderr" in result &&
-    "exitCode" in result
-  ) {
-    const stdout =
-      typeof result.stdout === "string" ? truncate(result.stdout, 800) : "";
-    const stderr =
-      typeof result.stderr === "string" ? truncate(result.stderr, 400) : "";
-    const exitCode =
-      typeof result.exitCode === "number" ? result.exitCode : "unknown";
-    return [
-      `命令已执行，退出码：${exitCode}。`,
-      stdout ? `stdout:\n${stdout}` : "",
-      stderr ? `stderr:\n${stderr}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-  }
-  return `命令已执行。\n\n${truncate(stringify(result), 1200)}`;
-}
-
-// Re-export planPrompt as parseQuery for backward compatibility with tests
-export const parseQuery = planPrompt;
-
 function planPrompt(prompt: string): PlannedAction {
   const trimmed = prompt.trim();
-  const readMatch =
-    trimmed.match(/^(?:read|open|show|cat)\s+(.+)$/i) ??
-    trimmed.match(/^(?:读取|查看|打开)\s+(.+)$/);
+
+  const readMatch = trimmed.match(/^read\s+(.+)$/i);
   if (readMatch) {
-    const path = readMatch[1].trim().replace(/^["']|["']$/g, "");
+    const path = readMatch[1].trim();
     return {
       kind: "tool",
       toolName: "Read",
       input: { path },
-      intro: `我会先读取 \`${path}\`。`,
-      summarizeResult: summarizeReadResult,
+      intro: `我来读取 ${path} 的内容。`,
+      summarizeResult: () => `读取完成：\`${path}\``,
       summarizeError: (message) => `读取 \`${path}\` 失败：${message}`,
     };
   }
 
-  const shellMatch =
-    trimmed.match(/^(?:run|exec|execute|shell|bash)\s+(.+)$/i) ??
-    trimmed.match(/^(?:执行|运行命令)\s+(.+)$/);
-  if (shellMatch) {
-    const command = shellMatch[1].trim();
-    return {
-      kind: "tool",
-      toolName: "Shell",
-      input: { command },
-      intro: `我会执行命令：\`${command}\`。`,
-      summarizeResult: summarizeShellResult,
-      summarizeError: (message) => `命令执行失败：${message}`,
-    };
-  }
-
-  const fetchMatch =
-    trimmed.match(
-      /^(?:fetch|visit|open-url)\s+(https?:\/\/\S+)(?:\s+(.+))?$/i,
-    ) ?? trimmed.match(/^(?:抓取|访问)\s+(https?:\/\/\S+)(?:\s+(.+))?$/);
-  if (fetchMatch) {
-    const url = fetchMatch[1];
-    const fetchPrompt = fetchMatch[2]?.trim() ?? "";
-    return {
-      kind: "tool",
-      toolName: "WebFetch",
-      input: { url, prompt: fetchPrompt },
-      intro: `我会抓取 ${url}。`,
-      summarizeResult: (result) =>
-        `网页抓取完成。以下是结果预览：\n\n${truncate(stringify(result), 1200)}`,
-      summarizeError: (message) => `抓取 ${url} 失败：${message}`,
-    };
-  }
-
-  const writeMatch =
-    trimmed.match(/^(?:write|create|save)\s+(\S+)\s+(.+)$/i) ??
-    trimmed.match(/^(?:写入|创建文件)\s+(\S+)\s+(.+)$/);
+  const writeMatch = trimmed.match(/^write\s+(\S+)\s+(.+)$/s);
   if (writeMatch) {
     const path = writeMatch[1].trim();
-    const content = writeMatch[2];
+    const content = writeMatch[2].trimStart();
     return {
       kind: "tool",
       toolName: "Write",
       input: { path, content },
-      intro: `我会把内容写入 \`${path}\`。`,
-      summarizeResult: (result) =>
-        `写入完成：\`${path}\`。\n\n${stringify(result)}`,
+      intro: `我来写入 ${path}。`,
+      summarizeResult: () => `写入完成：\`${path}\``,
       summarizeError: (message) => `写入 \`${path}\` 失败：${message}`,
     };
   }
 
-  const editMatch =
-    trimmed.match(/^(?:edit|replace)\s+(\S+)\s+(.+?)\s*(?:=>|->)\s*(.+)$/i) ??
-    trimmed.match(/^(?:编辑|替换)\s+(\S+)\s+(.+?)\s*(?:=>|->|为)\s*(.+)$/);
+  const editMatch = trimmed.match(/^edit\s+(\S+)\s+(.+?)\s*=>\s*(.+)$/s);
   if (editMatch) {
     const path = editMatch[1].trim();
-    const oldString = editMatch[2];
-    const newString = editMatch[3];
+    const oldString = editMatch[2].trim();
+    const newString = editMatch[3].trim();
     return {
       kind: "tool",
       toolName: "Edit",
       input: { path, oldString, newString },
-      intro: `我会编辑 \`${path}\`，替换指定内容。`,
+      intro: `我来编辑 ${path} 的内容。`,
       summarizeResult: () => `编辑完成：\`${path}\` 已更新。`,
       summarizeError: (message) => `编辑 \`${path}\` 失败：${message}`,
+    };
+  }
+
+  const runMatch = trimmed.match(/^run\s+(.+)$/i);
+  if (runMatch) {
+    const command = runMatch[1].trim();
+    return {
+      kind: "tool",
+      toolName: "Shell",
+      input: { command },
+      intro: `我来执行 \`${command}\`。`,
+      summarizeResult: () => `执行完成：\`${command}\``,
+      summarizeError: (message) => `执行 \`${command}\` 失败：${message}`,
+    };
+  }
+
+  const fetchMatch = trimmed.match(/^fetch\s+(.+?)(?:\s+(.+))?$/i);
+  if (fetchMatch) {
+    const url = fetchMatch[1].trim();
+    const prompt = fetchMatch[2]?.trim() ?? "";
+    return {
+      kind: "tool",
+      toolName: "WebFetch",
+      input: { url, prompt },
+      intro: `我来获取 ${url} 的内容。`,
+      summarizeResult: () => `获取完成：${url}`,
+      summarizeError: (message) => `获取 ${url} 失败：${message}`,
     };
   }
 
@@ -319,25 +328,154 @@ function getToolDefinitions(): LlmToolDefinition[] {
       },
     },
     {
+      name: "WebSearch",
+      description: "Search the web using DuckDuckGo and return results.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "FileTree",
+      description: "List directory tree structure with configurable depth.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Directory path." },
+          maxDepth: { type: "number", description: "Maximum depth to traverse." },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "SearchFiles",
+      description: "Search files by name pattern (glob) or content (regex).",
+      parameters: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["files", "content"], description: "'files' for glob match, 'content' for regex search." },
+          pattern: { type: "string", description: "Glob pattern or regex." },
+          path: { type: "string", description: "Directory to search in." },
+        },
+        required: ["mode", "pattern"],
+        additionalProperties: false,
+      },
+    },
+    {
       name: "Agent",
-      description: "Launch a simple subagent for delegated work.",
+      description:
+        "Launch a subagent for delegated work. The subagent runs in its own context with independent tool access. " +
+        "Available subagent types: 'explore' (read-only codebase search), 'plan' (research for planning), " +
+        "'reflect' (self-reflection and insight extraction), 'general-purpose' (full capabilities, default). " +
+        "Subagents cannot launch other subagents. " +
+        "Launch multiple agents concurrently when possible to maximize performance.",
       parameters: {
         type: "object",
         properties: {
           description: {
             type: "string",
-            description: "Short task description.",
+            description: "A short (3-5 word) description of the task.",
           },
           prompt: {
             type: "string",
-            description: "Prompt to send to the subagent.",
+            description:
+              "The task for the subagent to perform. Provide a highly detailed task description. " +
+              "Specify exactly what information the subagent should return in its final message.",
           },
           subagentType: {
             type: "string",
-            description: "Optional subagent type or role name.",
+            description:
+              "Optional subagent type: 'explore' (fast read-only search), 'plan' (research), 'reflect' (self-reflection), or 'general-purpose' (default).",
           },
         },
         required: ["description", "prompt"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "Team",
+      description:
+        "Launch a team of specialized agents that work in parallel on a complex task. " +
+        "Available teams: 'code-review' (security + performance review), 'research' (codebase + documentation analysis). " +
+        "Team members run concurrently and results are synthesized by a lead agent.",
+      parameters: {
+        type: "object",
+        properties: {
+          teamName: {
+            type: "string",
+            description: "Team to launch: 'code-review' or 'research'.",
+          },
+          task: {
+            type: "string",
+            description: "The task for the team to work on.",
+          },
+        },
+        required: ["teamName", "task"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "Skill",
+      description:
+        "Execute a named skill within the main conversation. Use when you need to invoke a specific skill by name. " +
+        "Skills provide structured workflows for common tasks. Invoke a skill by its name.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "Name of the skill to invoke (e.g. 'recipe-setup', 'github').",
+          },
+          arguments: {
+            type: "string",
+            description: "Optional arguments to pass to the skill.",
+          },
+        },
+        required: ["command"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageUpload",
+      description: "Upload an image (base64) and save it locally for analysis.",
+      parameters: {
+        type: "object",
+        properties: {
+          data: { type: "string", description: "Base64-encoded image data." },
+          filename: { type: "string", description: "Filename to save as." },
+        },
+        required: ["data", "filename"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageAnalyze",
+      description: "Analyze an image using vision-capable LLM models. Supports OpenAI and Anthropic providers.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path to the image file." },
+          prompt: { type: "string", description: "What to analyze in the image." },
+        },
+        required: ["path", "prompt"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ImageGenerate",
+      description: "Generate an image using DALL-E or Stability AI.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Description of the image to generate." },
+          provider: { type: "string", enum: ["openai", "stability"], description: "Image generation provider." },
+        },
+        required: ["prompt"],
         additionalProperties: false,
       },
     },
@@ -410,6 +548,9 @@ async function* executeToolCall(
       for (const extraMessage of result.extraMessages) {
         yield extraMessage;
       }
+    }
+    if (result.contextModifier) {
+      params.toolUseContext = result.contextModifier(params.toolUseContext);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -485,6 +626,24 @@ async function* queryWithLlm(
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
 
+  try {
+    const memory = await getMemoryForSystemPrompt(params.toolUseContext.cwd);
+    if (memory.trim()) {
+      systemPrompt.push(memory);
+    }
+  } catch {
+    // memory loading is best-effort
+  }
+
+  const skillsMeta = formatSkillMetadataForPrompt(
+    detectRelevantSkills(params.prompt).length > 0
+      ? []
+      : getLoadedSkills().filter((s: any) => !s.metadata.disableModelInvocation),
+  );
+  if (skillsMeta.trim()) {
+    systemPrompt.push(skillsMeta);
+  }
+
   for (let turn = 0; turn < maxTurns; turn += 1) {
     const llmResponse = await runLlmTurn({
       messages: conversation,
@@ -541,9 +700,170 @@ async function* queryWithLlm(
   yield createAssistantTextMessage("达到最大工具轮次限制，已停止继续执行。");
 }
 
+function replaceParams(input: any, values: Record<string, any>): any {
+  if (typeof input === 'string') {
+    let result = input;
+    for (const [key, value] of Object.entries(values)) {
+      const regex = new RegExp(`\\{${key}\\}`, 'g');
+      result = result.replace(regex, String(value));
+    }
+    return result;
+  } else if (Array.isArray(input)) {
+    return input.map(item => replaceParams(item, values));
+  } else if (typeof input === 'object' && input !== null) {
+    const result: Record<string, any> = {};
+    for (const key of Object.keys(input)) {
+      result[key] = replaceParams(input[key], values);
+    }
+    return result;
+  }
+  return input;
+}
+
+async function* executeWorkMap(
+  workMap: WorkMap,
+  params: QueryParams,
+): AsyncGenerator<Message, void> {
+  yield createAssistantTextMessage(
+    `🧭 检测到技能 "${workMap.name}"，正在生成工作图...\n\n` +
+    `共 ${workMap.phases.length} 个阶段，${workMap.steps.length} 个步骤`,
+  );
+  
+  if (params.onWorkMapUpdate) {
+    params.onWorkMapUpdate(workMap);
+  }
+  
+  // 收集参数值
+  let collectedValues: Record<string, any> = {};
+  if (workMap.globalParams && workMap.globalParams.length > 0) {
+    if (params.onSpecRequest) {
+      collectedValues = await params.onSpecRequest({
+        skillId: workMap.skillName,
+        params: workMap.globalParams,
+      });
+      workMap.globalParamValues = collectedValues;
+    }
+  }
+  
+  let completedCount = 0;
+  for (const phase of workMap.phases) {
+    for (const stepId of phase.stepIds) {
+      const step = workMap.steps.find((s: any) => s.id === stepId);
+      if (!step) continue;
+      
+      step.status = 'running';
+      if (params.onWorkMapUpdate) {
+        params.onWorkMapUpdate(workMap);
+      }
+      
+      yield createAssistantTextMessage(
+        `[${phase.name}] 执行: ${step.name}`,
+      );
+      
+      try {
+        if (step.toolName) {
+          // 替换参数值到工具输入
+          let toolInput = step.toolInputTemplate || {};
+          if (Object.keys(collectedValues).length > 0) {
+            toolInput = replaceParams(toolInput, collectedValues);
+          }
+          
+          const toolUseBlock: AssistantToolUseBlock = {
+            type: 'tool_use',
+            id: createId('tool-use'),
+            name: step.toolName,
+            input: toolInput,
+          };
+          const toolUseMessage = createAssistantMessage([toolUseBlock]);
+          yield toolUseMessage;
+          
+          for await (const message of executeToolCall(params, toolUseMessage, toolUseBlock)) {
+            yield message;
+          }
+        }
+        
+        step.status = 'completed';
+        completedCount++;
+        
+      } catch (error) {
+        step.status = 'failed';
+        step.error = error instanceof Error ? error.message : String(error);
+        yield createAssistantTextMessage(
+          `⚠️ 步骤 "${step.name}" 执行失败: ${step.error}`,
+        );
+        if (params.onWorkMapUpdate) {
+          params.onWorkMapUpdate(workMap);
+        }
+        break;
+      }
+      
+      if (params.onWorkMapUpdate) {
+        params.onWorkMapUpdate(workMap);
+      }
+    }
+  }
+  
+  yield createAssistantTextMessage(
+    `\n🎉 WorkMap "${workMap.name}" 执行完成！\n\n` +
+    `✅ 共完成 ${completedCount} 个步骤`,
+  );
+}
+
 export async function* query(
   params: QueryParams,
 ): AsyncGenerator<Message, void> {
+  const relevantSkills = detectRelevantSkills(params.prompt);
+
+  if (relevantSkills.length > 0) {
+    const skill = relevantSkills[0];
+
+    try {
+      const workMap: any = { steps: [] };
+      if (workMap.steps.length > 0) {
+        yield* executeWorkMap(workMap, params);
+        return;
+      }
+    } catch (e) {
+      console.error('[WorkMap] Parse failed, falling back', e);
+    }
+
+    let enhancedSystemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
+
+    const instruction = await loadSkillInstruction(skill);
+    enhancedSystemPrompt.push(
+      `\n\n${formatSkillInstructionForPrompt(skill)}`,
+    );
+
+    if (instruction.references.length > 0) {
+      enhancedSystemPrompt.push(
+        '\nReference files available in skill directory (use Read tool if needed): ' +
+        instruction.references.join(', '),
+      );
+    }
+
+    const enhancedParams = {
+      ...params,
+      systemPrompt: enhancedSystemPrompt,
+    };
+    
+    if (!getLlmConfigFromEnv()) {
+      yield* queryWithPlanner(enhancedParams);
+      return;
+    }
+  
+    try {
+      yield* queryWithLlm(enhancedParams);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      yield createAssistantTextMessage(
+        `LLM 调用失败，已回退到本地 planner。\n\n${message}`,
+      );
+      yield* queryWithPlanner(enhancedParams);
+    }
+    
+    return;
+  }
+  
   if (!getLlmConfigFromEnv()) {
     yield* queryWithPlanner(params);
     return;

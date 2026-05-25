@@ -346,7 +346,7 @@ describe('Headless E2E', () => {
       const { getTools } = await import('../../tools/registry');
 
       const tools = getTools();
-      expect(tools).toHaveLength(6); // Read, Write, Edit, Shell, WebFetch, Agent
+      expect(tools).toHaveLength(12); // Read, Write, Edit, Shell, WebFetch, Agent
 
       // Verify each tool name is accessible
       const toolNames = tools.map(t => t.name.toLowerCase());
