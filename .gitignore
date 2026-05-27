@@ -50,5 +50,8 @@ discovery/
 env-qwen3.6.sh
 bun.lock
 
+# Python bytecode
+__pycache__/
+
 # Test artifacts
 undefined/
