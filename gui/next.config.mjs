@@ -2,7 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  outputFileTracingRoot: '/home/siok/Agent_From_Scratch/gui-new',
+  output: 'export',
+  distDir: '.next',
+  images: {
+    unoptimized: true,
+  },
   env: {
     APP_NAME: 'IRG',
   },

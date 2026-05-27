@@ -1,155 +1,322 @@
 'use client'
 
 import * as React from 'react'
-import { ScrollArea } from '@/components/ui'
-import { Search, Trash2, MessageSquare, Clock } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar } from '@radix-ui/react-avatar'
-import { cn } from '@/lib/utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Trash2, Search, MessageSquare, Clock, X, ChevronRight } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 import type { Session } from '@/types'
 
-const statusColors: Record<Session['status'], string> = {
-  active: 'bg-green-500',
-  paused: 'bg-yellow-500',
-  completed: 'bg-blue-500',
-  failed: 'bg-red-500',
+const defaultStatus = { color: '#666', bgColor: 'rgba(102, 102, 102, 0.1)', label: 'Unknown' }
+const statusConfig: Record<string, { color: string; bgColor: string; label: string }> = {
+  active: { color: '#22c55e', bgColor: 'rgba(34, 197, 94, 0.1)', label: 'Active' },
+  paused: { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', label: 'Paused' },
+  completed: { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', label: 'Completed' },
+  failed: { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', label: 'Failed' },
 }
 
-const filterTabs = ['All', 'Active', 'Issues'] as const
-type FilterTab = (typeof filterTabs)[number]
-
 export function SessionsView() {
-  const { sessions, currentSession, setCurrentSession, deleteSession, loadSessions } = useAppStore()
+  const { sessions, currentSession, setCurrentSession, deleteSession, loadSessions, loadSessionMessages, setViewMode } = useAppStore()
   const [search, setSearch] = React.useState('')
-  const [filter, setFilter] = React.useState<FilterTab>('All')
 
   React.useEffect(() => {
     loadSessions()
-  }, [loadSessions])
+  }, [])
 
-  const filteredSessions = sessions.filter((s) => {
-    const matchesSearch = s.title.toLowerCase().includes(search.toLowerCase())
-    if (filter === 'All') return matchesSearch
-    if (filter === 'Active') return matchesSearch && s.status === 'active'
-    if (filter === 'Issues') return matchesSearch && (s.status === 'failed' || s.status === 'paused')
-    return matchesSearch
-  })
+  const filteredSessions = sessions.filter((s) =>
+    s.title.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (window.confirm('Delete this session?')) {
+      await deleteSession(id)
+    }
+  }
 
   return (
-    <div className="flex h-full">
-      <div className="w-80 border-r flex flex-col">
-        <div className="p-3 border-b space-y-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div style={{ display: 'flex', height: '100%', backgroundColor: '#0a0a0a', color: '#fff' }}>
+      {/* Session List */}
+      <div style={{
+        width: 340,
+        borderRight: '1px solid #1a1a1a',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#111'
+      }}>
+        {/* Search */}
+        <div style={{ padding: 12, borderBottom: '1px solid #1a1a1a' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{
+              position: 'absolute',
+              left: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: '#666'
+            }} />
             <Input
               placeholder="Search sessions..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              style={{
+                paddingLeft: 32,
+                height: 36,
+                fontSize: 13,
+                backgroundColor: '#0a0a0a',
+                border: '1px solid #222'
+              }}
             />
           </div>
-          <div className="flex gap-1">
-            {filterTabs.map((tab) => (
-              <Button
-                key={tab}
-                variant={filter === tab ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setFilter(tab)}
-                className="flex-1 text-xs"
-              >
-                {tab}
-              </Button>
-            ))}
-          </div>
         </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {filteredSessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => setCurrentSession(session)}
-                className={cn(
-                  'flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-muted',
-                  currentSession?.id === session.id && 'bg-muted'
-                )}
-              >
-                <div className="relative">
-                  <Avatar className="h-10 w-10">
-                    <div className="flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium">
-                      {session.title.slice(0, 2).toUpperCase()}
-                    </div>
-                  </Avatar>
-                  <div className={cn('absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background', statusColors[session.status])} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate">{session.title}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={(e) => { e.stopPropagation(); deleteSession(session.id) }}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <MessageSquare className="h-3 w-3" />
-                    <span>{session.messageCount}</span>
-                    <Clock className="h-3 w-3" />
-                    <span>{formatDistanceToNow(session.updatedAt, { addSuffix: true })}</span>
-                  </div>
-                </div>
+
+        {/* Session List */}
+        <ScrollArea style={{ flex: 1 }}>
+          <div style={{ padding: 8 }}>
+            {filteredSessions.length === 0 ? (
+              <div style={{
+                padding: 24,
+                textAlign: 'center',
+                color: '#666',
+                fontSize: 13
+              }}>
+                No sessions found
               </div>
-            ))}
+            ) : (
+              filteredSessions.map((session) => {
+                const status = statusConfig[session.status] || defaultStatus
+                const isSelected = currentSession?.id === session.id
+                return (
+                  <div
+                    key={session.id}
+                    onClick={() => setCurrentSession(session)}
+                    style={{
+                      padding: '10px 12px',
+                      marginBottom: 4,
+                      borderRadius: 8,
+                      backgroundColor: isSelected ? '#1e3a5f' : 'transparent',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                      border: isSelected ? '1px solid #3b82f6' : '1px solid transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) e.currentTarget.style.backgroundColor = '#1a1a1a'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      {/* Status indicator */}
+                      <div style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: status.color,
+                        marginTop: 6,
+                        flexShrink: 0
+                      }} />
+
+                      {/* Content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: '#fff',
+                          marginBottom: 4,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {session.title || 'Untitled Session'}
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 11,
+                          color: '#888'
+                        }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <MessageSquare size={10} />
+                            {session.messageCount}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <Clock size={10} />
+                            {formatDistanceToNow(session.updatedAt, { addSuffix: false })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Delete button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDelete(e, session.id)}
+                        style={{
+                          width: 24,
+                          height: 24,
+                          opacity: 0.5,
+                          transition: 'opacity 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+
+                    {/* Status badge */}
+                    <div style={{
+                      display: 'inline-block',
+                      marginTop: 6,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      backgroundColor: status.bgColor,
+                      color: status.color,
+                      fontSize: 10,
+                      fontWeight: 500
+                    }}>
+                      {status.label}
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </ScrollArea>
       </div>
-      <div className="flex-1 p-6">
+
+      {/* Detail Panel */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {currentSession ? (
-          <div className="max-w-lg mx-auto bg-muted/50 rounded-lg p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-12 w-12">
-                <div className="flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium">
-                  {currentSession.title.slice(0, 2).toUpperCase()}
+          <>
+            {/* Header */}
+            <div style={{
+              padding: 20,
+              borderBottom: '1px solid #1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  backgroundColor: '#1a1a1a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: '#fff'
+                }}>
+                  {currentSession.title?.slice(0, 2).toUpperCase() || 'UN'}
                 </div>
-              </Avatar>
-              <div>
-                <h3 className="font-semibold">{currentSession.title}</h3>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className={cn('w-2 h-2 rounded-full', statusColors[currentSession.status])} />
-                  <span>{currentSession.status}</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+                    {currentSession.title || 'Untitled Session'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                    Created {formatDistanceToNow(currentSession.createdAt, { addSuffix: true })}
+                  </div>
                 </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCurrentSession(null)}
+              >
+                <X size={16} />
+              </Button>
+            </div>
+
+            {/* Info Grid */}
+            <div style={{ padding: 20, flex: 1, overflow: 'auto' }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 16,
+                maxWidth: 500
+              }}>
+                <InfoCard label="Status" value={
+                  <span style={{ color: (statusConfig[currentSession.status] || defaultStatus).color }}>
+                    {(statusConfig[currentSession.status] || defaultStatus).label}
+                  </span>
+                } />
+                <InfoCard label="Messages" value={currentSession.messageCount?.toString() || '0'} />
+                <InfoCard label="Model" value={currentSession.model || 'N/A'} />
+                <InfoCard label="Provider" value={currentSession.provider || 'N/A'} />
+              </div>
+
+              {currentSession.lastPrompt && (
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 11, fontWeight: 500, color: '#666', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Last Prompt
+                  </div>
+                  <div style={{
+                    padding: 12,
+                    backgroundColor: '#111',
+                    borderRadius: 8,
+                    fontSize: 13,
+                    color: '#ccc',
+                    lineHeight: 1.5
+                  }}>
+                    {currentSession.lastPrompt}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 24 }}>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await loadSessionMessages(currentSession.id)
+                    setViewMode('chat')
+                  }}
+                  style={{
+                    gap: 6,
+                    borderColor: '#333',
+                    color: '#fff'
+                  }}
+                >
+                  <ChevronRight size={14} />
+                  Continue Session
+                </Button>
               </div>
             </div>
-            {currentSession.lastPrompt && (
-              <div>
-                <span className="text-xs font-medium text-muted-foreground">Last prompt:</span>
-                <p className="text-sm mt-1">{currentSession.lastPrompt}</p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-xs text-muted-foreground">Provider:</span>
-                <p>{currentSession.provider || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Model:</span>
-                <p>{currentSession.model || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Messages:</span>
-                <p>{currentSession.messageCount}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Updated:</span>
-                <p>{formatDistanceToNow(currentSession.updatedAt, { addSuffix: true })}</p>
-              </div>
-            </div>
-          </div>
+          </>
         ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#666',
+            fontSize: 13
+          }}>
             Select a session to view details
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{
+      padding: 12,
+      backgroundColor: '#111',
+      borderRadius: 8
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, color: '#fff' }}>
+        {value}
       </div>
     </div>
   )

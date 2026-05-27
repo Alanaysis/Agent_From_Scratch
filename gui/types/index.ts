@@ -19,6 +19,8 @@ export interface Session {
   lastPrompt?: string
   provider?: string
   model?: string
+  parentId?: string
+  taskId?: string
 }
 
 export interface Task {
@@ -28,8 +30,26 @@ export interface Task {
   status: 'todo' | 'in_progress' | 'verify' | 'done' | 'failed'
   priority: 'low' | 'medium' | 'high'
   assignee?: string
+  dependsOn?: string[]
   createdAt: number
   updatedAt: number
+  errorCount?: number
+  lastError?: string
+  sessionId?: string
+}
+
+export interface TaskActivity {
+  id: string
+  action: 'created' | 'assigned' | 'released' | 'status_changed' | 'updated' | 'comment_added'
+  actor?: string
+  details?: string
+  timestamp: number
+}
+
+export interface TaskDetail extends Task {
+  activities: TaskActivity[]
+  statusHistory: Array<{ status: string; timestamp: number; actor?: string }>
+  sessionId?: string
 }
 
 export interface AgentPresence {

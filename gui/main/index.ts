@@ -4,6 +4,9 @@ import { fileURLToPath } from "url";
 import { registerSessionHandlers } from "./handlers/sessions";
 import { registerChatHandlers } from "./handlers/chat";
 import { registerConfigHandlers } from "./handlers/config";
+import { registerTaskHandlers } from "./handlers/tasks";
+import { registerExecutorHandlers } from "./handlers/executor";
+import { registerAgentHandlers } from "./handlers/agents";
 import { log } from "./logger";
 
 app.disableHardwareAcceleration();
@@ -49,7 +52,7 @@ async function createWindow() {
     log('INFO', 'Main', 'Loading dev URL: http://localhost:3001')
     await mainWindow.loadURL("http://localhost:3001");
   } else {
-    const htmlPath = join(__dirname, "../../.next/exported/index.html");
+    const htmlPath = join(__dirname, "../../out/index.html");
     log('INFO', 'Main', `Loading production file: ${htmlPath}`)
     await mainWindow.loadFile(htmlPath);
   }
@@ -62,6 +65,9 @@ function registerHandlers() {
   registerSessionHandlers();
   registerChatHandlers();
   registerConfigHandlers();
+  registerTaskHandlers();
+  registerExecutorHandlers();
+  registerAgentHandlers();
   log('INFO', 'Main', 'All IPC handlers registered')
 }
 

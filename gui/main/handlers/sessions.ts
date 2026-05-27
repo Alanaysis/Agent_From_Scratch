@@ -1,8 +1,8 @@
 import { ipcMain } from "electron";
 import { cwd } from "process";
-import { listSessions, readSessionInfo } from "../../../storage/sessionIndex";
+import { listSessions, readSessionInfo, deleteSessionInfo } from "../../../storage/sessionIndex";
 import type { SessionInfo } from "../../../storage/sessionIndex";
-import { readTranscriptMessages as readSessionMessages, getTranscriptPath } from "../../../storage/transcript";
+import { readTranscriptMessages as readSessionMessages, getTranscriptPath, deleteTranscript } from "../../../storage/transcript";
 import { log } from "../logger";
 
 interface SessionListResult {
@@ -62,6 +62,20 @@ export function registerSessionHandlers() {
       return { messages, transcriptPath };
     } catch (e) {
       log('ERROR', 'Sessions', `sessions:messages ${sessionId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("sessions:delete", async (_event, input: { sessionId: string }): Promise<void> => {
+    log('INFO', 'Sessions', `sessions:delete called for ${input.sessionId}`)
+    try {
+      await Promise.all([
+        deleteSessionInfo(cwd(), input.sessionId),
+        deleteTranscript(cwd(), input.sessionId),
+      ])
+      log('INFO', 'Sessions', `sessions:delete ${input.sessionId} completed`)
+    } catch (e) {
+      log('ERROR', 'Sessions', `sessions:delete ${input.sessionId} failed`, e)
       throw e
     }
   });

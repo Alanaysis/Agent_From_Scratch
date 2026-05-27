@@ -1,0 +1,78 @@
+import { homedir } from "os";
+import { join } from "path";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+import type { LlmConfig, LlmProviderName } from "./llm";
+
+export type AppConfig = {
+  llm: LlmConfig;
+};
+
+const DEFAULT_LLM_CONFIG: LlmConfig = {
+  provider: "openai",
+  apiKey: "",
+  model: "gpt-4o-mini",
+  baseUrl: "https://api.openai.com/v1",
+  anthropicVersion: "2023-06-01",
+};
+
+function getConfigPath(): string {
+  return join(homedir(), ".irg", "config.json");
+}
+
+export function getDefaultConfig(): AppConfig {
+  return {
+    llm: { ...DEFAULT_LLM_CONFIG },
+  };
+}
+
+export async function loadConfig(): Promise<AppConfig> {
+  const configPath = getConfigPath();
+  if (!existsSync(configPath)) {
+    return getDefaultConfig();
+  }
+  try {
+    const content = await readFile(configPath, "utf-8");
+    const parsed = JSON.parse(content);
+    return {
+      llm: {
+        ...DEFAULT_LLM_CONFIG,
+        ...parsed.llm,
+      },
+    };
+  } catch {
+    return getDefaultConfig();
+  }
+}
+
+export async function saveConfig(config: AppConfig): Promise<void> {
+  const configPath = getConfigPath();
+  const dir = homedir();
+  await mkdir(join(dir, ".irg"), { recursive: true });
+  await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+}
+
+export function mergeEnvIntoConfig(config: AppConfig): AppConfig {
+  const apiKey = process.env.IRG_LLM_API_KEY?.trim();
+  const model = process.env.IRG_LLM_MODEL?.trim();
+  const provider = process.env.IRG_LLM_PROVIDER?.trim().toLowerCase();
+  const baseUrl = process.env.IRG_LLM_BASE_URL?.trim();
+  const systemPrompt = process.env.IRG_LLM_SYSTEM_PROMPT?.trim();
+  const anthropicVersion = process.env.IRG_ANTHROPIC_VERSION?.trim();
+
+  if (!apiKey && !model && !provider && !baseUrl && !systemPrompt && !anthropicVersion) {
+    return config;
+  }
+
+  const merged = { ...config };
+  if (apiKey) merged.llm.apiKey = apiKey;
+  if (model) merged.llm.model = model;
+  if (provider === "anthropic" || provider === "openai") {
+    merged.llm.provider = provider as LlmProviderName;
+  }
+  if (baseUrl) merged.llm.baseUrl = baseUrl.replace(/\/$/, "");
+  if (systemPrompt) merged.llm.systemPrompt = systemPrompt;
+  if (anthropicVersion) merged.llm.anthropicVersion = anthropicVersion;
+
+  return merged;
+}
