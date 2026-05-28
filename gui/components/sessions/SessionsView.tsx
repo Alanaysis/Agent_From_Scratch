@@ -31,9 +31,7 @@ export function SessionsView() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (window.confirm('Delete this session?')) {
-      await deleteSession(id)
-    }
+    await deleteSession(id)
   }
 
   return (
@@ -224,13 +222,27 @@ export function SessionsView() {
                   </div>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCurrentSession(null)}
-              >
-                <X size={16} />
-              </Button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    await deleteSession(currentSession.id)
+                    setCurrentSession(null)
+                  }}
+                  style={{ width: 28, height: 28 }}
+                >
+                  <Trash2 size={14} color="#888" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCurrentSession(null)}
+                  style={{ width: 28, height: 28 }}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
             </div>
 
             {/* Info Grid */}

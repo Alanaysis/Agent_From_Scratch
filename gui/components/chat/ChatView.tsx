@@ -2,8 +2,160 @@
 
 import * as React from 'react'
 import { useAppStore } from '@/lib/store'
-import { Send, Bot, Loader2 } from 'lucide-react'
+import { Send, Bot, Loader2, ArrowLeft, Square, ChevronDown, ChevronRight, CheckCircle2, XCircle, Clock, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { Message, MessageBlock, ToolCallEvent } from '@/types'
+
+function ToolCallCard({ block, activeCall }: { block: MessageBlock & { type: 'tool_use' }; activeCall?: ToolCallEvent }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const status = activeCall?.status ?? block.status ?? 'completed'
+  const durationMs = activeCall?.durationMs ?? block.durationMs
+
+  const statusConfig = {
+    pending: { color: '#666', icon: Clock, label: 'Pending' },
+    running: { color: '#3b82f6', icon: Loader2, label: 'Running' },
+    completed: { color: '#22c55e', icon: CheckCircle2, label: 'Done' },
+    failed: { color: '#ef4444', icon: XCircle, label: 'Failed' },
+    denied: { color: '#f97316', icon: XCircle, label: 'Denied' },
+  } as const
+
+  const cfg = statusConfig[status]
+  const StatusIcon = cfg.icon
+  const inputPreview = typeof block.input === 'string'
+    ? block.input
+    : JSON.stringify(block.input, null, 2)
+
+  return (
+    <div style={{
+      borderRadius: 8,
+      border: '1px solid #222',
+      backgroundColor: '#0d0d0d',
+      overflow: 'hidden',
+      fontSize: 12,
+    }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 10px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#ccc',
+          textAlign: 'left',
+        }}
+      >
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Wrench size={13} color={cfg.color} />
+        <span style={{ fontWeight: 500, color: '#fff', flex: 1 }}>{block.toolName}</span>
+        {status === 'running' && (
+          <Loader2 size={12} color={cfg.color} style={{ animation: 'spin 1s linear infinite' }} />
+        )}
+        {status !== 'running' && <StatusIcon size={12} color={cfg.color} />}
+        <span style={{ color: cfg.color, fontSize: 11 }}>{cfg.label}</span>
+        {durationMs != null && (
+          <span style={{ color: '#666', fontSize: 11 }}>{durationMs}ms</span>
+        )}
+      </button>
+      {expanded && (
+        <div style={{ padding: '0 10px 8px', borderTop: '1px solid #1a1a1a' }}>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ color: '#666', marginBottom: 3, fontSize: 11 }}>Input</div>
+            <pre style={{
+              margin: 0,
+              padding: 8,
+              backgroundColor: '#111',
+              borderRadius: 6,
+              color: '#aaa',
+              fontSize: 11,
+              maxHeight: 160,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+            }}>{inputPreview}</pre>
+          </div>
+          {activeCall?.result && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ color: '#666', marginBottom: 3, fontSize: 11 }}>Result</div>
+              <pre style={{
+                margin: 0,
+                padding: 8,
+                backgroundColor: '#111',
+                borderRadius: 6,
+                color: '#aaa',
+                fontSize: 11,
+                maxHeight: 200,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}>{activeCall.result}</pre>
+            </div>
+          )}
+          {activeCall?.error && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ color: '#ef4444', marginBottom: 3, fontSize: 11 }}>Error</div>
+              <pre style={{
+                margin: 0,
+                padding: 8,
+                backgroundColor: '#1a0d0d',
+                borderRadius: 6,
+                color: '#ef4444',
+                fontSize: 11,
+                maxHeight: 200,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}>{activeCall.error}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MessageBlocks({ msg, activeToolCalls }: { msg: Message; activeToolCalls: Map<string, ToolCallEvent> }) {
+  if (!msg.blocks || msg.blocks.length === 0) {
+    return <>{msg.content}</>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {msg.blocks.map((block, i) => {
+        if (block.type === 'text') {
+          if (!block.text) return null
+          return <span key={i}>{block.text}</span>
+        }
+        if (block.type === 'tool_use') {
+          const activeCall = activeToolCalls.get(block.toolUseId)
+          return <ToolCallCard key={block.toolUseId} block={block} activeCall={activeCall} />
+        }
+        if (block.type === 'tool_result') {
+          return (
+            <div key={block.toolUseId} style={{
+              borderRadius: 8,
+              padding: '6px 10px',
+              backgroundColor: block.isError ? '#1a0d0d' : '#0d1a0d',
+              border: `1px solid ${block.isError ? '#331111' : '#112211'}`,
+              fontSize: 12,
+              color: block.isError ? '#ef4444' : '#aaa',
+              maxHeight: 200,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+            }}>
+              {block.content}
+            </div>
+          )
+        }
+        return null
+      })}
+    </div>
+  )
+}
 
 export function ChatView() {
   const store = useAppStore()
@@ -30,11 +182,10 @@ export function ChatView() {
     if (!input.trim() || !store.backendConnected) return
     const content = input.trim()
     setInput('')
-    store.setLoading(true)
     try {
       await store.sendChatMessage(content, store.currentSession?.id ?? undefined)
-    } finally {
-      store.setLoading(false)
+    } catch (e) {
+      console.error('[ChatView] send error:', e)
     }
     setTick(t => t + 1)
     inputRef.current?.focus()
@@ -57,6 +208,16 @@ export function ChatView() {
         gap: 12,
         backgroundColor: '#111'
       }}>
+        {store.currentSession && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => store.setCurrentSession(null)}
+            style={{ width: 28, height: 28 }}
+          >
+            <ArrowLeft size={14} color="#fff" />
+          </Button>
+        )}
         <div style={{
           width: 36,
           height: 36,
@@ -70,7 +231,9 @@ export function ChatView() {
           <Bot size={18} color="#fff" />
         </div>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>IRG</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>
+            {store.currentSession ? store.currentSession.title : 'IRG'}
+          </div>
           <div style={{ fontSize: 11, color: store.backendConnected ? '#22c55e' : '#f97316', display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }} />
             {store.backendConnected ? 'Connected' : 'Connecting...'}
@@ -143,7 +306,7 @@ export function ChatView() {
               color: '#fff',
               border: msg.role === 'user' ? 'none' : '1px solid #1a1a1a'
             }}>
-              {msg.content}
+              {msg.role === 'user' ? msg.content : <MessageBlocks msg={msg} activeToolCalls={store.activeToolCalls} />}
             </div>
           </div>
         ))}
@@ -179,7 +342,45 @@ export function ChatView() {
           </div>
         )}
 
-        {store.isLoading && !store.streamingText && (
+        {store.isLoading && store.activeToolCalls.size > 0 && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              backgroundColor: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: '1px solid #333'
+            }}>
+              <Bot size={14} color="#fff" />
+            </div>
+            <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {Array.from(store.activeToolCalls.values()).map((tc) => (
+                <div key={tc.toolUseId} style={{
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  backgroundColor: '#0d0d0d',
+                  border: '1px solid #222',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  color: '#ccc',
+                }}>
+                  <Loader2 size={12} color="#3b82f6" style={{ animation: 'spin 1s linear infinite' }} />
+                  <Wrench size={12} color="#3b82f6" />
+                  <span style={{ fontWeight: 500, color: '#fff' }}>{tc.toolName}</span>
+                  <span style={{ color: '#666' }}>running...</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {store.isLoading && !store.streamingText && store.activeToolCalls.size === 0 && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <div style={{
               width: 28,
@@ -244,24 +445,100 @@ export function ChatView() {
             }}
             rows={1}
           />
-          <Button
-            onClick={handleSend}
-            disabled={!store.backendConnected || !input.trim()}
-            style={{
-              height: 38,
-              width: 38,
-              borderRadius: 10,
-              backgroundColor: store.backendConnected && input.trim() ? '#3b82f6' : '#1a1a1a',
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Send size={16} />
-          </Button>
+          {store.isLoading ? (
+            <Button
+              onClick={() => store.cancelChat()}
+              style={{
+                height: 38,
+                width: 38,
+                borderRadius: 10,
+                backgroundColor: '#ef4444',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Square size={14} />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSend}
+              disabled={!store.backendConnected || !input.trim()}
+              style={{
+                height: 38,
+                width: 38,
+                borderRadius: 10,
+                backgroundColor: store.backendConnected && input.trim() ? '#3b82f6' : '#1a1a1a',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Send size={16} />
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Permission Request Modal */}
+      {store.permissionRequest && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            borderRadius: 12,
+            padding: 24,
+            maxWidth: 400,
+            width: '90%',
+            border: '1px solid #333',
+          }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#fff' }}>
+              Permission Required
+            </h3>
+            <p style={{ fontSize: 13, color: '#aaa', marginBottom: 8 }}>
+              Tool: <span style={{ color: '#3b82f6', fontWeight: 500 }}>{store.permissionRequest.toolName}</span>
+            </p>
+            {store.permissionRequest.message && (
+              <p style={{ fontSize: 13, color: '#888', marginBottom: 16, lineHeight: 1.5 }}>
+                {store.permissionRequest.message}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  store.permissionRequest?.resolve(false)
+                  store.setPermissionRequest(null)
+                }}
+                style={{ color: '#888' }}
+              >
+                Deny
+              </Button>
+              <Button
+                onClick={() => {
+                  store.permissionRequest?.resolve(true)
+                  store.setPermissionRequest(null)
+                }}
+                style={{ backgroundColor: '#3b82f6' }}
+              >
+                Allow
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

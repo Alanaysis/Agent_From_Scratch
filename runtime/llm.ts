@@ -1,4 +1,5 @@
 import type { Message } from "./messages";
+import { loadConfig, saveConfig, getDefaultConfig, mergeEnvIntoConfig } from "./config";
 
 export type LlmProviderName = "openai" | "anthropic";
 
@@ -122,28 +123,42 @@ function getDefaultBaseUrl(provider: LlmProviderName): string {
     : "https://api.openai.com/v1";
 }
 
-export function getLlmConfigFromEnv(): LlmConfig | null {
-  const apiKey = process.env.CCL_LLM_API_KEY?.trim();
-  const model = process.env.CCL_LLM_MODEL?.trim();
-  if (!apiKey || !model) {
-    return null;
+const DEFAULT_LLM_CONFIG_FALLBACK: LlmConfig = {
+  provider: "openai",
+  apiKey: "",
+  model: "gpt-4o-mini",
+  baseUrl: "https://api.openai.com/v1",
+  anthropicVersion: "2023-06-01",
+};
+
+let cachedConfig: LlmConfig | null = null;
+let configInitialized = false;
+
+export async function initLlmConfig(): Promise<LlmConfig> {
+  if (cachedConfig) {
+    return cachedConfig;
   }
+  const appConfig = await loadConfig();
+  const withEnv = mergeEnvIntoConfig(appConfig);
+  cachedConfig = withEnv.llm;
+  configInitialized = true;
+  return cachedConfig;
+}
 
-  const provider =
-    process.env.CCL_LLM_PROVIDER?.trim().toLowerCase() === "anthropic"
-      ? "anthropic"
-      : "openai";
+export function getLlmConfig(): LlmConfig {
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+  return DEFAULT_LLM_CONFIG_FALLBACK;
+}
 
-  return {
-    provider,
-    apiKey,
-    model,
-    baseUrl: stripTrailingSlash(
-      process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider),
-    ),
-    systemPrompt: process.env.CCL_LLM_SYSTEM_PROMPT?.trim(),
-    anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01",
-  };
+export async function setLlmConfig(updates: Partial<LlmConfig>): Promise<LlmConfig> {
+  const appConfig = await loadConfig();
+  const newLlmConfig = { ...appConfig.llm, ...updates };
+  appConfig.llm = newLlmConfig;
+  await saveConfig(appConfig);
+  cachedConfig = newLlmConfig;
+  return newLlmConfig;
 }
 
 export function extractOpenAiText(content: OpenAiContent | undefined): string {
@@ -399,6 +414,7 @@ const openAiProvider: LlmProvider = {
         choices?: Array<{
           delta?: {
             content?: string;
+            reasoning_content?: string;
             tool_calls?: Array<{
               index: number;
               id?: string;
@@ -408,6 +424,7 @@ const openAiProvider: LlmProvider = {
               };
             }>;
           };
+          finish_reason?: string;
         }>;
       };
 
@@ -576,8 +593,8 @@ function getProvider(config: LlmConfig): LlmProvider {
 export async function runLlmTurn(
   params: LlmTurnParams,
 ): Promise<LlmTurnResponse> {
-  const config = getLlmConfigFromEnv();
-  if (!config) {
+  const config = getLlmConfig();
+  if (!config?.apiKey) {
     throw new Error("LLM is not configured");
   }
   return getProvider(config).runTurn(params, config);

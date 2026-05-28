@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { loadConfig, saveConfig, getDefaultConfig, mergeEnvIntoConfig } from "../../../runtime/config";
+import { loadConfig, getDefaultConfig, mergeEnvIntoConfig } from "../../../runtime/config";
 import { initLlmConfig, setLlmConfig } from "../../../runtime/llm";
 import type { LlmConfig } from "../../../runtime/llm";
 import { log } from "../logger";
@@ -79,21 +79,4 @@ export async function registerConfigHandlers() {
     }
   });
 
-  ipcMain.handle("config:save", async (_event, input: ConfigSetInput): Promise<void> => {
-    log('INFO', 'Config', 'config:save called', input)
-    try {
-      const appConfig = await loadConfig();
-      if (input.provider) appConfig.llm.provider = input.provider as LlmConfig["provider"];
-      if (input.apiKey !== undefined) appConfig.llm.apiKey = input.apiKey;
-      if (input.model) appConfig.llm.model = input.model;
-      if (input.baseUrl) appConfig.llm.baseUrl = input.baseUrl;
-      if (input.systemPrompt !== undefined) appConfig.llm.systemPrompt = input.systemPrompt;
-      if (input.anthropicVersion) appConfig.llm.anthropicVersion = input.anthropicVersion;
-      await saveConfig(appConfig);
-      log('INFO', 'Config', 'config:save succeeded')
-    } catch (e) {
-      log('ERROR', 'Config', 'config:save failed', e)
-      throw e
-    }
-  });
 }

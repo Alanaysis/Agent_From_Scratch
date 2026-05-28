@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import { cwd } from "process";
-import { listSessions, readSessionInfo, deleteSessionInfo } from "../../../storage/sessionIndex";
+import { listSessions, readSessionInfo, deleteSessionInfo, touchSession, closeSession } from "../../../storage/sessionIndex";
 import type { SessionInfo } from "../../../storage/sessionIndex";
 import { readTranscriptMessages as readSessionMessages, getTranscriptPath, deleteTranscript } from "../../../storage/transcript";
 import { log } from "../logger";
@@ -76,6 +76,25 @@ export function registerSessionHandlers() {
       log('INFO', 'Sessions', `sessions:delete ${input.sessionId} completed`)
     } catch (e) {
       log('ERROR', 'Sessions', `sessions:delete ${input.sessionId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("sessions:heartbeat", async (_event, input: { sessionId: string }): Promise<void> => {
+    try {
+      await touchSession(cwd(), input.sessionId)
+    } catch (e) {
+      log('ERROR', 'Sessions', `sessions:heartbeat ${input.sessionId} failed`, e)
+    }
+  });
+
+  ipcMain.handle("sessions:close", async (_event, input: { sessionId: string }): Promise<void> => {
+    log('INFO', 'Sessions', `sessions:close called for ${input.sessionId}`)
+    try {
+      await closeSession(cwd(), input.sessionId)
+      log('INFO', 'Sessions', `sessions:close ${input.sessionId} completed`)
+    } catch (e) {
+      log('ERROR', 'Sessions', `sessions:close ${input.sessionId} failed`, e)
       throw e
     }
   });

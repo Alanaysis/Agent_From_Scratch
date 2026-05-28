@@ -27,6 +27,18 @@ export type TaskInfo = {
   statusHistory: Array<{ status: string; timestamp: string; actor?: string }>;
 };
 
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  todo: ["in_progress", "failed"],
+  in_progress: ["verify", "failed"],
+  verify: ["done", "in_progress"],  // can reject back to in_progress
+  done: [],
+  failed: ["todo"],  // can retry
+};
+
+export function isValidTransition(from: string, to: string): boolean {
+  return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
 function getTasksDir(cwd: string): string {
   return join(cwd, ".irg", "tasks");
 }
@@ -94,13 +106,24 @@ export async function updateTaskInfo(
     return null;
   }
 
+  // Validate state transition if status is being changed
+  if (updates.status && updates.status !== previous.status) {
+    if (!isValidTransition(previous.status, updates.status)) {
+      throw new Error(
+        `Invalid status transition from "${previous.status}" to "${updates.status}". ` +
+        `Valid transitions: ${VALID_TRANSITIONS[previous.status]?.join(", ") || "none"}`
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const activities: TaskActivity[] = [...previous.activities];
   const statusHistory = [...previous.statusHistory];
+  let activityCounter = activities.length;
 
   if (updates.status && updates.status !== previous.status) {
     activities.push({
-      id: `activity-${Date.now()}`,
+      id: `activity-${Date.now()}-${activityCounter++}`,
       action: "status_changed",
       actor,
       details: `Status changed from ${previous.status} to ${updates.status}`,
@@ -115,7 +138,7 @@ export async function updateTaskInfo(
 
   if (updates.assignee !== undefined && updates.assignee !== previous.assignee) {
     activities.push({
-      id: `activity-${Date.now()}`,
+      id: `activity-${Date.now()}-${activityCounter++}`,
       action: updates.assignee ? "assigned" : "released",
       actor,
       details: updates.assignee ? `Assigned to ${updates.assignee}` : "Released",
@@ -165,7 +188,7 @@ export async function addTaskComment(
     activities: [
       ...previous.activities,
       {
-        id: `activity-${Date.now()}`,
+        id: `activity-${Date.now()}-${previous.activities.length}`,
         action: "comment_added",
         actor,
         details: comment,

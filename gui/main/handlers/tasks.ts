@@ -4,11 +4,12 @@ import { listTasks, readTaskInfo, createTask, updateTaskInfo, deleteTaskInfo, ge
 import type { TaskInfo } from "../../../storage/taskIndex";
 import { createId } from "../../../shared/ids";
 import { log } from "../logger";
-import { getExecutor, startExecutor, forceExecuteTask } from "../../../runtime/executor/ExecutorAgent";
+import { getExecutor, startExecutor, forceExecuteTask, stopExecutor } from "../../../runtime/executor/ExecutorAgent";
 import { canUseTool } from "../../../permissions/engine";
 import { createSubagentContext } from "../../../tools/agent/subagentContext";
 import { createInitialAppState } from "../../../runtime/state";
 import { initLlmConfig } from "../../../runtime/llm";
+import { eventBus } from "../../../shared/eventBus";
 
 interface TaskCreateInput {
   title: string;
@@ -16,6 +17,17 @@ interface TaskCreateInput {
   priority?: "low" | "medium" | "high";
   assignee?: string;
   dependsOn?: string[];
+  createdBy?: string;
+}
+
+interface BatchTaskInput {
+  tasks: Array<{
+    title: string;
+    description?: string;
+    priority?: "low" | "medium" | "high";
+    assignee?: string;
+    dependsOnBatchIndex?: number[];
+  }>;
   createdBy?: string;
 }
 
@@ -186,8 +198,9 @@ export function registerTaskHandlers() {
   ipcMain.handle("tasks:assign", async (_event, input: { taskId: string; assignee: string; actor?: string }): Promise<{ task: TaskInfo | null }> => {
     log('INFO', 'Tasks', `tasks:assign ${input.taskId} to ${input.assignee}`)
     try {
-      const task = await updateTaskInfo(cwd(), input.taskId, { assignee: input.assignee }, input.actor);
-      log('INFO', 'Tasks', `tasks:assign ${input.taskId} ${task ? 'success' : 'not found'}`)
+      // Set assignee and move to in_progress immediately so UI updates right away
+      const task = await updateTaskInfo(cwd(), input.taskId, { assignee: input.assignee, status: "in_progress" }, input.actor);
+      log('INFO', 'Tasks', `tasks:assign ${input.taskId} ${task ? 'success' : 'not found'}, title="${task?.title}"`)
 
       if (input.assignee && task) {
         log('INFO', 'Tasks', `tasks:assign triggering executor for ${input.taskId}`)
@@ -204,18 +217,55 @@ export function registerTaskHandlers() {
             setAppState: () => {},
             getAppState: () => emptyState,
           }, { agentType: input.assignee })
-          executor = startExecutor(mockContext as any, {})
+          executor = startExecutor(mockContext as any, { agentType: input.assignee })
+
+          // Forward executor events to eventBus so IPC push can send them to frontend
+          executor.on('taskClaimed', (taskId: string, title: string) => {
+            eventBus.emit('executor:task-claimed', { taskId, title })
+          })
+          executor.on('taskProgress', (taskId: string, text: string) => {
+            eventBus.emit('executor:task-progress', { taskId, text })
+          })
+          executor.on('taskCompleted', (taskId: string, success: boolean, result?: string) => {
+            eventBus.emit('executor:task-completed', { taskId, success, result })
+          })
+          executor.on('cycle', (pendingCount: number) => {
+            eventBus.emit('executor:cycle', { pendingCount })
+          })
         }
-        setTimeout(() => {
-          if (task.status === 'todo') {
-            forceExecuteTask(input.taskId)
+        // Wait for executor to be ready, then force execute
+        setTimeout(async () => {
+          try {
+            log('INFO', 'Tasks', `tasks:assign force executing task ${input.taskId}`)
+            await forceExecuteTask(input.taskId)
+          } catch (e) {
+            log('ERROR', 'Tasks', `tasks:assign force execute failed for ${input.taskId}`, e)
           }
-        }, 100)
+        }, 500)
       }
 
       return { task };
     } catch (e) {
       log('ERROR', 'Tasks', `tasks:assign ${input.taskId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("tasks:abort", async (_event, input: { taskId: string }): Promise<{ aborted: boolean }> => {
+    log('INFO', 'Tasks', `tasks:abort called for ${input.taskId}`)
+    try {
+      const executor = getExecutor()
+      if (executor) {
+        const aborted = executor.abortTask(input.taskId)
+        if (aborted) {
+          await updateTaskInfo(cwd(), input.taskId, { status: "failed", lastError: "Aborted by user" }, "user")
+        }
+        log('INFO', 'Tasks', `tasks:abort ${input.taskId} ${aborted ? 'aborted' : 'not found'}`)
+        return { aborted }
+      }
+      return { aborted: false }
+    } catch (e) {
+      log('ERROR', 'Tasks', `tasks:abort ${input.taskId} failed`, e)
       throw e
     }
   });
@@ -240,6 +290,62 @@ export function registerTaskHandlers() {
       return { task };
     } catch (e) {
       log('ERROR', 'Tasks', `tasks:add_comment ${input.taskId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("tasks:createBatch", async (_event, input: BatchTaskInput): Promise<{ tasks: TaskInfo[] }> => {
+    log('INFO', 'Tasks', `tasks:createBatch called with ${input.tasks.length} tasks`)
+    try {
+      // Phase 1: Create all tasks without dependencies
+      const createdTasks: TaskInfo[] = [];
+      const batchIndexToTaskId = new Map<number, string>();
+
+      for (let i = 0; i < input.tasks.length; i++) {
+        const taskInput = input.tasks[i]!;
+        const taskId = createId("task");
+        batchIndexToTaskId.set(i, taskId);
+
+        const task = await createTask(cwd(), {
+          id: taskId,
+          title: taskInput.title,
+          description: taskInput.description,
+          priority: taskInput.priority || "medium",
+          status: "todo",
+          assignee: taskInput.assignee,
+          createdBy: input.createdBy,
+        });
+
+        createdTasks.push(task);
+      }
+
+      // Phase 2: Resolve dependencies and update tasks
+      for (let i = 0; i < input.tasks.length; i++) {
+        const taskInput = input.tasks[i]!;
+        if (taskInput.dependsOnBatchIndex && taskInput.dependsOnBatchIndex.length > 0) {
+          const resolvedDependsOn: string[] = [];
+          for (const depIndex of taskInput.dependsOnBatchIndex) {
+            const depTaskId = batchIndexToTaskId.get(depIndex);
+            if (depTaskId) {
+              resolvedDependsOn.push(depTaskId);
+            }
+          }
+
+          if (resolvedDependsOn.length > 0) {
+            const updated = await updateTaskInfo(cwd(), createdTasks[i]!.id, {
+              dependsOn: resolvedDependsOn,
+            }, input.createdBy);
+            if (updated) {
+              createdTasks[i] = updated;
+            }
+          }
+        }
+      }
+
+      log('INFO', 'Tasks', `tasks:createBatch created ${createdTasks.length} tasks`)
+      return { tasks: createdTasks };
+    } catch (e) {
+      log('ERROR', 'Tasks', 'tasks:createBatch failed', e)
       throw e
     }
   });

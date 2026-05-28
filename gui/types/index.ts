@@ -1,5 +1,23 @@
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_result' | 'tool_error'
 
+export interface ToolCallEvent {
+  toolUseId: string
+  toolName: string
+  input: unknown
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'denied'
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  progress?: unknown[]
+  result?: string
+  error?: string
+}
+
+export type MessageBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; toolUseId: string; toolName: string; input: unknown; status: ToolCallEvent['status']; durationMs?: number }
+  | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+
 export interface Message {
   id: string
   role: MessageRole
@@ -7,6 +25,7 @@ export interface Message {
   timestamp: number
   toolName?: string
   toolUseId?: string
+  blocks?: MessageBlock[]
 }
 
 export interface Session {
@@ -55,7 +74,7 @@ export interface TaskDetail extends Task {
 export interface AgentPresence {
   agentId: string
   agentName: string
-  status: 'idle' | 'thinking' | 'running' | 'waiting'
+  status: 'idle' | 'thinking' | 'running' | 'waiting' | 'error'
   currentTask?: string
   lastSeen: number
 }
@@ -67,6 +86,30 @@ export interface Notification {
   message: string
   timestamp: number
   read: boolean
+}
+
+export interface PermissionRequest {
+  id: string
+  toolName: string
+  input: unknown
+  message: string
+  resolve: (approved: boolean) => void
+}
+
+export interface Agent {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string[]
+  allowedTools: string[] | '*'
+  maxTurns?: number
+  isReadOnly?: boolean
+  isBuiltIn?: boolean
+  capabilities?: string[]  // e.g. ["frontend", "backend", "testing", "devops", "documentation", "planning", "orchestration"]
+  permission?: {
+    allowed?: string[]
+    denied?: string[]
+  }
 }
 
 export type ViewMode = 'chat' | 'kanban' | 'sessions' | 'settings'

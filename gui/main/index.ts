@@ -7,6 +7,10 @@ import { registerConfigHandlers } from "./handlers/config";
 import { registerTaskHandlers } from "./handlers/tasks";
 import { registerExecutorHandlers } from "./handlers/executor";
 import { registerAgentHandlers } from "./handlers/agents";
+import { registerRecipeHandlers } from "./handlers/recipes";
+import { registerPlanHandlers } from "./handlers/plans";
+import { registerPmHandlers } from "./handlers/pm";
+import { initIpcPush } from "./ipcPush";
 import { log } from "./logger";
 
 app.disableHardwareAcceleration();
@@ -57,6 +61,7 @@ async function createWindow() {
     await mainWindow.loadFile(htmlPath);
   }
 
+  initIpcPush(mainWindow)
   log('INFO', 'Main', 'Window loaded successfully')
 }
 
@@ -68,6 +73,9 @@ function registerHandlers() {
   registerTaskHandlers();
   registerExecutorHandlers();
   registerAgentHandlers();
+  registerRecipeHandlers();
+  registerPlanHandlers();
+  registerPmHandlers();
   log('INFO', 'Main', 'All IPC handlers registered')
 }
 

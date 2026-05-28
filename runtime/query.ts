@@ -5,7 +5,7 @@ import {
   type ToolUseContext,
 } from "../tools/Tool";
 import { getTools } from "../tools/registry";
-import { getLlmConfigFromEnv, runLlmTurn, type LlmToolDefinition } from "./llm";
+import { getLlmConfig, runLlmTurn, type LlmToolDefinition } from "./llm";
 import { detectRelevantSkills, formatSkillMetadataForPrompt, formatSkillInstructionForPrompt, loadSkillInstruction, getLoadedSkills } from "../skills/loader";
 import type {
   AssistantMessage,
@@ -17,6 +17,8 @@ import type {
 import type { ParamConfig } from "../skills/frontmatter";
 import { compressMessages, estimateMessageTokens, type Usage, emptyUsage } from "./usage";
 import { getMemoryForSystemPrompt } from "../storage/memory";
+import { eventBus } from "../shared/eventBus";
+import { logToolStart, logToolResult, logToolError, logToolException } from "../shared/toolLogger";
 
 // WorkMap types stubbed out (workmap is recipe-specific, gitignored)
 type WorkMap = any;
@@ -28,6 +30,7 @@ export type QueryParams = {
   toolUseContext: ToolUseContext;
   canUseTool: CanUseToolFn;
   maxTurns?: number;
+  sessionId?: string;
   onAssistantTextDelta?: (text: string) => void;
   onPermissionRequest?: (request: {
     toolName: string;
@@ -227,9 +230,9 @@ function planPrompt(prompt: string): PlannedAction {
     text: [
       "我现在支持一组本地 agent 动作，但当前没有可用的远程 LLM 配置。",
       "你可以设置这些环境变量来接入兼容 OpenAI Chat Completions 的模型：",
-      "- `CCL_LLM_API_KEY`",
-      "- `CCL_LLM_MODEL`",
-      "- `CCL_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
+      "- `IRG_LLM_API_KEY`",
+      "- `IRG_LLM_MODEL`",
+      "- `IRG_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
       "在未配置 LLM 时，也可以直接给我这些格式的提示：",
       "- `read README.md`",
       "- `run pwd`",
@@ -243,7 +246,7 @@ function planPrompt(prompt: string): PlannedAction {
 
 function getDefaultSystemPrompt(): string[] {
   return [
-    "You are Claude Code-lite, a local CLI coding assistant.",
+    "You are IRG (Intelligent Robot Guide), a local CLI AI programming assistant.",
     "Use tools when the user asks you to inspect files, edit files, run shell commands, fetch URLs, or delegate to an agent.",
     "Prefer concise Chinese responses for user-facing text.",
     "When a tool is needed, emit tool calls instead of describing what you would do.",
@@ -488,7 +491,18 @@ async function* executeToolCall(
   toolUseBlock: AssistantToolUseBlock,
 ): AsyncGenerator<Message, void> {
   const tool = findToolByName(getTools(), toolUseBlock.name);
+  const sessionId = params.sessionId || '';
+  const startTime = Date.now();
+
   if (!tool) {
+    eventBus.emit('tool:error', {
+      sessionId,
+      toolUseId: toolUseBlock.id,
+      toolName: toolUseBlock.name,
+      error: `Unknown tool ${toolUseBlock.name}`,
+      durationMs: 0,
+      timestamp: Date.now(),
+    });
     yield createToolResultMessage(
       toolUseBlock.id,
       stringify({ error: `Unknown tool ${toolUseBlock.name}` }),
@@ -507,6 +521,15 @@ async function* executeToolCall(
   );
 
   if (permission.behavior === "deny") {
+    logToolError(toolUseBlock.name, toolUseBlock.id, Date.now() - startTime, permission.message);
+    eventBus.emit('tool:error', {
+      sessionId,
+      toolUseId: toolUseBlock.id,
+      toolName: toolUseBlock.name,
+      error: permission.message,
+      durationMs: Date.now() - startTime,
+      timestamp: Date.now(),
+    });
     yield createToolResultMessage(
       toolUseBlock.id,
       stringify({ error: permission.message }),
@@ -516,12 +539,27 @@ async function* executeToolCall(
   }
 
   if (permission.behavior === "ask") {
+    eventBus.emit('permission:request', {
+      sessionId,
+      toolName: toolUseBlock.name,
+      input: effectiveInput,
+      message: permission.message,
+    });
     const allowed = await params.onPermissionRequest?.({
       toolName: toolUseBlock.name,
       input: effectiveInput,
       message: permission.message,
     });
     if (!allowed) {
+      logToolError(toolUseBlock.name, toolUseBlock.id, Date.now() - startTime, `User rejected ${toolUseBlock.name}`);
+      eventBus.emit('tool:error', {
+        sessionId,
+        toolUseId: toolUseBlock.id,
+        toolName: toolUseBlock.name,
+        error: `User rejected ${toolUseBlock.name}`,
+        durationMs: Date.now() - startTime,
+        timestamp: Date.now(),
+      });
       yield createToolResultMessage(
         toolUseBlock.id,
         stringify({ error: `User rejected ${toolUseBlock.name}` }),
@@ -536,13 +574,47 @@ async function* executeToolCall(
     effectiveInput = permission.updatedInput;
   }
 
+  // Emit tool:start
+  eventBus.emit('tool:start', {
+    sessionId,
+    toolUseId: toolUseBlock.id,
+    toolName: toolUseBlock.name,
+    input: effectiveInput,
+    timestamp: Date.now(),
+  });
+  logToolStart(toolUseBlock.name, toolUseBlock.id, effectiveInput);
+
   try {
+    const onProgress = (progress: unknown) => {
+      eventBus.emit('tool:progress', {
+        sessionId,
+        toolUseId: toolUseBlock.id,
+        toolName: toolUseBlock.name,
+        progress,
+        timestamp: Date.now(),
+      });
+    };
+
     const result = await tool.call(
       effectiveInput as never,
       params.toolUseContext,
       params.canUseTool,
       toolUseMessage,
+      onProgress,
     );
+
+    const durationMs = Date.now() - startTime;
+    eventBus.emit('tool:result', {
+      sessionId,
+      toolUseId: toolUseBlock.id,
+      toolName: toolUseBlock.name,
+      durationMs,
+      isError: false,
+      result: typeof result.data === 'string' ? result.data.slice(0, 500) : undefined,
+      timestamp: Date.now(),
+    });
+    logToolResult(toolUseBlock.name, toolUseBlock.id, durationMs, result.data);
+
     yield createToolResultMessage(toolUseBlock.id, stringify(result.data));
     if (result.extraMessages) {
       for (const extraMessage of result.extraMessages) {
@@ -554,6 +626,16 @@ async function* executeToolCall(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const durationMs = Date.now() - startTime;
+    logToolException(toolUseBlock.name, toolUseBlock.id, durationMs, error);
+    eventBus.emit('tool:error', {
+      sessionId,
+      toolUseId: toolUseBlock.id,
+      toolName: toolUseBlock.name,
+      error: message,
+      durationMs,
+      timestamp: Date.now(),
+    });
     yield createToolResultMessage(
       toolUseBlock.id,
       stringify({ error: message }),
@@ -622,7 +704,15 @@ async function* queryWithPlanner(
 async function* queryWithLlm(
   params: QueryParams,
 ): AsyncGenerator<Message, void> {
-  const conversation = [...params.messages];
+  const lastMsg = params.messages[params.messages.length - 1];
+  const alreadyHasPrompt =
+    lastMsg?.type === "user" && lastMsg.content === params.prompt;
+  const conversation: Message[] = alreadyHasPrompt
+    ? [...params.messages]
+    : [
+        ...params.messages,
+        { id: createId("user"), type: "user" as const, content: params.prompt },
+      ];
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
 
@@ -645,11 +735,17 @@ async function* queryWithLlm(
   }
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    const defs = getToolDefinitions();
     const llmResponse = await runLlmTurn({
       messages: conversation,
       systemPrompt,
-      tools: getToolDefinitions(),
-      onTextDelta: params.onAssistantTextDelta,
+      tools: defs,
+      onTextDelta: (text) => {
+        params.onAssistantTextDelta?.(text);
+        if (params.sessionId) {
+          eventBus.emit('chat:text-delta', { sessionId: params.sessionId, text });
+        }
+      },
     });
 
     if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
@@ -685,6 +781,10 @@ async function* queryWithLlm(
       return;
     }
 
+    if (params.sessionId) {
+      eventBus.emit('chat:turn-start', { sessionId: params.sessionId });
+    }
+
     for (const toolCall of toolCalls) {
       for await (const message of executeToolCall(
         params,
@@ -694,6 +794,10 @@ async function* queryWithLlm(
         conversation.push(message);
         yield message;
       }
+    }
+
+    if (params.sessionId) {
+      eventBus.emit('chat:turn-end', { sessionId: params.sessionId });
     }
   }
 
@@ -846,7 +950,7 @@ export async function* query(
       systemPrompt: enhancedSystemPrompt,
     };
     
-    if (!getLlmConfigFromEnv()) {
+    if (!getLlmConfig()?.apiKey) {
       yield* queryWithPlanner(enhancedParams);
       return;
     }
@@ -864,7 +968,7 @@ export async function* query(
     return;
   }
   
-  if (!getLlmConfigFromEnv()) {
+  if (!getLlmConfig()?.apiKey) {
     yield* queryWithPlanner(params);
     return;
   }

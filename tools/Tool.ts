@@ -1,5 +1,6 @@
 import type { AppState } from '../runtime/state'
 import type { AssistantMessage, Message } from '../runtime/messages'
+import type { ResourceType, ActionType } from '../permissions/types'
 
 export type ValidationResult =
   | { result: true }
@@ -43,6 +44,8 @@ export type Tool<Input, Output> = {
   name: string
   inputSchema: unknown
   outputSchema?: unknown
+  resourceType?: ResourceType
+  actionType?: ActionType
 
   description(input: Input, context: ToolDescribeContext): Promise<string>
 

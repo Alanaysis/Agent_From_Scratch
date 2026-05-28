@@ -46,6 +46,34 @@ function messageToChatMessage(msg: Message): ChatMessage {
 }
 
 let pendingPermissionResolve: ((approved: boolean) => void) | null = null
+let activeAbortController: AbortController | null = null
+const permissionQueue: Array<{ request: { toolName: string; input: unknown; message: string }; resolve: (approved: boolean) => void }> = []
+let processingPermissions = false
+
+function processNextPermission(window: Electron.BrowserWindow | null) {
+  if (processingPermissions || permissionQueue.length === 0) return
+  processingPermissions = true
+  const next = permissionQueue.shift()!
+  window?.webContents.send("chat:permission", {
+    toolName: next.request.toolName,
+    input: next.request.input,
+    message: next.request.message,
+  })
+  pendingPermissionResolve = (approved: boolean) => {
+    next.resolve(approved)
+    pendingPermissionResolve = null
+    processingPermissions = false
+    processNextPermission(window)
+  }
+  setTimeout(() => {
+    if (pendingPermissionResolve === next.resolve) {
+      next.resolve(false)
+      pendingPermissionResolve = null
+      processingPermissions = false
+      processNextPermission(window)
+    }
+  }, 60000)
+}
 
 export function registerChatHandlers() {
   log('INFO', 'Chat', 'Registering chat handlers')
@@ -54,7 +82,14 @@ export function registerChatHandlers() {
     log('INFO', 'Chat', `chat:permission-response:`, approved)
     if (pendingPermissionResolve) {
       pendingPermissionResolve(approved)
-      pendingPermissionResolve = null
+    }
+  })
+
+  ipcMain.handle("chat:cancel", async () => {
+    log('INFO', 'Chat', 'chat:cancel called')
+    if (activeAbortController) {
+      activeAbortController.abort()
+      activeAbortController = null
     }
   })
 
@@ -62,6 +97,10 @@ export function registerChatHandlers() {
     log('INFO', 'Chat', `chat:send called with message: "${input.message.substring(0, 50)}..."`)
 
     try {
+      // Clear any queued permissions from previous requests
+      permissionQueue.length = 0
+      processingPermissions = false
+      pendingPermissionResolve = null
       const window = BrowserWindow.fromWebContents(event.sender);
       const autoApprove = false;
       
@@ -81,6 +120,7 @@ export function registerChatHandlers() {
 
       const appStateRef = { current: createInitialAppState() };
       const abortController = new AbortController();
+      activeAbortController = abortController;
       
       const userMessage: Message = {
         id: createId("user"),
@@ -96,6 +136,7 @@ export function registerChatHandlers() {
         prompt: input.message,
         messages: session.getMessages(),
         systemPrompt: [],
+        sessionId: session.sessionId,
         toolUseContext: {
           cwd: cwd(),
           abortController,
@@ -114,20 +155,9 @@ export function registerChatHandlers() {
           if (autoApprove) return true;
           const tool = findToolByName(getTools(), request.toolName);
           if (!tool) return false;
-          window?.webContents.send("chat:permission", {
-            toolName: request.toolName,
-            input: request.input,
-            message: request.message,
-            sessionId: session.sessionId,
-          });
           return new Promise<boolean>((resolve) => {
-            pendingPermissionResolve = resolve
-            setTimeout(() => {
-              if (pendingPermissionResolve === resolve) {
-                pendingPermissionResolve = null
-                resolve(false)
-              }
-            }, 60000)
+            permissionQueue.push({ request, resolve })
+            processNextPermission(window)
           })
         },
       })) {
@@ -147,6 +177,7 @@ export function registerChatHandlers() {
         }
       }
 
+      activeAbortController = null;
       const finalMessages: ChatMessage[] = uniqueMessages.map(messageToChatMessage);
       log('INFO', 'Chat', `chat:send completed with ${finalMessages.length} messages`)
       return {

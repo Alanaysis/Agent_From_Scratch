@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "../runtime/messages";
-import type { PermissionRule } from "./types";
+import type { PermissionRule, PermissionMatrix } from "./types";
 import type {
   CanUseToolFn,
   PermissionDecision,
@@ -51,6 +51,17 @@ function matchesRule<Input>(
     return true;
   }
   return getInputPattern(input) === rule.pattern;
+}
+
+function checkMatrix(
+  matrix: PermissionMatrix | undefined,
+  tool: { resourceType?: string; actionType?: string },
+): boolean | undefined {
+  if (!matrix || !tool.resourceType || !tool.actionType) return undefined;
+  const resource = matrix[tool.resourceType as keyof PermissionMatrix];
+  if (!resource) return undefined;
+  const allowed = resource[tool.actionType as keyof typeof resource];
+  return allowed;
 }
 
 export function rememberPermissionRule<Input>(
@@ -106,6 +117,17 @@ export const canUseTool: CanUseToolFn = async <Input>(
     return {
       behavior: "allow",
       updatedInput: input,
+    };
+  }
+
+  const matrixResult = checkMatrix(permissionContext.matrix, tool);
+  if (matrixResult === true) {
+    return { behavior: "allow", updatedInput: input };
+  }
+  if (matrixResult === false) {
+    return {
+      behavior: "deny",
+      message: `Tool ${tool.name} is blocked by permission matrix (${tool.resourceType}:${tool.actionType})`,
     };
   }
 

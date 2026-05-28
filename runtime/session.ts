@@ -1,6 +1,13 @@
 import type { Message, AssistantMessage } from "./messages";
 import { appendTranscript, getTranscriptPath } from "../storage/transcript";
-import { updateSessionInfo } from "../storage/sessionIndex";
+import {
+  updateSessionInfo,
+  touchSession,
+  closeSession,
+  checkinToTask,
+  checkoutFromTask,
+} from "../storage/sessionIndex";
+import { eventBus } from "../shared/eventBus";
 import { emptyUsage, type Usage } from "./usage";
 import { addKnowledge, type KnowledgeCategory } from "../storage/knowledge";
 import { rebuildMemoryFromKnowledge } from "../storage/memory";
@@ -154,6 +161,30 @@ export class SessionEngine {
 
   getUsage(): Usage {
     return { ...this.usage };
+  }
+
+  async touch(): Promise<void> {
+    await touchSession(this.config.cwd, this.sessionId);
+    eventBus.emit("session:heartbeat", {
+      sessionId: this.sessionId,
+      timestamp: Date.now(),
+    });
+  }
+
+  async close(): Promise<void> {
+    await closeSession(this.config.cwd, this.sessionId);
+    eventBus.emit("session:closed", {
+      sessionId: this.sessionId,
+      timestamp: Date.now(),
+    });
+  }
+
+  async checkinTask(taskId: string): Promise<void> {
+    await checkinToTask(this.config.cwd, this.sessionId, taskId);
+  }
+
+  async checkoutTask(taskId: string): Promise<void> {
+    await checkoutFromTask(this.config.cwd, this.sessionId, taskId);
   }
 
   async extractAndPersistKnowledge(): Promise<number> {

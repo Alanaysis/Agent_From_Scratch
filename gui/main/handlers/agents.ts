@@ -1,10 +1,11 @@
 import { ipcMain } from "electron"
 import { cwd } from "process"
-import { listAgents, createAgent, updateAgentInfo, deleteAgentInfo, readAgentInfo } from "../../../storage/agentIndex"
+import { listAgents, createAgent, updateAgentInfo, deleteAgentInfo, readAgentInfo, listAgentsByCapability } from "../../../storage/agentIndex"
 import { log } from "../logger"
 import { createId } from "../../../shared/ids"
 import { runLlmTurn } from "../../../runtime/llm"
 import type { Message } from "../../../runtime/messages"
+import type { Agent } from "../../types"
 
 const TOOL_OPTIONS = [
   { id: 'Read', label: 'Read files' },
@@ -20,7 +21,7 @@ const TOOL_OPTIONS = [
 export function registerAgentHandlers() {
   log('INFO', 'Agents', 'Registering agent handlers')
 
-  ipcMain.handle("agents:list", async (): Promise<{ agents: any[] }> => {
+  ipcMain.handle("agents:list", async (): Promise<{ agents: Agent[] }> => {
     log('INFO', 'Agents', 'agents:list called')
     try {
       const agents = await listAgents(cwd())
@@ -31,7 +32,7 @@ export function registerAgentHandlers() {
     }
   })
 
-  ipcMain.handle("agents:get", async (_event, agentId: string): Promise<{ agent: any | null }> => {
+  ipcMain.handle("agents:get", async (_event, agentId: string): Promise<{ agent: Agent | null }> => {
     log('INFO', 'Agents', 'agents:get called', agentId)
     try {
       const agent = await readAgentInfo(cwd(), agentId)
@@ -50,7 +51,7 @@ export function registerAgentHandlers() {
     maxTurns?: number
     isReadOnly?: boolean
     permission?: any
-  }): Promise<{ agent: any }> => {
+  }): Promise<{ agent: Agent }> => {
     log('INFO', 'Agents', 'agents:create called', input.name)
     try {
       const agent = await createAgent(cwd(), {
@@ -72,17 +73,20 @@ export function registerAgentHandlers() {
     }
   })
 
-  ipcMain.handle("agents:update", async (_event, agentId: string, updates: {
-    name?: string
-    description?: string
-    systemPrompt?: string[]
-    allowedTools?: string[] | "*"
-    maxTurns?: number
-    isReadOnly?: boolean
-  }): Promise<{ agent: any | null }> => {
-    log('INFO', 'Agents', 'agents:update called', agentId)
+  ipcMain.handle("agents:update", async (_event, input: {
+    agentId: string
+    updates: {
+      name?: string
+      description?: string
+      systemPrompt?: string[]
+      allowedTools?: string[] | "*"
+      maxTurns?: number
+      isReadOnly?: boolean
+    }
+  }): Promise<{ agent: Agent | null }> => {
+    log('INFO', 'Agents', 'agents:update called', input.agentId)
     try {
-      const agent = await updateAgentInfo(cwd(), agentId, updates)
+      const agent = await updateAgentInfo(cwd(), input.agentId, input.updates)
       return { agent }
     } catch (e) {
       log('ERROR', 'Agents', 'agents:update failed', e)
@@ -97,6 +101,18 @@ export function registerAgentHandlers() {
       return { success }
     } catch (e) {
       log('ERROR', 'Agents', 'agents:delete failed', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle("agents:list_by_capability", async (_event, capability: string): Promise<{ agents: Agent[] }> => {
+    log('INFO', 'Agents', `agents:list_by_capability called with: ${capability}`)
+    try {
+      const agents = await listAgentsByCapability(cwd(), capability)
+      log('INFO', 'Agents', `agents:list_by_capability returned ${agents.length} agents`)
+      return { agents }
+    } catch (e) {
+      log('ERROR', 'Agents', 'agents:list_by_capability failed', e)
       throw e
     }
   })

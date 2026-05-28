@@ -9,6 +9,7 @@ import { canUseTool } from "../../permissions/engine"
 import type { ToolUseContext } from "../../tools/Tool"
 import { createId } from "../../shared/ids"
 import type { Message } from "../../runtime/messages"
+import { eventBus } from "../../shared/eventBus"
 
 export type ExecutorEvents = {
   taskClaimed: (taskId: string, title: string) => void
@@ -37,6 +38,7 @@ export class ExecutorAgent extends EventEmitter {
   private parentContext: ToolUseContext
   private running = false
   private intervalId: ReturnType<typeof setInterval> | null = null
+  private activeTasks = new Map<string, { abortController: AbortController; startTime: number }>()
 
   constructor(parentContext: ToolUseContext, config: Partial<ExecutorConfig> = {}) {
     super()
@@ -69,6 +71,12 @@ export class ExecutorAgent extends EventEmitter {
       clearInterval(this.intervalId)
       this.intervalId = null
     }
+    // Abort all active tasks
+    for (const [taskId, info] of this.activeTasks) {
+      console.log(`[Executor] Aborting task ${taskId}`)
+      info.abortController.abort()
+    }
+    this.activeTasks.clear()
     this.running = false
     console.log("[Executor] Stopped")
   }
@@ -77,12 +85,30 @@ export class ExecutorAgent extends EventEmitter {
     return this.running
   }
 
+  /** Abort a specific running task */
+  abortTask(taskId: string): boolean {
+    const info = this.activeTasks.get(taskId)
+    if (info) {
+      console.log(`[Executor] Aborting task ${taskId}`)
+      info.abortController.abort()
+      this.activeTasks.delete(taskId)
+      return true
+    }
+    return false
+  }
+
+  /** Get list of currently active task IDs */
+  getActiveTaskIds(): string[] {
+    return [...this.activeTasks.keys()]
+  }
+
   private async pollAndExecute(): Promise<void> {
     if (!this.running) return
 
     try {
       const tasks = await listTasks(cwd())
-      const todoTasks = tasks.filter((t) => t.status === "todo")
+      // Only execute tasks that have an assignee and are in todo status
+      const todoTasks = tasks.filter((t) => t.status === "todo" && t.assignee && !this.activeTasks.has(t.id))
 
       this.emit("cycle", todoTasks.length)
 
@@ -90,7 +116,7 @@ export class ExecutorAgent extends EventEmitter {
         return
       }
 
-      const task = todoTasks[0]
+      const task = todoTasks[0]!
       await this.executeTask(task.id)
     } catch (e) {
       console.error("[Executor] Error in poll cycle:", e)
@@ -109,51 +135,78 @@ export class ExecutorAgent extends EventEmitter {
       return
     }
 
-    console.log(`[Executor] Claiming task: ${task.title}`)
-    this.emit("taskClaimed", taskId, task.title)
+    const title = task.title || taskId
+    const abortController = new AbortController()
+    this.activeTasks.set(taskId, { abortController, startTime: Date.now() })
+    this.emit("taskClaimed", taskId, title)
+    this.emit("taskProgress", taskId, "Preparing agent...")
 
     try {
       const sessionId = createId("session")
 
+      console.log(`[Executor] Poll creating session for task ${taskId}, task.title="${task.title}", title="${title}"`)
       await createSession(cwd(), sessionId, {
         taskId,
-        title: `Executor: ${task.title}`,
+        title: `Executor: ${title}`,
       })
 
       const updated = await updateTaskInfo(
         cwd(),
         taskId,
-        { status: "in_progress", assignee: this.config.executorName, sessionId },
+        { status: "in_progress", sessionId },
         this.config.executorName,
       )
       if (!updated) {
         throw new Error("Failed to claim task")
       }
 
-      const prompt = this.buildTaskPrompt(task)
-      const allMessages: Message[] = []
+      this.emit("taskProgress", taskId, "Agent running...")
+
+      // Re-read task to get the latest data (title, description may have been updated)
+      const freshTask = await readTaskInfo(cwd(), taskId)
+      const prompt = this.buildTaskPrompt(freshTask || task)
+      let messageCount = 0
 
       const result = await runAgent({
-        description: task.title,
+        description: freshTask?.title || title,
         prompt,
         subagentType: this.config.agentType,
         parentContext: this.parentContext,
         canUseTool,
         maxTurns: 16,
         onProgress: (text) => {
-          this.emit("taskProgress", taskId, text)
+          if (!abortController.signal.aborted) {
+            this.emit("taskProgress", taskId, text)
+          }
         },
-        onMessage: (msg) => {
-          allMessages.push(msg)
+        onMessage: async (msg) => {
+          messageCount++
+          try {
+            await appendTranscript(cwd(), sessionId, [msg])
+            eventBus.emit('session:message-appended', { sessionId, message: msg })
+          } catch (e) {
+            console.error(`[Executor] Failed to write message to transcript:`, e)
+          }
         },
       })
 
-      if (allMessages.length > 0) {
-        await appendTranscript(cwd(), sessionId, allMessages)
-        await updateSessionInfo(cwd(), sessionId, allMessages)
+      // Check if aborted during execution
+      if (abortController.signal.aborted) {
+        console.log(`[Executor] Task ${taskId} was aborted during execution`)
+        return
       }
 
-      const finalStatus = task.dependsOn && task.dependsOn.length > 0 ? "verify" : "done"
+      // Update session info with final state
+      try {
+        const { readTranscriptMessages } = await import("../../storage/transcript")
+        const allMessages = await readTranscriptMessages(cwd(), sessionId)
+        await updateSessionInfo(cwd(), sessionId, allMessages)
+      } catch (e) {
+        console.error(`[Executor] Failed to update session info:`, e)
+      }
+
+      // Always go through verify so the user can review the work
+      const finalStatus = "verify"
       await updateTaskInfo(
         cwd(),
         taskId,
@@ -164,9 +217,15 @@ export class ExecutorAgent extends EventEmitter {
       console.log(`[Executor] Task ${taskId} completed with status: ${finalStatus}`)
       this.emit("taskCompleted", taskId, true, result)
     } catch (error) {
+      if (abortController.signal.aborted) {
+        console.log(`[Executor] Task ${taskId} was aborted`)
+        return
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`[Executor] Task ${taskId} failed:`, errorMessage)
 
+      // Set task to failed with error details
       await updateTaskInfo(
         cwd(),
         taskId,
@@ -175,11 +234,17 @@ export class ExecutorAgent extends EventEmitter {
       )
 
       this.emit("taskCompleted", taskId, false, errorMessage)
+    } finally {
+      this.activeTasks.delete(taskId)
     }
   }
 
-  private buildTaskPrompt(task: { title: string; description?: string }): string {
-    let prompt = `Task: ${task.title}\n\n`
+  private buildTaskPrompt(task: { title?: string; description?: string; id?: string }): string {
+    const title = task.title || task.id || "Untitled Task"
+    if (!task.title && task.id) {
+      console.warn(`[Executor] Task ${task.id} has no title, using ID as fallback`)
+    }
+    let prompt = `Task: ${title}\n\n`
 
     if (task.description) {
       prompt += `Description: ${task.description}\n\n`
@@ -202,55 +267,107 @@ export class ExecutorAgent extends EventEmitter {
       return
     }
 
-    console.log(`[Executor] Force executing task: ${task.title}, status: ${task.status}`)
-    this.emit("taskClaimed", taskId, task.title)
+
+    if (task.status !== "todo" && task.status !== "in_progress") {
+      console.log(`[Executor] Task ${taskId} is in ${task.status} status, skipping`)
+      return
+    }
+
+    // Don't re-execute if already running
+    if (this.activeTasks.has(taskId)) {
+      console.log(`[Executor] Task ${taskId} is already being executed`)
+      return
+    }
+
+    const title = task.title || taskId
+    const abortController = new AbortController()
+    this.activeTasks.set(taskId, { abortController, startTime: Date.now() })
+
+    this.emit("taskClaimed", taskId, title)
+    this.emit("taskProgress", taskId, "Preparing agent...")
 
     try {
       const sessionId = task.sessionId || createId("session")
       const isNewSession = !task.sessionId
 
       if (isNewSession) {
+        console.log(`[Executor] Creating session for task ${taskId}, task.title="${task.title}", title="${title}", assignee="${task.assignee}"`)
         await createSession(cwd(), sessionId, {
           taskId,
-          title: `${task.assignee}: ${task.title}`,
+          title: `${task.assignee || this.config.agentType}: ${title}`,
         })
+        // Update task with sessionId
+        await updateTaskInfo(
+          cwd(),
+          taskId,
+          { sessionId },
+          this.config.executorName,
+        )
+        console.log(`[Executor] Updated task ${taskId} with sessionId ${sessionId}`)
       }
 
       if (task.status !== "in_progress") {
         await updateTaskInfo(
           cwd(),
           taskId,
-          { status: "in_progress", assignee: this.config.executorName, sessionId },
+          { status: "in_progress", assignee: task.assignee || this.config.executorName, sessionId },
           this.config.executorName,
         )
       }
 
-      const prompt = this.buildTaskPrompt(task)
-      console.log(`[Executor] Running agent for task ${taskId} with prompt: ${prompt.substring(0, 100)}...`)
-      const allMessages: any[] = []
+      this.emit("taskProgress", taskId, "Agent running...")
 
-      const agentType = task.assignee || this.config.agentType
+      // Re-read task to get the latest data (title, description may have been updated)
+      const freshTask = await readTaskInfo(cwd(), taskId)
+      const prompt = this.buildTaskPrompt(freshTask || task)
+      const agentType = (freshTask || task).assignee || this.config.agentType
+      console.log(`[Executor] Running agent for task ${taskId}, agentType=${agentType}, sessionId=${sessionId}, title="${(freshTask || task).title}"`)
+      let messageCount = 0
+
       const result = await runAgent({
-        description: task.title,
+        description: title,
         prompt,
         subagentType: agentType,
         parentContext: this.parentContext,
         canUseTool,
         maxTurns: 16,
         onProgress: (text) => {
-          this.emit("taskProgress", taskId, text)
+          if (!abortController.signal.aborted) {
+            this.emit("taskProgress", taskId, text)
+          }
         },
-        onMessage: (msg) => {
-          allMessages.push(msg)
+        onMessage: async (msg) => {
+          // Write each message to transcript in real-time (Chorus pattern)
+          messageCount++
+          console.log(`[Executor] onMessage #${messageCount}, type=${msg.type}`)
+          try {
+            await appendTranscript(cwd(), sessionId, [msg])
+            eventBus.emit('session:message-appended', { sessionId, message: msg })
+          } catch (e) {
+            console.error(`[Executor] Failed to write message to transcript:`, e)
+          }
         },
       })
 
-      if (allMessages.length > 0) {
-        await appendTranscript(cwd(), sessionId, allMessages)
-        await updateSessionInfo(cwd(), sessionId, allMessages)
+      console.log(`[Executor] runAgent returned, messageCount=${messageCount}, result length=${result?.length}`)
+
+      // Check if aborted during execution
+      if (abortController.signal.aborted) {
+        console.log(`[Executor] Task ${taskId} was aborted during execution`)
+        return
       }
 
-      const finalStatus = task.dependsOn && task.dependsOn.length > 0 ? "verify" : "done"
+      // Update session info with final state
+      try {
+        const { readTranscriptMessages } = await import("../../storage/transcript")
+        const allMessages = await readTranscriptMessages(cwd(), sessionId)
+        await updateSessionInfo(cwd(), sessionId, allMessages)
+      } catch (e) {
+        console.error(`[Executor] Failed to update session info:`, e)
+      }
+
+      // Always go through verify so the user can review the work
+      const finalStatus = "verify"
       await updateTaskInfo(
         cwd(),
         taskId,
@@ -261,6 +378,11 @@ export class ExecutorAgent extends EventEmitter {
       console.log(`[Executor] Task ${taskId} completed with status: ${finalStatus}`)
       this.emit("taskCompleted", taskId, true, result)
     } catch (error) {
+      if (abortController.signal.aborted) {
+        console.log(`[Executor] Task ${taskId} was aborted`)
+        return
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`[Executor] Task ${taskId} failed:`, errorMessage)
 
@@ -272,6 +394,8 @@ export class ExecutorAgent extends EventEmitter {
       )
 
       this.emit("taskCompleted", taskId, false, errorMessage)
+    } finally {
+      this.activeTasks.delete(taskId)
     }
   }
 }

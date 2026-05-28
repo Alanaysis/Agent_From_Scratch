@@ -1,6 +1,6 @@
 import { createId } from "../../shared/ids";
 import type { Message, AssistantMessage } from "../../runtime/messages";
-import { getLlmConfigFromEnv, runLlmTurn, type LlmToolDefinition } from "../../runtime/llm";
+import { getLlmConfig, runLlmTurn, type LlmToolDefinition } from "../../runtime/llm";
 import { createSubagentContext, type SubagentContextOverrides } from "./subagentContext";
 import { getAgentDefinition, getToolDefinitionsForAgent } from "./agentRegistry";
 import { compressSubagentResult } from "./resultCompressor";
@@ -16,6 +16,7 @@ export type RunAgentParams = {
   canUseTool?: CanUseToolFn;
   maxTurns?: number;
   onProgress?: (text: string) => void;
+  onMessage?: (message: Message) => void | Promise<void>;
 };
 
 function buildSubagentSystemPrompt(agentDef: ReturnType<typeof getAgentDefinition>): string[] {
@@ -244,7 +245,8 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
 
   const filteredTools = getFilteredTools(agentDef);
 
-  if (!getLlmConfigFromEnv()) {
+  if (!getLlmConfig()?.apiKey) {
+    console.log(`[runAgent] No LLM API key configured, returning early`)
     return [
       `Subagent "${agentDef.name}" accepted the task.`,
       `Description: ${params.description}`,
@@ -252,6 +254,8 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
       "No LLM configured — subagent cannot execute without a model.",
     ].join("\n");
   }
+
+  console.log(`[runAgent] Starting agent "${agentDef.name}" for: ${params.description}`)
 
   const messages: Message[] = [
     { id: createId("user"), type: "user", content: params.prompt } as Message,
@@ -261,7 +265,14 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
   const toolDefs = getSubagentToolDefinitions(agentDef);
   const allResultMessages: Message[] = [];
 
+  if (params.onMessage) {
+    for (const msg of messages) {
+      await params.onMessage(msg);
+    }
+  }
+
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`)
     const llmResponse = await runLlmTurn({
       messages,
       systemPrompt,
@@ -289,6 +300,9 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     const assistantMessage = createAssistantMessage(assistantBlocks);
     messages.push(assistantMessage);
     allResultMessages.push(assistantMessage);
+    if (params.onMessage) {
+      await params.onMessage(assistantMessage);
+    }
 
     const toolCalls = assistantBlocks.filter(
       (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",
@@ -309,9 +323,13 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
       )) {
         messages.push(msg);
         allResultMessages.push(msg);
+        if (params.onMessage) {
+          await params.onMessage(msg);
+        }
       }
     }
   }
 
+  console.log(`[runAgent] Completed, total messages: ${allResultMessages.length}`)
   return compressSubagentResult(allResultMessages);
 }

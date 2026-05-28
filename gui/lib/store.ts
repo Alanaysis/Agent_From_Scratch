@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppState, Message, Session, Task, ViewMode, AgentPresence, Notification } from '@/types'
+import type { AppState, Message, Session, Task, ViewMode, Agent, AgentPresence, Notification, PermissionRequest, ToolCallEvent } from '@/types'
 
 export interface LlmConfig {
   provider: 'openai' | 'anthropic'
@@ -19,13 +19,13 @@ type Actions = {
   loadSessionMessages: (sessionId: string) => Promise<void>
   addSession: (session: Session) => void
   updateSession: (id: string, updates: Partial<Session>) => void
-  deleteSession: (id: string) => void
+  deleteSession: (id: string) => Promise<void>
   loadSessions: () => Promise<void>
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void
   clearMessages: () => void
   setLoading: (loading: boolean) => void
   setStreamingText: (text: string) => void
-  appendStreamingText: (text: string) => void
+  setPermissionRequest: (request: PermissionRequest | null) => void
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void
   updateTask: (id: string, updates: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -37,10 +37,10 @@ type Actions = {
   startExecutor: (config?: { pollIntervalMs?: number; agentType?: string }) => Promise<void>
   stopExecutor: () => Promise<void>
   checkExecutorStatus: () => Promise<void>
-  agents: any[]
+  agents: Agent[]
   loadAgents: () => Promise<void>
-  createAgent: (input: { name: string; description: string; systemPrompt: string[]; allowedTools: string[] | "*"; maxTurns?: number; isReadOnly?: boolean; permission?: any }) => Promise<any | null>
-  updateAgent: (id: string, updates: { name?: string; description?: string; systemPrompt?: string[]; allowedTools?: string[] | "*"; maxTurns?: number; isReadOnly?: boolean; permission?: any }) => Promise<any | null>
+  createAgent: (input: { name: string; description: string; systemPrompt: string[]; allowedTools: string[] | "*"; maxTurns?: number; isReadOnly?: boolean; permission?: Agent['permission'] }) => Promise<Agent | null>
+  updateAgent: (id: string, updates: { name?: string; description?: string; systemPrompt?: string[]; allowedTools?: string[] | "*"; maxTurns?: number; isReadOnly?: boolean; permission?: Agent['permission'] }) => Promise<Agent | null>
   deleteAgent: (id: string) => Promise<void>
   generateAgent: (description: string) => Promise<{ name: string; description: string; systemPrompt: string[]; allowedTools: string[] | "*"; maxTurns: number; isReadOnly: boolean } | null>
   updateAgentPresence: (presence: AgentPresence) => void
@@ -54,6 +54,9 @@ type Actions = {
   setLlmConfig: (config: Partial<LlmConfig>) => Promise<void>
   getLlmConfig: () => LlmConfig | null
   sendChatMessage: (message: string, sessionId?: string) => Promise<{ sessionId: string }>
+  cancelChat: () => Promise<void>
+  startHeartbeat: () => void
+  stopHeartbeat: () => void
   initBackendConnection: () => void
 }
 
@@ -63,11 +66,59 @@ interface AppStoreState extends AppState {
   backendInitialized: boolean
   listenersRegistered: boolean
   executorRunning: boolean
-  agents: any[]
+  agents: Agent[]
+  permissionRequest: PermissionRequest | null
+  activeToolCalls: Map<string, ToolCallEvent>
+  heartbeatTimer: ReturnType<typeof setInterval> | null
 }
 
 function createId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function rawMessageToMessage(m: any): Message {
+  let content = ''
+  let role: 'user' | 'assistant' | 'tool_result' | 'tool_error' = m.role || (m.type === 'user' ? 'user' : m.type === 'tool_result' ? 'tool_result' : 'assistant')
+  const blocks: import('@/types').MessageBlock[] = []
+
+  if (role === 'user') {
+    content = m.content || ''
+  } else if (role === 'tool_result' || role === 'tool_error') {
+    content = m.content || ''
+    blocks.push({ type: 'text', text: content })
+  } else {
+    if (Array.isArray(m.content)) {
+      const textParts: string[] = []
+      for (const block of m.content) {
+        if (block.type === 'text') {
+          textParts.push(block.text || '')
+          blocks.push({ type: 'text', text: block.text || '' })
+        } else if (block.type === 'tool_use') {
+          const toolBlock: import('@/types').MessageBlock = {
+            type: 'tool_use',
+            toolUseId: block.id,
+            toolName: block.name,
+            input: block.input,
+            status: 'completed',
+          }
+          blocks.push(toolBlock)
+          textParts.push(`[tool: ${block.name}]`)
+        }
+      }
+      content = textParts.join('')
+    } else {
+      content = m.content || ''
+      blocks.push({ type: 'text', text: content })
+    }
+  }
+
+  return {
+    id: m.id || `msg-${Date.now()}-${Math.random()}`,
+    role,
+    content,
+    timestamp: m.timestamp || Date.now(),
+    blocks: blocks.length > 0 ? blocks : undefined,
+  }
 }
 
 export const useAppStore = create<AppStoreState & Actions>()(
@@ -87,38 +138,25 @@ export const useAppStore = create<AppStoreState & Actions>()(
       listenersRegistered: false,
       llmConfig: null,
       streamingText: '',
+      permissionRequest: null,
+      activeToolCalls: new Map<string, ToolCallEvent>(),
+      heartbeatTimer: null,
 
       setViewMode: (mode) => set({ viewMode: mode }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-      setCurrentSession: (session) => set({ currentSession: session, messages: [] }),
+      setCurrentSession: (session) => {
+        get().stopHeartbeat()
+        set({ currentSession: session, messages: [] })
+      },
+      setPermissionRequest: (request) => set({ permissionRequest: request }),
       jumpToSession: async (sessionId: string) => {
         try {
           const result = await get().sendToBackend('sessions:get', sessionId) as { session: Session; messages: any[] }
           if (result?.session) {
             set({ viewMode: 'chat', currentSession: result.session, messages: [] })
             if (result?.messages) {
-              const msgs = result.messages.map((m: any) => {
-                let content = ''
-                let role: 'user' | 'assistant' | 'tool_result' | 'tool_error' = m.role || 'assistant'
-                if (role === 'user') {
-                  content = m.content || ''
-                } else if (role === 'tool_result' || role === 'tool_error') {
-                  content = m.content || ''
-                } else {
-                  if (Array.isArray(m.content)) {
-                    content = m.content.map((block: any) => {
-                      if (block.type === 'text') return block.text || ''
-                      if (block.type === 'tool_use') return `[tool: ${block.name}]`
-                      return ''
-                    }).join('')
-                  } else {
-                    content = m.content || ''
-                  }
-                }
-                return { id: m.id || `msg-${Date.now()}`, role, content, timestamp: m.timestamp || Date.now() }
-              })
-              set({ messages: msgs })
+              set({ messages: result.messages.map(rawMessageToMessage) })
             }
           }
         } catch (e) {
@@ -129,36 +167,9 @@ export const useAppStore = create<AppStoreState & Actions>()(
         try {
           const result = await get().sendToBackend('sessions:get', sessionId) as { session: Session; messages: any[] }
           if (result?.messages) {
-            const msgs = result.messages.map((m: any) => {
-              let content = ''
-              let role: 'user' | 'assistant' | 'tool_result' | 'tool_error' = m.role || 'assistant'
-
-              if (role === 'user') {
-                content = m.content || ''
-              } else if (role === 'tool_result' || role === 'tool_error') {
-                content = m.content || ''
-              } else {
-                if (Array.isArray(m.content)) {
-                  content = m.content.map((block: any) => {
-                    if (block.type === 'text') return block.text || ''
-                    if (block.type === 'tool_use') return `[tool: ${block.name}]`
-                    return ''
-                  }).join('')
-                } else {
-                  content = m.content || ''
-                }
-              }
-
-              return {
-                id: m.id || `msg-${Date.now()}-${Math.random()}`,
-                role,
-                content,
-                timestamp: m.timestamp || Date.now(),
-              }
-            })
             set({
               currentSession: result.session,
-              messages: msgs,
+              messages: result.messages.map(rawMessageToMessage),
               isLoading: false,
               streamingText: '',
             })
@@ -181,6 +192,8 @@ export const useAppStore = create<AppStoreState & Actions>()(
           set((s) => ({
             sessions: s.sessions.filter(( sess ) => sess.id !== id),
             currentSession: s.currentSession?.id === id ? null : s.currentSession,
+            messages: s.currentSession?.id === id ? [] : s.messages,
+            streamingText: s.currentSession?.id === id ? '' : s.streamingText,
           }))
           console.log('[Store] deleteSession store updated')
         } catch (e) {
@@ -206,7 +219,6 @@ export const useAppStore = create<AppStoreState & Actions>()(
       clearMessages: () => set({ messages: [], streamingText: '' }),
       setLoading: (loading) => set({ isLoading: loading }),
       setStreamingText: (text) => set({ streamingText: text }),
-      appendStreamingText: (text) => set((s) => ({ streamingText: s.streamingText + text })),
 
       addTask: (task) =>
         set((s) => ({ tasks: [...s.tasks, { ...task, id: createId(), createdAt: Date.now(), updatedAt: Date.now() }] })),
@@ -278,25 +290,11 @@ export const useAppStore = create<AppStoreState & Actions>()(
         return null
       },
       deleteTaskBackend: async (id: string) => {
-        console.log('[Store] deleteTaskBackend called for:', id)
-        let completed = false
-        const timeoutId = setTimeout(() => {
-          if (!completed) {
-            console.warn('[Store] deleteTaskBackend TIMEOUT - forcing state update')
-            completed = true
-            const tasks = get().tasks.filter(t => t.id !== id)
-            console.log('[Store] deleteTaskBackend timeout - new tasks count:', tasks.length)
-            set({ tasks })
-          }
-        }, 3000)
+        const previousTasks = get().tasks
+        set({ tasks: previousTasks.filter(t => t.id !== id) })
         try {
-          console.log('[Store] deleteTaskBackend sending tasks:delete IPC...')
           await get().sendToBackend('tasks:delete', { taskId: id })
-          console.log('[Store] deleteTaskBackend tasks:delete completed, sending tasks:list...')
           const result = await get().sendToBackend('tasks:list', {}) as { tasks: any[] }
-          completed = true
-          clearTimeout(timeoutId)
-          console.log('[Store] deleteTaskBackend tasks:list completed, tasks count:', result?.tasks?.length)
           if (result?.tasks) {
             set({ tasks: result.tasks.map((t: any) => ({
               id: t.id,
@@ -308,14 +306,10 @@ export const useAppStore = create<AppStoreState & Actions>()(
               createdAt: new Date(t.createdAt).getTime(),
               updatedAt: new Date(t.updatedAt).getTime(),
             })) })
-            console.log('[Store] deleteTaskBackend store updated')
           }
         } catch (e) {
-          completed = true
-          clearTimeout(timeoutId)
-          console.error('[Store] deleteTaskBackend error:', e)
-          const tasks = get().tasks.filter(t => t.id !== id)
-          set({ tasks })
+          console.error('[Store] deleteTaskBackend error, restoring:', e)
+          set({ tasks: previousTasks })
         }
       },
 
@@ -463,41 +457,47 @@ export const useAppStore = create<AppStoreState & Actions>()(
         }
       },
 
+      startHeartbeat: () => {
+        const existing = get().heartbeatTimer
+        if (existing) clearInterval(existing)
+        const timer = setInterval(() => {
+          const session = get().currentSession
+          if (session?.id) {
+            get().sendToBackend('sessions:heartbeat', { sessionId: session.id }).catch(() => {})
+          }
+        }, 5 * 60 * 1000) // 5 minutes
+        set({ heartbeatTimer: timer })
+      },
+
+      stopHeartbeat: () => {
+        const timer = get().heartbeatTimer
+        if (timer) {
+          clearInterval(timer)
+          set({ heartbeatTimer: null })
+        }
+      },
+
+      cancelChat: async () => {
+        get().stopHeartbeat()
+        try {
+          await get().sendToBackend('chat:cancel', {})
+          set({ isLoading: false, streamingText: '' })
+        } catch (e) {
+          console.error('[Store] cancelChat error:', e)
+        }
+      },
+
       sendChatMessage: async (message, sessionId) => {
-        set({ isLoading: true, streamingText: '' })
+        set({ isLoading: true, streamingText: '', activeToolCalls: new Map() })
+        get().startHeartbeat()
         try {
           const result = await get().sendToBackend('chat:send', { message, sessionId }) as {
             messages: any[]
             sessionId: string
           }
           if (result?.messages) {
-            const newMessages = result.messages.map((m: any) => {
-              let content = ''
-              let role: 'user' | 'assistant' | 'tool_result' | 'tool_error' = m.role || 'assistant'
-
-              if (role === 'user') {
-                content = m.content || ''
-              } else if (role === 'tool_result' || role === 'tool_error') {
-                content = m.content || ''
-              } else {
-                if (Array.isArray(m.content)) {
-                  content = m.content.map((block: any) => {
-                    if (block.type === 'text') return block.text || ''
-                    if (block.type === 'tool_use') return `[tool: ${block.name}]`
-                    return ''
-                  }).join('')
-                } else {
-                  content = m.content || ''
-                }
-              }
-
-              return {
-                id: m.id || `msg-${Date.now()}-${Math.random()}`,
-                role,
-                content,
-                timestamp: m.timestamp || Date.now(),
-              }
-            })
+            const newMessages = result.messages.map(rawMessageToMessage)
+            get().stopHeartbeat()
             set({
               currentSession: result.sessionId ? {
                 id: result.sessionId,
@@ -513,8 +513,10 @@ export const useAppStore = create<AppStoreState & Actions>()(
             })
             return { sessionId: result.sessionId }
           }
+          get().stopHeartbeat()
           set({ isLoading: false, streamingText: '' })
         } catch (e) {
+          get().stopHeartbeat()
           console.error('[Store] Chat error:', e)
           set({ isLoading: false, streamingText: '' })
         }
@@ -540,30 +542,242 @@ export const useAppStore = create<AppStoreState & Actions>()(
 
             if (api.on && !get().listenersRegistered) {
               set({ listenersRegistered: true })
-              api.on('chat:delta', (data: unknown) => {
-                console.log('[Store] chat:delta received:', data)
+
+              const onDelta = (data: unknown) => {
                 get().setStreamingText((data as { text: string }).text)
-              })
+              }
 
-              // Disabled: chat:message events cause duplicate messages
-              // since we already get all messages from chat:send response
-              // api.on('chat:message', (data: unknown) => {
-              //   console.log('[Store] chat:message received:', data)
-              //   const msg = data as { message: Message }
-              //   get().addMessage({
-              //     role: msg.message.role,
-              //     content: msg.message.content,
-              //     toolName: msg.message.toolName,
-              //   })
-              // })
-
-              api.on('chat:permission', (data: unknown) => {
-                console.log('[Store] chat:permission received:', data)
+              const onPermission = (data: unknown) => {
                 const perm = data as { toolName: string; input: unknown; message: string }
-                const approved = window.confirm(`Allow tool "${perm.toolName}"?\n\n${perm.message || 'No description'}`)
-                console.log('[Store] Permission result:', approved)
-                get().sendToBackend('chat:permission-response', { approved })
-              })
+                const permissionPromise = new Promise<boolean>((resolve) => {
+                  get().setPermissionRequest({
+                    id: `perm-${Date.now()}`,
+                    toolName: perm.toolName,
+                    input: perm.input,
+                    message: perm.message,
+                    resolve,
+                  })
+                })
+                permissionPromise.then((approved) => {
+                  get().sendToBackend('chat:permission-response', { approved })
+                })
+              }
+
+              const onToolStart = (data: unknown) => {
+                const event = data as { toolUseId: string; toolName: string; input: unknown; timestamp: number }
+                const map = new Map(get().activeToolCalls)
+                map.set(event.toolUseId, {
+                  toolUseId: event.toolUseId,
+                  toolName: event.toolName,
+                  input: event.input,
+                  status: 'running',
+                  startTime: event.timestamp,
+                  progress: [],
+                })
+                set({ activeToolCalls: map })
+                // Update agent presence
+                get().updateAgentPresence({
+                  agentId: 'chat-agent',
+                  agentName: 'Chat Agent',
+                  status: 'running',
+                  currentTask: `Using ${event.toolName}`,
+                  lastSeen: Date.now(),
+                })
+              }
+
+              const onToolProgress = (data: unknown) => {
+                const event = data as { toolUseId: string; progress: unknown; timestamp: number }
+                const map = new Map(get().activeToolCalls)
+                const existing = map.get(event.toolUseId)
+                if (existing) {
+                  map.set(event.toolUseId, {
+                    ...existing,
+                    progress: [...(existing.progress || []), event.progress],
+                  })
+                  set({ activeToolCalls: map })
+                }
+              }
+
+              const onToolResult = (data: unknown) => {
+                const event = data as { toolUseId: string; toolName: string; durationMs: number; isError: boolean; result?: string; timestamp: number }
+                const map = new Map(get().activeToolCalls)
+                const existing = map.get(event.toolUseId)
+                if (existing) {
+                  map.set(event.toolUseId, {
+                    ...existing,
+                    status: event.isError ? 'failed' : 'completed',
+                    endTime: event.timestamp,
+                    durationMs: event.durationMs,
+                    result: event.result,
+                  })
+                  set({ activeToolCalls: map })
+                }
+                // Update message block status
+                set((s) => ({
+                  messages: s.messages.map(m => {
+                    if (!m.blocks) return m
+                    const updatedBlocks = m.blocks.map(b =>
+                      b.type === 'tool_use' && b.toolUseId === event.toolUseId
+                        ? { ...b, status: (event.isError ? 'failed' : 'completed') as 'completed' | 'failed', durationMs: event.durationMs }
+                        : b
+                    )
+                    return updatedBlocks === m.blocks ? m : { ...m, blocks: updatedBlocks }
+                  })
+                }))
+                // Check if all tools are done
+                const remaining = Array.from(get().activeToolCalls.values()).filter(
+                  tc => tc.status === 'running' && tc.toolUseId !== event.toolUseId
+                )
+                if (remaining.length === 0) {
+                  get().updateAgentPresence({
+                    agentId: 'chat-agent',
+                    agentName: 'Chat Agent',
+                    status: 'idle',
+                    currentTask: undefined,
+                    lastSeen: Date.now(),
+                  })
+                }
+              }
+
+              const onToolError = (data: unknown) => {
+                const event = data as { toolUseId: string; toolName: string; error: string; durationMs: number; timestamp: number }
+                const map = new Map(get().activeToolCalls)
+                const existing = map.get(event.toolUseId)
+                if (existing) {
+                  map.set(event.toolUseId, {
+                    ...existing,
+                    status: 'failed',
+                    endTime: event.timestamp,
+                    durationMs: event.durationMs,
+                    error: event.error,
+                  })
+                  set({ activeToolCalls: map })
+                }
+                // Update message block status
+                set((s) => ({
+                  messages: s.messages.map(m => {
+                    if (!m.blocks) return m
+                    const updatedBlocks = m.blocks.map(b =>
+                      b.type === 'tool_use' && b.toolUseId === event.toolUseId
+                        ? { ...b, status: 'failed' as 'failed', durationMs: event.durationMs }
+                        : b
+                    )
+                    return updatedBlocks === m.blocks ? m : { ...m, blocks: updatedBlocks }
+                  })
+                }))
+                // Check if all tools are done
+                const remaining = Array.from(get().activeToolCalls.values()).filter(
+                  tc => tc.status === 'running' && tc.toolUseId !== event.toolUseId
+                )
+                if (remaining.length === 0) {
+                  get().updateAgentPresence({
+                    agentId: 'chat-agent',
+                    agentName: 'Chat Agent',
+                    status: 'idle',
+                    currentTask: undefined,
+                    lastSeen: Date.now(),
+                  })
+                }
+              }
+
+              const onExecutorTaskClaimed = (data: unknown) => {
+                const event = data as { taskId: string; title: string }
+                const task = get().tasks.find(t => t.id === event.taskId)
+                const agentName = task?.assignee || 'executor'
+                get().updateAgentPresence({
+                  agentId: agentName,
+                  agentName,
+                  status: 'running',
+                  currentTask: event.title,
+                  lastSeen: Date.now(),
+                })
+              }
+
+              const onExecutorTaskProgress = (data: unknown) => {
+                const event = data as { taskId: string; text: string }
+                const task = get().tasks.find(t => t.id === event.taskId)
+                const agentName = task?.assignee || 'executor'
+                get().updateAgentPresence({
+                  agentId: agentName,
+                  agentName,
+                  status: 'running',
+                  currentTask: event.text?.slice(0, 80) || 'Working...',
+                  lastSeen: Date.now(),
+                })
+              }
+
+              const onExecutorTaskCompleted = (data: unknown) => {
+                const event = data as { taskId: string; success: boolean; result?: string }
+                const task = get().tasks.find(t => t.id === event.taskId)
+                const agentName = task?.assignee || 'executor'
+                if (event.success) {
+                  get().updateAgentPresence({
+                    agentId: agentName,
+                    agentName,
+                    status: 'idle',
+                    currentTask: undefined,
+                    lastSeen: Date.now(),
+                  })
+                } else {
+                  // Failed — show error status so user can see something went wrong
+                  get().updateAgentPresence({
+                    agentId: agentName,
+                    agentName,
+                    status: 'error',
+                    currentTask: event.result?.slice(0, 60) || 'Task failed',
+                    lastSeen: Date.now(),
+                  })
+                }
+              }
+
+              const onExecutorCycle = (data: unknown) => {
+                const event = data as { pendingCount: number }
+                if (event.pendingCount === 0) {
+                  // Clear running presences when idle (but not error presences)
+                  for (const p of get().agentPresences) {
+                    if (p.status === 'running') {
+                      get().updateAgentPresence({ ...p, status: 'idle', currentTask: undefined, lastSeen: Date.now() })
+                    }
+                  }
+                }
+              }
+
+              const onSessionMessageAppended = (data: unknown) => {
+                const event = data as { sessionId: string; message: any }
+                const currentSession = get().currentSession
+                if (currentSession && currentSession.id === event.sessionId) {
+                  const msg = rawMessageToMessage(event.message)
+                  set((s) => ({ messages: [...s.messages, msg] }))
+                }
+              }
+
+              api.on('chat:delta', onDelta)
+              api.on('chat:permission', onPermission)
+              api.on('event:tool:start', onToolStart)
+              api.on('event:tool:progress', onToolProgress)
+              api.on('event:tool:result', onToolResult)
+              api.on('event:tool:error', onToolError)
+              api.on('event:executor:task-claimed', onExecutorTaskClaimed)
+              api.on('event:executor:task-progress', onExecutorTaskProgress)
+              api.on('event:executor:task-completed', onExecutorTaskCompleted)
+              api.on('event:executor:cycle', onExecutorCycle)
+              api.on('event:session:message-appended', onSessionMessageAppended)
+
+              // Store cleanup functions for potential future use
+              ;(window as any).__ipcCleanup = () => {
+                api.off?.('chat:delta', onDelta)
+                api.off?.('chat:permission', onPermission)
+                api.off?.('event:tool:start', onToolStart)
+                api.off?.('event:tool:progress', onToolProgress)
+                api.off?.('event:tool:result', onToolResult)
+                api.off?.('event:tool:error', onToolError)
+                api.off?.('event:executor:task-claimed', onExecutorTaskClaimed)
+                api.off?.('event:executor:task-progress', onExecutorTaskProgress)
+                api.off?.('event:executor:task-completed', onExecutorTaskCompleted)
+                api.off?.('event:executor:cycle', onExecutorCycle)
+                api.off?.('event:session:message-appended', onSessionMessageAppended)
+                set({ listenersRegistered: false })
+              }
             }
             console.log('[Store] initBackendConnection complete')
           } else {
@@ -571,8 +785,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
           }
         } catch (e) {
           console.error('[Store] initBackendConnection error:', e)
-          set({ backendInitialized: true })
-          get().setBackendConnected(true)
+          set({ backendInitialized: true, backendConnected: false })
         }
       },
     }),

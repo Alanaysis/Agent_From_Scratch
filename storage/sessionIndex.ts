@@ -8,6 +8,7 @@ export type SessionInfo = {
   summary?: string;
   createdAt?: string;
   updatedAt?: string;
+  lastActiveAt?: string;
   messageCount?: number;
   toolUseCount?: number;
   errorCount?: number;
@@ -15,17 +16,20 @@ export type SessionInfo = {
   lastPrompt?: string;
   provider?: string;
   model?: string;
-  status?: "ready" | "needs_attention";
+  status?: "ready" | "needs_attention" | "active" | "closed";
   lastTool?: string;
   lastError?: string;
+  parentId?: string;
+  taskId?: string;
+  checkedInTasks?: string[];
 };
 
 function getSessionsDir(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "sessions");
+  return join(cwd, ".irg", "sessions");
 }
 
 function getTranscriptsDir(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "transcripts");
+  return join(cwd, ".irg", "transcripts");
 }
 
 function getSessionInfoPath(cwd: string, sessionId: string): string {
@@ -134,11 +138,11 @@ function getSessionStatus(
 }
 
 function getConfiguredProvider(): string | undefined {
-  return process.env.CCL_LLM_PROVIDER?.trim() || undefined;
+  return process.env.IRG_LLM_PROVIDER?.trim() || undefined;
 }
 
 function getConfiguredModel(): string | undefined {
-  return process.env.CCL_LLM_MODEL?.trim() || undefined;
+  return process.env.IRG_LLM_MODEL?.trim() || undefined;
 }
 
 export async function readSessionInfo(
@@ -151,6 +155,34 @@ export async function readSessionInfo(
   } catch {
     return null;
   }
+}
+
+export async function createSession(
+  cwd: string,
+  sessionId: string,
+  meta: {
+    parentId?: string;
+    taskId?: string;
+    title?: string;
+  },
+): Promise<SessionInfo> {
+  const now = new Date().toISOString();
+  const next: SessionInfo = {
+    id: sessionId,
+    createdAt: now,
+    updatedAt: now,
+    title: meta.title || `session ${sessionId}`,
+    parentId: meta.parentId,
+    taskId: meta.taskId,
+  };
+
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
+  return next;
 }
 
 export async function updateSessionInfo(
@@ -179,6 +211,8 @@ export async function updateSessionInfo(
     lastPrompt: prompts[prompts.length - 1],
     provider: getConfiguredProvider() || previous?.provider,
     model: getConfiguredModel() || previous?.model,
+    parentId: previous?.parentId,
+    taskId: previous?.taskId,
     ...sessionStatus,
   };
 
@@ -261,6 +295,13 @@ export async function listSessions(cwd: string): Promise<SessionInfo[]> {
     // ignore missing transcript dir
   }
 
+  // Mark stale active sessions
+  for (const [id, info] of infos) {
+    if (isSessionStale(info)) {
+      infos.set(id, { ...info, status: "ready" });
+    }
+  }
+
   return [...infos.values()].sort((left, right) => {
     const leftRank = left.status === "needs_attention" ? 0 : 1;
     const rightRank = right.status === "needs_attention" ? 0 : 1;
@@ -278,4 +319,95 @@ export async function deleteSessionInfo(
   sessionId: string,
 ): Promise<void> {
   await rm(getSessionInfoPath(cwd, sessionId), { force: true });
+}
+
+export async function touchSession(
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
+  const previous = await readSessionInfo(cwd, sessionId);
+  if (!previous) return;
+  const now = new Date().toISOString();
+  const next = {
+    ...previous,
+    lastActiveAt: now,
+    status: (previous.status === "closed" ? "closed" : "active") as SessionInfo["status"],
+  };
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+export async function closeSession(
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
+  const previous = await readSessionInfo(cwd, sessionId);
+  if (!previous) return;
+  const next = {
+    ...previous,
+    status: "closed" as const,
+    checkedInTasks: [],
+  };
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+export async function checkinToTask(
+  cwd: string,
+  sessionId: string,
+  taskId: string,
+): Promise<void> {
+  const previous = await readSessionInfo(cwd, sessionId);
+  if (!previous) return;
+  const tasks = new Set(previous.checkedInTasks || []);
+  tasks.add(taskId);
+  const now = new Date().toISOString();
+  const next = {
+    ...previous,
+    lastActiveAt: now,
+    checkedInTasks: [...tasks],
+    status: "active" as const,
+  };
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+export async function checkoutFromTask(
+  cwd: string,
+  sessionId: string,
+  taskId: string,
+): Promise<void> {
+  const previous = await readSessionInfo(cwd, sessionId);
+  if (!previous) return;
+  const tasks = (previous.checkedInTasks || []).filter((t) => t !== taskId);
+  const next = {
+    ...previous,
+    checkedInTasks: tasks,
+  };
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+export function isSessionStale(info: SessionInfo, thresholdMs = STALE_THRESHOLD_MS): boolean {
+  if (info.status !== "active") return false;
+  if (!info.lastActiveAt) return true;
+  return Date.now() - new Date(info.lastActiveAt).getTime() > thresholdMs;
 }

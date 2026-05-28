@@ -7,6 +7,7 @@ export type StoredAgent = AgentDefinition & {
   isBuiltIn: boolean;
   createdAt: string;
   updatedAt: string;
+  capabilities?: string[];
   permission?: PermissionConfig;
 };
 
@@ -122,6 +123,17 @@ export async function listAgents(cwd: string): Promise<StoredAgent[]> {
   }
 
   return [...infos.values()];
+}
+
+export async function listAgentsByCapability(
+  cwd: string,
+  capability: string,
+): Promise<StoredAgent[]> {
+  const allAgents = await listAgents(cwd);
+  const lowerCap = capability.toLowerCase();
+  return allAgents.filter((agent) =>
+    agent.capabilities?.some((cap) => cap.toLowerCase() === lowerCap)
+  );
 }
 
 export async function getAgentDefinition(
