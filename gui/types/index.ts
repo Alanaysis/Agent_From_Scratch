@@ -55,6 +55,8 @@ export interface Task {
   errorCount?: number
   lastError?: string
   sessionId?: string
+  acceptanceCriteria?: AcceptanceCriterion[]
+  relatedDocumentIds?: string[]
 }
 
 export interface TaskActivity {
@@ -93,7 +95,16 @@ export interface PermissionRequest {
   toolName: string
   input: unknown
   message: string
-  resolve: (approved: boolean) => void
+  requestType?: 'permission' | 'approval' | 'error_choice' | 'data_input'
+  options?: string[]
+  schema?: Array<{ name: string; label: string; type: string; options?: string[]; required?: boolean; default?: unknown }>
+  resolve: (response: PermissionResponse) => void
+}
+
+export interface PermissionResponse {
+  approved: boolean
+  choice?: string
+  data?: Record<string, unknown>
 }
 
 export interface Agent {
@@ -112,7 +123,59 @@ export interface Agent {
   }
 }
 
-export type ViewMode = 'chat' | 'kanban' | 'sessions' | 'settings'
+export type ViewMode = 'chat' | 'kanban' | 'proposals' | 'documents' | 'sessions' | 'settings'
+
+export interface TaskDraft {
+  tempId: string
+  title: string
+  description?: string
+  agent?: string
+  priority?: 'low' | 'medium' | 'high'
+  dependsOnTempIds?: string[]
+  acceptanceCriteria?: string[]
+  relatedDocumentTempIds?: string[]
+}
+
+export interface DocumentDraft {
+  tempId: string
+  type: string
+  title: string
+  content: string
+  relatedTaskTempIds?: string[]
+}
+
+export interface Proposal {
+  id: string
+  title: string
+  description?: string
+  inputType: 'idea' | 'manual'
+  status: 'draft' | 'pending' | 'approved' | 'rejected'
+  taskDrafts: TaskDraft[]
+  documentDrafts: DocumentDraft[]
+  createdAt: number
+  updatedAt: number
+  approvedAt?: number
+  createdBy?: string
+}
+
+export interface AcceptanceCriterion {
+  id: string
+  text: string
+  status: 'pending' | 'passed' | 'failed'
+  evidence?: string
+}
+
+export interface StoredDocument {
+  id: string
+  title: string
+  type: 'prd' | 'tech_design' | 'adr' | 'spec' | 'guide' | 'report'
+  content: string
+  proposalId?: string
+  relatedTaskIds?: string[]
+  createdAt: number
+  updatedAt: number
+  createdBy?: string
+}
 
 export interface AppState {
   viewMode: ViewMode

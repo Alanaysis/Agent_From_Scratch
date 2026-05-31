@@ -7,6 +7,8 @@ import type { ViewMode } from '@/types'
 const navItems: { id: ViewMode; label: string; icon: string }[] = [
   { id: 'chat', label: 'Chat', icon: '💬' },
   { id: 'kanban', label: 'Tasks', icon: '📋' },
+  { id: 'proposals', label: 'Proposals', icon: '📄' },
+  { id: 'documents', label: 'Documents', icon: '📝' },
   { id: 'sessions', label: 'Sessions', icon: '📁' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
 ]

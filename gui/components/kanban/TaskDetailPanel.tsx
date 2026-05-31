@@ -408,6 +408,117 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           )}
         </div>
 
+        {/* Related Documents */}
+        {task.relatedDocumentIds && task.relatedDocumentIds.length > 0 && (() => {
+          const relatedDocs = useAppStore.getState().documents.filter(d => task.relatedDocumentIds?.includes(d.id))
+          if (relatedDocs.length === 0) return null
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+                Related Documents
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {relatedDocs.map(doc => {
+                  const docColor = { prd: '#3b82f6', tech_design: '#8b5cf6', adr: '#f59e0b', spec: '#22c55e', guide: '#06b6d4', report: '#ef4444' }[doc.type] || '#666'
+                  return (
+                    <div key={doc.id} style={{
+                      padding: '6px 8px',
+                      backgroundColor: '#0d0d0d',
+                      borderRadius: 6,
+                      border: `1px solid ${docColor}22`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                    }}
+                      onClick={() => useAppStore.getState().setViewMode('documents')}
+                    >
+                      <span style={{ fontSize: 8, fontWeight: 700, color: docColor, backgroundColor: docColor + '15', padding: '1px 4px', borderRadius: 3 }}>
+                        {doc.type === 'tech_design' ? 'TECH' : doc.type.toUpperCase()}
+                      </span>
+                      <span style={{ flex: 1, fontSize: 11, color: '#ccc' }}>{doc.title}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Acceptance Criteria */}
+        {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+              Acceptance Criteria
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {(task.acceptanceCriteria || []).map((ac) => {
+                const acStatus = ac.status || 'pending'
+                const acColor = acStatus === 'passed' ? '#22c55e' : acStatus === 'failed' ? '#ef4444' : '#666'
+                return (
+                  <div key={ac.id} style={{
+                    padding: '6px 8px',
+                    backgroundColor: '#0d0d0d',
+                    borderRadius: 6,
+                    border: `1px solid ${acColor}22`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    <div style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      backgroundColor: acColor + '15',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {acStatus === 'passed' ? <CheckCircle size={10} color={acColor} /> :
+                       acStatus === 'failed' ? <XCircle size={10} color={acColor} /> :
+                       <Clock size={10} color={acColor} />}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 11, color: '#ccc' }}>{ac.text}</span>
+                    {(task.status === 'verify' || task.status === 'in_progress') && acStatus === 'pending' && (
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button
+                          onClick={async () => {
+                            await useAppStore.getState().sendToBackend('tasks:update_criterion', {
+                              taskId: task.id,
+                              criterionId: ac.id,
+                              status: 'passed',
+                            })
+                            await useAppStore.getState().loadTasks()
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
+                          title="Mark as passed"
+                        >
+                          <CheckCircle size={12} color="#22c55e" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await useAppStore.getState().sendToBackend('tasks:update_criterion', {
+                              taskId: task.id,
+                              criterionId: ac.id,
+                              status: 'failed',
+                            })
+                            await useAppStore.getState().loadTasks()
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
+                          title="Mark as failed"
+                        >
+                          <XCircle size={12} color="#ef4444" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>

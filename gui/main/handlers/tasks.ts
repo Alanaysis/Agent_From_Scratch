@@ -294,6 +294,21 @@ export function registerTaskHandlers() {
     }
   });
 
+  ipcMain.handle("tasks:update_criterion", async (_event, input: { taskId: string; criterionId: string; status: 'passed' | 'failed'; evidence?: string; actor?: string }): Promise<{ task: TaskInfo | null }> => {
+    log('INFO', 'Tasks', `tasks:update_criterion for ${input.taskId}/${input.criterionId}`)
+    try {
+      const { updateAcceptanceCriterion } = await import("../../../storage/taskIndex");
+      const task = await updateAcceptanceCriterion(cwd(), input.taskId, input.criterionId, {
+        status: input.status,
+        evidence: input.evidence,
+      }, input.actor);
+      return { task };
+    } catch (e) {
+      log('ERROR', 'Tasks', `tasks:update_criterion failed`, e)
+      throw e
+    }
+  });
+
   ipcMain.handle("tasks:createBatch", async (_event, input: BatchTaskInput): Promise<{ tasks: TaskInfo[] }> => {
     log('INFO', 'Tasks', `tasks:createBatch called with ${input.tasks.length} tasks`)
     try {

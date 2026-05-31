@@ -157,6 +157,65 @@ function MessageBlocks({ msg, activeToolCalls }: { msg: Message; activeToolCalls
   )
 }
 
+function DataInputForm({ schema, onSubmit, onCancel }: {
+  schema: Array<{ name: string; label: string; type: string; options?: string[]; required?: boolean; default?: unknown }>
+  onSubmit: (data: Record<string, unknown>) => void
+  onCancel: () => void
+}) {
+  const [formData, setFormData] = React.useState<Record<string, unknown>>(() => {
+    const initial: Record<string, unknown> = {}
+    for (const field of schema) {
+      initial[field.name] = field.default ?? ''
+    }
+    return initial
+  })
+
+  return (
+    <div>
+      {schema.map((field) => (
+        <div key={field.name} style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+            {field.label}
+            {field.required && <span style={{ color: '#ef4444' }}> *</span>}
+          </label>
+          {field.type === 'select' && field.options ? (
+            <select
+              value={String(formData[field.name] || '')}
+              onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+              style={{ width: '100%', height: 32, fontSize: 12, backgroundColor: '#0a0a0a', border: '1px solid #333', borderRadius: 6, color: '#fff', padding: '0 8px' }}
+            >
+              <option value="">Select...</option>
+              {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          ) : field.type === 'boolean' ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#ccc', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!!formData[field.name]}
+                onChange={(e) => setFormData({ ...formData, [field.name]: e.target.checked })}
+                style={{ width: 16, height: 16 }}
+              />
+              {field.label}
+            </label>
+          ) : (
+            <input
+              type={field.type === 'number' ? 'number' : 'text'}
+              value={String(formData[field.name] || '')}
+              onChange={(e) => setFormData({ ...formData, [field.name]: field.type === 'number' ? Number(e.target.value) : e.target.value })}
+              placeholder={field.label}
+              style={{ width: '100%', height: 32, fontSize: 12, backgroundColor: '#0a0a0a', border: '1px solid #333', borderRadius: 6, color: '#fff', padding: '0 8px', boxSizing: 'border-box' }}
+            />
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <Button variant="ghost" onClick={onCancel} style={{ color: '#888' }}>Cancel</Button>
+        <Button onClick={() => onSubmit(formData)} style={{ backgroundColor: '#8b5cf6' }}>Submit</Button>
+      </div>
+    </div>
+  )
+}
+
 export function ChatView() {
   const store = useAppStore()
   const [input, setInput] = React.useState('')
@@ -483,62 +542,116 @@ export function ChatView() {
       </div>
 
       {/* Permission Request Modal */}
-      {store.permissionRequest && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
+      {store.permissionRequest && (() => {
+        const req = store.permissionRequest
+        const reqType = req.requestType || 'permission'
+
+        const handleResolve = (response: any) => {
+          req.resolve(response)
+          store.setPermissionRequest(null)
+        }
+
+        // Determine title and icon based on request type
+        const titleMap: Record<string, string> = {
+          permission: 'Permission Required',
+          approval: 'Confirmation Required',
+          error_choice: 'Error — Choose Action',
+          data_input: 'Input Required',
+        }
+        const colorMap: Record<string, string> = {
+          permission: '#3b82f6',
+          approval: '#f59e0b',
+          error_choice: '#ef4444',
+          data_input: '#8b5cf6',
+        }
+
+        return (
           <div style={{
-            backgroundColor: '#1a1a1a',
-            borderRadius: 12,
-            padding: 24,
-            maxWidth: 400,
-            width: '90%',
-            border: '1px solid #333',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
           }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#fff' }}>
-              Permission Required
-            </h3>
-            <p style={{ fontSize: 13, color: '#aaa', marginBottom: 8 }}>
-              Tool: <span style={{ color: '#3b82f6', fontWeight: 500 }}>{store.permissionRequest.toolName}</span>
-            </p>
-            {store.permissionRequest.message && (
-              <p style={{ fontSize: 13, color: '#888', marginBottom: 16, lineHeight: 1.5 }}>
-                {store.permissionRequest.message}
-              </p>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  store.permissionRequest?.resolve(false)
-                  store.setPermissionRequest(null)
-                }}
-                style={{ color: '#888' }}
-              >
-                Deny
-              </Button>
-              <Button
-                onClick={() => {
-                  store.permissionRequest?.resolve(true)
-                  store.setPermissionRequest(null)
-                }}
-                style={{ backgroundColor: '#3b82f6' }}
-              >
-                Allow
-              </Button>
+            <div style={{
+              backgroundColor: '#1a1a1a',
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 420,
+              width: '90%',
+              border: `1px solid ${colorMap[reqType] || '#333'}44`,
+            }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: colorMap[reqType] || '#fff' }}>
+                {titleMap[reqType] || 'Permission Required'}
+              </h3>
+
+              {reqType === 'permission' && (
+                <p style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+                  Tool: <span style={{ color: '#3b82f6', fontWeight: 500 }}>{req.toolName}</span>
+                </p>
+              )}
+
+              {req.message && (
+                <p style={{ fontSize: 13, color: '#ccc', marginBottom: 16, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {req.message}
+                </p>
+              )}
+
+              {/* Approval mode: Confirm / Cancel */}
+              {reqType === 'approval' && (
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <Button variant="ghost" onClick={() => handleResolve({ approved: false })} style={{ color: '#888' }}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => handleResolve({ approved: true })} style={{ backgroundColor: '#f59e0b' }}>
+                    Confirm
+                  </Button>
+                </div>
+              )}
+
+              {/* Error choice mode: option buttons */}
+              {reqType === 'error_choice' && req.options && (
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  {req.options.map((opt) => {
+                    const optColors: Record<string, string> = { retry: '#f59e0b', skip: '#3b82f6', abort: '#ef4444' }
+                    return (
+                      <Button
+                        key={opt}
+                        onClick={() => handleResolve({ approved: true, choice: opt })}
+                        style={{ backgroundColor: optColors[opt] || '#666', textTransform: 'capitalize' }}
+                      >
+                        {opt}
+                      </Button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Data input mode: form fields */}
+              {reqType === 'data_input' && req.schema && (
+                <DataInputForm schema={req.schema} onSubmit={(data) => handleResolve({ approved: true, data })} onCancel={() => handleResolve({ approved: false })} />
+              )}
+
+              {/* Default permission mode: Allow / Deny */}
+              {reqType === 'permission' && (
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <Button variant="ghost" onClick={() => handleResolve({ approved: false })} style={{ color: '#888' }}>
+                    Deny
+                  </Button>
+                  <Button onClick={() => handleResolve({ approved: true })} style={{ backgroundColor: '#3b82f6' }}>
+                    Allow
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

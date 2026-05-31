@@ -9,6 +9,13 @@ export type TaskActivity = {
   timestamp: string;
 }
 
+export type AcceptanceCriterion = {
+  id: string;
+  text: string;
+  status: "pending" | "passed" | "failed";
+  evidence?: string;
+}
+
 export type TaskInfo = {
   id: string;
   title: string;
@@ -23,6 +30,8 @@ export type TaskInfo = {
   errorCount?: number;
   lastError?: string;
   sessionId?: string;
+  acceptanceCriteria?: AcceptanceCriterion[];
+  relatedDocumentIds?: string[];
   activities: TaskActivity[];
   statusHistory: Array<{ status: string; timestamp: string; actor?: string }>;
 };
@@ -288,4 +297,49 @@ export async function getUnblockedTasks(cwd: string): Promise<TaskInfo[]> {
       const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
       return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
     });
+}
+
+export async function updateAcceptanceCriterion(
+  cwd: string,
+  taskId: string,
+  criterionId: string,
+  updates: { status: "passed" | "failed"; evidence?: string },
+  actor?: string,
+): Promise<TaskInfo | null> {
+  const task = await readTaskInfo(cwd, taskId);
+  if (!task || !task.acceptanceCriteria) return null;
+
+  const criterion = task.acceptanceCriteria.find((c) => c.id === criterionId);
+  const criteria = task.acceptanceCriteria.map((c) =>
+    c.id === criterionId ? { ...c, ...updates } : c
+  );
+
+  const now = new Date().toISOString();
+  const activities = [...task.activities, {
+    id: `activity-${Date.now()}-${task.activities.length}`,
+    action: "updated" as const,
+    actor,
+    details: `Criterion "${criterion?.text || criterionId}" marked as ${updates.status}${updates.evidence ? `: ${updates.evidence}` : ''}`,
+    timestamp: now,
+  }];
+
+  const updated: TaskInfo = {
+    ...task,
+    acceptanceCriteria: criteria,
+    activities,
+    updatedAt: now,
+  };
+
+  await mkdir(getTasksDir(cwd), { recursive: true });
+  await writeFile(
+    getTaskInfoPath(cwd, taskId),
+    `${JSON.stringify(updated, null, 2)}\n`,
+    "utf8",
+  );
+  return updated;
+}
+
+export function allCriteriaPassed(task: TaskInfo): boolean {
+  if (!task.acceptanceCriteria || task.acceptanceCriteria.length === 0) return true;
+  return task.acceptanceCriteria.every((c) => c.status === "passed");
 }

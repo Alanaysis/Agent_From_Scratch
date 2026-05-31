@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/lib/store'
 import { Sidebar } from './Sidebar'
-import { ChatView, SettingsView } from './Views'
+import { ChatView, SettingsView, ProposalView, DocumentsView } from './Views'
 import { KanbanView } from '@/components/kanban/KanbanView'
 import { SessionsView } from '@/components/sessions/SessionsView'
 
@@ -17,6 +17,8 @@ export function AppLayout() {
         {viewMode === 'chat' && <ChatView />}
         {viewMode === 'kanban' && <KanbanView />}
         {viewMode === 'sessions' && <SessionsView />}
+        {viewMode === 'proposals' && <ProposalView />}
+        {viewMode === 'documents' && <DocumentsView />}
       </main>
     </div>
   )

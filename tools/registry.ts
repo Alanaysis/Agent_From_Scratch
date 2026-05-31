@@ -13,6 +13,9 @@ import { ImageUploadTool } from "./web/imageUploadTool";
 import { ImageAnalyzeTool } from "./web/imageAnalyzeTool";
 import { ImageGenerateTool } from "./web/imageGenerateTool";
 import { SkillTool } from "../skills/skillTool";
+import { DiscoveryTool } from "../discovery/DiscoveryTool";
+import { GrpcClientTool } from "./grpc/grpcClientTool";
+import { CheckpointTool } from "./workflow/checkpointTool";
 
 export function getTools(): Tools {
   return [
@@ -30,5 +33,8 @@ export function getTools(): Tools {
     ImageUploadTool,
     ImageAnalyzeTool,
     ImageGenerateTool,
+    DiscoveryTool,
+    GrpcClientTool,
+    CheckpointTool,
   ];
 }

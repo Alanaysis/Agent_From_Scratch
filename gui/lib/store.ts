@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppState, Message, Session, Task, ViewMode, Agent, AgentPresence, Notification, PermissionRequest, ToolCallEvent } from '@/types'
+import type { AppState, Message, Session, Task, ViewMode, Agent, AgentPresence, Notification, PermissionRequest, ToolCallEvent, Proposal, TaskDraft, StoredDocument } from '@/types'
 
 export interface LlmConfig {
   provider: 'openai' | 'anthropic'
@@ -58,11 +58,33 @@ type Actions = {
   startHeartbeat: () => void
   stopHeartbeat: () => void
   initBackendConnection: () => void
+  // Proposals
+  proposals: Proposal[]
+  loadProposals: () => Promise<void>
+  createProposal: (input: { title: string; description?: string }) => Promise<Proposal | null>
+  updateProposal: (id: string, updates: { title?: string; description?: string }) => Promise<void>
+  deleteProposal: (id: string) => Promise<void>
+  addTaskDraft: (proposalId: string, draft: Omit<TaskDraft, 'tempId'>) => Promise<void>
+  removeTaskDraft: (proposalId: string, tempId: string) => Promise<void>
+  updateTaskDraft: (proposalId: string, tempId: string, updates: Partial<TaskDraft>) => Promise<void>
+  addDocumentDraft: (proposalId: string, draft: { type: string; title: string; content: string }) => Promise<void>
+  removeDocumentDraft: (proposalId: string, tempId: string) => Promise<void>
+  submitProposal: (id: string) => Promise<void>
+  approveProposal: (id: string) => Promise<{ tasks: Array<{ id: string; title: string }> } | null>
+  rejectProposal: (id: string) => Promise<void>
+  // Documents
+  documents: StoredDocument[]
+  loadDocuments: () => Promise<void>
+  createDocument: (input: { title: string; type: string; content?: string }) => Promise<void>
+  updateDocument: (id: string, updates: { title?: string; content?: string }) => Promise<void>
+  deleteDocument: (id: string) => Promise<void>
 }
 
 interface AppStoreState extends AppState {
   llmConfig: LlmConfig | null
   streamingText: string
+  proposals: Proposal[]
+  documents: StoredDocument[]
   backendInitialized: boolean
   listenersRegistered: boolean
   executorRunning: boolean
@@ -131,6 +153,8 @@ export const useAppStore = create<AppStoreState & Actions>()(
       messages: [],
       isLoading: false,
       tasks: [],
+      proposals: [],
+      documents: [],
       agentPresences: [],
       notifications: [],
       backendConnected: false,
@@ -236,6 +260,12 @@ export const useAppStore = create<AppStoreState & Actions>()(
               status: t.status,
               priority: t.priority,
               assignee: t.assignee,
+              dependsOn: t.dependsOn,
+              sessionId: t.sessionId,
+              errorCount: t.errorCount,
+              lastError: t.lastError,
+              acceptanceCriteria: t.acceptanceCriteria,
+              relatedDocumentIds: t.relatedDocumentIds,
               createdAt: new Date(t.createdAt).getTime(),
               updatedAt: new Date(t.updatedAt).getTime(),
             }))
@@ -310,6 +340,212 @@ export const useAppStore = create<AppStoreState & Actions>()(
         } catch (e) {
           console.error('[Store] deleteTaskBackend error, restoring:', e)
           set({ tasks: previousTasks })
+        }
+      },
+
+      // Proposal actions
+      proposals: [],
+
+      loadProposals: async () => {
+        try {
+          const result = await get().sendToBackend('proposals:list') as { proposals: any[] }
+          if (result?.proposals) {
+            set({
+              proposals: result.proposals.map((p: any) => ({
+                id: p.id,
+                title: p.title,
+                description: p.description,
+                inputType: p.inputType,
+                status: p.status,
+                taskDrafts: p.taskDrafts || [],
+                documentDrafts: p.documentDrafts || [],
+                createdAt: new Date(p.createdAt).getTime(),
+                updatedAt: new Date(p.updatedAt).getTime(),
+                approvedAt: p.approvedAt ? new Date(p.approvedAt).getTime() : undefined,
+                createdBy: p.createdBy,
+              })),
+            })
+          }
+        } catch (e) {
+          console.error('[Store] loadProposals error:', e)
+        }
+      },
+
+      createProposal: async (input) => {
+        try {
+          const result = await get().sendToBackend('proposals:create', input) as { proposal: any }
+          if (result?.proposal) {
+            const p = result.proposal
+            const proposal: Proposal = {
+              id: p.id,
+              title: p.title,
+              description: p.description,
+              inputType: p.inputType,
+              status: p.status,
+              taskDrafts: p.taskDrafts || [],
+              documentDrafts: p.documentDrafts || [],
+              createdAt: new Date(p.createdAt).getTime(),
+              updatedAt: new Date(p.updatedAt).getTime(),
+              createdBy: p.createdBy,
+            }
+            set((s) => ({ proposals: [proposal, ...s.proposals] }))
+            return proposal
+          }
+          return null
+        } catch (e) {
+          console.error('[Store] createProposal error:', e)
+          return null
+        }
+      },
+
+      updateProposal: async (id, updates) => {
+        try {
+          await get().sendToBackend('proposals:update', { proposalId: id, ...updates })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] updateProposal error:', e)
+        }
+      },
+
+      deleteProposal: async (id) => {
+        const previous = get().proposals
+        set({ proposals: previous.filter(p => p.id !== id) })
+        try {
+          await get().sendToBackend('proposals:delete', id)
+        } catch (e) {
+          console.error('[Store] deleteProposal error, restoring:', e)
+          set({ proposals: previous })
+        }
+      },
+
+      addTaskDraft: async (proposalId, draft) => {
+        try {
+          await get().sendToBackend('proposals:add_task_draft', { proposalId, draft })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] addTaskDraft error:', e)
+        }
+      },
+
+      removeTaskDraft: async (proposalId, tempId) => {
+        try {
+          await get().sendToBackend('proposals:remove_task_draft', { proposalId, tempId })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] removeTaskDraft error:', e)
+        }
+      },
+
+      updateTaskDraft: async (proposalId, tempId, updates) => {
+        try {
+          await get().sendToBackend('proposals:update_task_draft', { proposalId, tempId, updates })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] updateTaskDraft error:', e)
+        }
+      },
+
+      addDocumentDraft: async (proposalId, draft) => {
+        try {
+          await get().sendToBackend('proposals:add_document_draft', { proposalId, draft })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] addDocumentDraft error:', e)
+        }
+      },
+
+      removeDocumentDraft: async (proposalId, tempId) => {
+        try {
+          await get().sendToBackend('proposals:remove_document_draft', { proposalId, tempId })
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] removeDocumentDraft error:', e)
+        }
+      },
+
+      submitProposal: async (id) => {
+        try {
+          await get().sendToBackend('proposals:submit', id)
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] submitProposal error:', e)
+        }
+      },
+
+      approveProposal: async (id) => {
+        try {
+          const result = await get().sendToBackend('proposals:approve', id) as { tasks: Array<{ id: string; title: string }> }
+          await get().loadProposals()
+          await get().loadTasks()
+          await get().loadDocuments()
+          return result
+        } catch (e) {
+          console.error('[Store] approveProposal error:', e)
+          return null
+        }
+      },
+
+      rejectProposal: async (id) => {
+        try {
+          await get().sendToBackend('proposals:reject', id)
+          await get().loadProposals()
+        } catch (e) {
+          console.error('[Store] rejectProposal error:', e)
+        }
+      },
+
+      // Document actions
+      documents: [],
+
+      loadDocuments: async () => {
+        try {
+          const result = await get().sendToBackend('documents:list') as { documents: any[] }
+          if (result?.documents) {
+            set({
+              documents: result.documents.map((d: any) => ({
+                id: d.id,
+                title: d.title,
+                type: d.type,
+                content: d.content,
+                proposalId: d.proposalId,
+                relatedTaskIds: d.relatedTaskIds,
+                createdAt: new Date(d.createdAt).getTime(),
+                updatedAt: new Date(d.updatedAt).getTime(),
+                createdBy: d.createdBy,
+              })),
+            })
+          }
+        } catch (e) {
+          console.error('[Store] loadDocuments error:', e)
+        }
+      },
+
+      createDocument: async (input) => {
+        try {
+          await get().sendToBackend('documents:create', input)
+          await get().loadDocuments()
+        } catch (e) {
+          console.error('[Store] createDocument error:', e)
+        }
+      },
+
+      updateDocument: async (id, updates) => {
+        try {
+          await get().sendToBackend('documents:update', { docId: id, ...updates })
+          await get().loadDocuments()
+        } catch (e) {
+          console.error('[Store] updateDocument error:', e)
+        }
+      },
+
+      deleteDocument: async (id) => {
+        const previous = get().documents
+        set({ documents: previous.filter(d => d.id !== id) })
+        try {
+          await get().sendToBackend('documents:delete', id)
+        } catch (e) {
+          console.error('[Store] deleteDocument error, restoring:', e)
+          set({ documents: previous })
         }
       },
 
@@ -548,18 +784,30 @@ export const useAppStore = create<AppStoreState & Actions>()(
               }
 
               const onPermission = (data: unknown) => {
-                const perm = data as { toolName: string; input: unknown; message: string }
-                const permissionPromise = new Promise<boolean>((resolve) => {
+                const perm = data as {
+                  toolName: string
+                  input: unknown
+                  message: string
+                  requestType?: string
+                  options?: string[]
+                  schema?: Array<{ name: string; label: string; type: string; options?: string[]; required?: boolean; default?: unknown }>
+                }
+                const permissionPromise = new Promise<any>((resolve) => {
                   get().setPermissionRequest({
                     id: `perm-${Date.now()}`,
                     toolName: perm.toolName,
                     input: perm.input,
                     message: perm.message,
+                    requestType: (perm.requestType as any) || 'permission',
+                    options: perm.options,
+                    schema: perm.schema,
                     resolve,
                   })
                 })
-                permissionPromise.then((approved) => {
-                  get().sendToBackend('chat:permission-response', { approved })
+                permissionPromise.then((response) => {
+                  // Backward compatibility: if response is a boolean, wrap it
+                  const resp = typeof response === 'boolean' ? { approved: response } : response
+                  get().sendToBackend('chat:permission-response', resp)
                 })
               }
 

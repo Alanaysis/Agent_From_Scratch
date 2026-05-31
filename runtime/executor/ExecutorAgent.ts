@@ -267,6 +267,7 @@ export class ExecutorAgent extends EventEmitter {
       return
     }
 
+    console.log(`[Executor] readTaskInfo result: title="${task.title}", id="${task.id}"`)
 
     if (task.status !== "todo" && task.status !== "in_progress") {
       console.log(`[Executor] Task ${taskId} is in ${task.status} status, skipping`)

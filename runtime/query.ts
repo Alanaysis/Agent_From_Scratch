@@ -482,6 +482,39 @@ function getToolDefinitions(): LlmToolDefinition[] {
         additionalProperties: false,
       },
     },
+    {
+      name: "GrpcClient",
+      description: "Make a gRPC call to an external service. Requires a .proto file, service name, method name, and target address.",
+      parameters: {
+        type: "object",
+        properties: {
+          protoFile: { type: "string", description: "Path to the .proto file." },
+          service: { type: "string", description: "Fully qualified service name (e.g. 'mypackage.MyService')." },
+          method: { type: "string", description: "Method name to call." },
+          address: { type: "string", description: "Target address in host:port format." },
+          payload: { type: "object", description: "Request payload as key-value pairs." },
+          metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
+          deadline: { type: "number", description: "Optional timeout in milliseconds (default 30000)." },
+        },
+        required: ["service", "method", "address", "payload"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "Checkpoint",
+      description: "Pause execution and wait for user input. Use for approval confirmations, error recovery choices (retry/skip/abort), or collecting user-provided data.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["approval", "error_choice", "data_input"], description: "Type of checkpoint." },
+          message: { type: "string", description: "Message to show to the user." },
+          options: { type: "array", items: { type: "string" }, description: "Options for error_choice type (e.g. ['retry', 'skip', 'abort'])." },
+          schema: { type: "array", description: "Field definitions for data_input type.", items: { type: "object", properties: { name: { type: "string" }, label: { type: "string" }, type: { type: "string" }, options: { type: "array", items: { type: "string" } }, required: { type: "boolean" } } } },
+        },
+        required: ["type", "message"],
+        additionalProperties: false,
+      },
+    },
   ];
 }
 

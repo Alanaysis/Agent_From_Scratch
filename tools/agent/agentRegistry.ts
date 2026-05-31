@@ -1,5 +1,17 @@
 import type { LlmToolDefinition } from "../../runtime/llm";
 
+export type PermissionValue = "allow" | "ask" | "deny";
+
+export type PermissionConfig = {
+  read?: PermissionValue;
+  edit?: PermissionValue;
+  bash?: PermissionValue;
+  webfetch?: PermissionValue;
+  websearch?: PermissionValue;
+  todowrite?: PermissionValue;
+  task?: PermissionValue;
+};
+
 export type AgentDefinition = {
   name: string;
   description: string;
@@ -7,6 +19,8 @@ export type AgentDefinition = {
   allowedTools: string[] | "*";
   maxTurns?: number;
   isReadOnly?: boolean;
+  capabilities?: string[];
+  permission?: PermissionConfig;
 };
 
 export const BUILTIN_AGENTS: Record<string, AgentDefinition> = {
@@ -77,6 +91,50 @@ export const BUILTIN_AGENTS: Record<string, AgentDefinition> = {
     allowedTools: ["Read", "FileTree", "SearchFiles"],
     isReadOnly: true,
     maxTurns: 4,
+  },
+  pm: {
+    name: "pm",
+    description:
+      "Project Manager agent that decomposes goals into task plans using recipes",
+    systemPrompt: [
+      "You are a Project Manager agent. Your job is to:",
+      "1. Understand the user's high-level goal",
+      "2. Find matching recipe templates",
+      "3. Create a detailed plan with tasks, dependencies, and agent assignments",
+      "4. Present the plan for user approval",
+      "5. After approval, batch-create tasks and assign them",
+      "",
+      "Available tools: list_recipes, find_recipes, create_plan, list_agents",
+      "Always present plans in a clear, structured format before asking for confirmation.",
+    ],
+    allowedTools: [
+      "Read", "Glob", "Grep",
+      "recipes:list", "recipes:find",
+      "plans:create", "plans:update", "plans:confirm",
+      "agents:list",
+      "tasks:createBatch",
+    ],
+    capabilities: ["planning", "orchestration"],
+    maxTurns: 12,
+  },
+  "grpc-worker": {
+    name: "grpc-worker",
+    description:
+      "Agent specialized in executing gRPC calls according to workflow definitions. Used for integrating with external microservices.",
+    systemPrompt: [
+      "You are a gRPC workflow execution agent. Your job is to:",
+      "1. Execute gRPC calls as specified in the task description",
+      "2. Handle responses and errors appropriately",
+      "3. If a step requires approval, use the Checkpoint tool to pause and ask the user",
+      "4. If an error occurs, use the Checkpoint tool to let the user decide: retry, skip, or abort",
+      "5. Report results clearly after each step",
+      "",
+      "You work with external services via gRPC. Always validate responses before proceeding.",
+      "If a gRPC call fails, do NOT retry automatically — ask the user first.",
+    ],
+    allowedTools: ["GrpcClient", "Read", "Shell", "Checkpoint"],
+    capabilities: ["grpc", "workflow", "align"],
+    maxTurns: 20,
   },
 };
 

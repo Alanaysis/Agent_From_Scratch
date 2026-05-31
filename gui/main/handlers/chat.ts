@@ -8,6 +8,7 @@ import { findToolByName } from "../../../tools/Tool";
 import { getTools } from "../../../tools/registry";
 import { query } from "../../../runtime/query";
 import { readTranscriptMessages, getTranscriptPath } from "../../../storage/transcript";
+import { setCheckpointResponse } from "../../../tools/workflow/checkpointTool";
 import type { Message } from "../../../runtime/messages";
 import { log } from "../logger";
 
@@ -45,9 +46,13 @@ function messageToChatMessage(msg: Message): ChatMessage {
   };
 }
 
-let pendingPermissionResolve: ((approved: boolean) => void) | null = null
+let pendingPermissionResolve: ((response: any) => void) | null = null
 let activeAbortController: AbortController | null = null
-const permissionQueue: Array<{ request: { toolName: string; input: unknown; message: string }; resolve: (approved: boolean) => void }> = []
+type PermissionQueueItem = {
+  request: { toolName: string; input: unknown; message: string; requestType?: string; options?: string[]; schema?: any[] }
+  resolve: (response: any) => void
+}
+const permissionQueue: PermissionQueueItem[] = []
 let processingPermissions = false
 
 function processNextPermission(window: Electron.BrowserWindow | null) {
@@ -58,30 +63,33 @@ function processNextPermission(window: Electron.BrowserWindow | null) {
     toolName: next.request.toolName,
     input: next.request.input,
     message: next.request.message,
+    requestType: next.request.requestType || 'permission',
+    options: next.request.options,
+    schema: next.request.schema,
   })
-  pendingPermissionResolve = (approved: boolean) => {
-    next.resolve(approved)
+  pendingPermissionResolve = (response: any) => {
+    next.resolve(response)
     pendingPermissionResolve = null
     processingPermissions = false
     processNextPermission(window)
   }
   setTimeout(() => {
     if (pendingPermissionResolve === next.resolve) {
-      next.resolve(false)
+      next.resolve({ approved: false, timedOut: true })
       pendingPermissionResolve = null
       processingPermissions = false
       processNextPermission(window)
     }
-  }, 60000)
+  }, 120000) // Extended timeout for workflow checkpoints
 }
 
 export function registerChatHandlers() {
   log('INFO', 'Chat', 'Registering chat handlers')
 
-  ipcMain.handle("chat:permission-response", async (_event, { approved }: { approved: boolean }) => {
-    log('INFO', 'Chat', `chat:permission-response:`, approved)
+  ipcMain.handle("chat:permission-response", async (_event, response: { approved: boolean; choice?: string; data?: Record<string, unknown> }) => {
+    log('INFO', 'Chat', `chat:permission-response:`, response)
     if (pendingPermissionResolve) {
-      pendingPermissionResolve(approved)
+      pendingPermissionResolve(response)
     }
   })
 
@@ -155,8 +163,43 @@ export function registerChatHandlers() {
           if (autoApprove) return true;
           const tool = findToolByName(getTools(), request.toolName);
           if (!tool) return false;
+
+          // Determine request type based on tool name
+          let requestType = 'permission'
+          let options: string[] | undefined
+          let schema: any[] | undefined
+          let checkpointId: string | undefined
+
+          if (request.toolName === 'Checkpoint') {
+            const input = request.input as any
+            requestType = input?.type || 'approval'
+            options = input?.options
+            schema = input?.schema
+            checkpointId = createId("cp")
+          }
+
           return new Promise<boolean>((resolve) => {
-            permissionQueue.push({ request, resolve })
+            permissionQueue.push({
+              request: { ...request, requestType, options, schema },
+              resolve: (response: any) => {
+                const resp = typeof response === 'boolean' ? { approved: response } : response
+
+                // For checkpoint tools, store the full response so the tool can read it
+                if (request.toolName === 'Checkpoint' && checkpointId) {
+                  setCheckpointResponse(checkpointId, {
+                    approved: resp.approved !== false,
+                    choice: resp.choice,
+                    data: resp.data,
+                    timedOut: resp.timedOut,
+                  })
+                  // Inject checkpointId into the tool input so call() can read the response
+                  const input = request.input as any
+                  if (input) input.__checkpointId = checkpointId
+                }
+
+                resolve(resp.approved !== false)
+              },
+            })
             processNextPermission(window)
           })
         },

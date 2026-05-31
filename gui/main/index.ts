@@ -10,6 +10,9 @@ import { registerAgentHandlers } from "./handlers/agents";
 import { registerRecipeHandlers } from "./handlers/recipes";
 import { registerPlanHandlers } from "./handlers/plans";
 import { registerPmHandlers } from "./handlers/pm";
+import { registerProposalHandlers } from "./handlers/proposals";
+import { registerDocumentHandlers } from "./handlers/documents";
+import { registerWorkflowHandlers } from "./handlers/workflows";
 import { initIpcPush } from "./ipcPush";
 import { log } from "./logger";
 
@@ -76,6 +79,9 @@ function registerHandlers() {
   registerRecipeHandlers();
   registerPlanHandlers();
   registerPmHandlers();
+  registerProposalHandlers();
+  registerDocumentHandlers();
+  registerWorkflowHandlers();
   log('INFO', 'Main', 'All IPC handlers registered')
 }
 
