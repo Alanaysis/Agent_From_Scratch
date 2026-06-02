@@ -39,6 +39,7 @@ export type WorkflowStep = {
   shell?: string;
   requiresApproval?: boolean;
   approvalMessage?: string;
+  autoVerify?: boolean;
   collectInput?: InputFieldSchema[];
   onError?: OnErrorConfig;
   acceptanceCriteria?: string[];
@@ -146,6 +147,7 @@ export function parseWorkflowYaml(yamlContent: string): WorkflowDefinition {
       shell: step.shell,
       requiresApproval: step.requires_approval || step.requiresApproval,
       approvalMessage: step.approval_message || step.approvalMessage,
+      autoVerify: step.auto_verify || step.autoVerify,
       collectInput: step.collect_input || step.collectInput,
       onError: step.on_error || step.onError ? {
         action: (step.on_error || step.onError).action || "pause",
@@ -217,11 +219,8 @@ export async function importWorkflowAsProposal(
       description += (description ? "\n\n" : "") + `Shell Command: ${step.shell}`;
     }
 
-    // Build acceptance criteria
+    // Build acceptance criteria (only from explicit config, not auto-added)
     const acceptanceCriteria = [...(step.acceptanceCriteria || [])];
-    if (step.grpc) {
-      acceptanceCriteria.push(`gRPC call ${step.grpc.service}.${step.grpc.method} completed successfully`);
-    }
 
     // Resolve dependencies (all tempIds are now registered)
     const dependsOnTempIds = step.dependsOn
@@ -236,6 +235,8 @@ export async function importWorkflowAsProposal(
       priority: "medium",
       dependsOnTempIds: dependsOnTempIds?.length > 0 ? dependsOnTempIds : undefined,
       acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
+      requiresApproval: step.requiresApproval || false,
+      approvalMessage: step.approvalMessage,
     });
   }
 

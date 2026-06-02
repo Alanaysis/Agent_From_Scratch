@@ -36,9 +36,9 @@ describe('sessionIndex', () => {
         messageCount: 5,
       };
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify(expectedInfo)
       );
 
@@ -59,9 +59,9 @@ describe('sessionIndex', () => {
 
     it('handles malformed JSON gracefully', async () => {
       const sessionId = 'malformed-session';
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         '{ invalid json }'
       );
 
@@ -94,9 +94,9 @@ describe('sessionIndex', () => {
         createdAt: '2024-01-01T00:00:00.000Z',
       };
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify(previousInfo)
       );
 
@@ -212,12 +212,12 @@ describe('sessionIndex', () => {
     });
 
     it('respects configured provider and model from env', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
-      const originalModel = process.env.CCL_LLM_MODEL;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
+      const originalModel = process.env.IRG_LLM_MODEL;
 
       try {
-        process.env.CCL_LLM_PROVIDER = 'test-provider';
-        process.env.CCL_LLM_MODEL = 'test-model-v1';
+        process.env.IRG_LLM_PROVIDER = 'test-provider';
+        process.env.IRG_LLM_MODEL = 'test-model-v1';
 
         const sessionId = 'env-test';
         const messages: any[] = [
@@ -231,14 +231,14 @@ describe('sessionIndex', () => {
       } finally {
         // Restore original env vars
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         if (originalModel !== undefined) {
-          process.env.CCL_LLM_MODEL = originalModel;
+          process.env.IRG_LLM_MODEL = originalModel;
         } else {
-          delete process.env.CCL_LLM_MODEL;
+          delete process.env.IRG_LLM_MODEL;
         }
       }
     });
@@ -251,17 +251,17 @@ describe('sessionIndex', () => {
         model: 'previous-model',
       };
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify(previousInfo)
       );
 
       // Clear env vars to test preservation
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
-      const originalModel = process.env.CCL_LLM_MODEL;
-      delete process.env.CCL_LLM_PROVIDER;
-      delete process.env.CCL_LLM_MODEL;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
+      const originalModel = process.env.IRG_LLM_MODEL;
+      delete process.env.IRG_LLM_PROVIDER;
+      delete process.env.IRG_LLM_MODEL;
 
       try {
         const messages: any[] = [
@@ -276,14 +276,14 @@ describe('sessionIndex', () => {
       } finally {
         // Restore original env vars
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         if (originalModel !== undefined) {
-          process.env.CCL_LLM_MODEL = originalModel;
+          process.env.IRG_LLM_MODEL = originalModel;
         } else {
-          delete process.env.CCL_LLM_MODEL;
+          delete process.env.IRG_LLM_MODEL;
         }
       }
     });
@@ -313,7 +313,7 @@ describe('sessionIndex', () => {
         await updateSessionInfo(newTempDir, sessionId, messages);
 
         // Verify directory was created
-        const dirExists = await fs.stat(path.join(newTempDir, '.claude-code-lite', 'sessions'))
+        const dirExists = await fs.stat(path.join(newTempDir, '.irg', 'sessions'))
           .then(() => true)
           .catch(() => false);
 
@@ -338,18 +338,18 @@ describe('sessionIndex', () => {
       const sessionId2 = 'session-2';
       const notASessionId = 'not-a-session-txt'; // Should be ignored
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId1}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId1}.json`),
         JSON.stringify({ id: sessionId1 })
       );
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId2}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId2}.json`),
         JSON.stringify({ id: sessionId2 })
       );
       // Create a non-json file that should be ignored
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${notASessionId}.txt`),
+        path.join(tempDir, '.irg', 'sessions', `${notASessionId}.txt`),
         'should be ignored'
       );
 
@@ -363,10 +363,10 @@ describe('sessionIndex', () => {
     it('includes sessions from transcript files when metadata missing', async () => {
       const sessionId = 'transcript-only';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'transcripts'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'transcripts'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'transcripts', `${sessionId}.jsonl`),
+        path.join(tempDir, '.irg', 'transcripts', `${sessionId}.jsonl`),
         JSON.stringify({ id: '1', type: 'user', content: 'Hello' }) + '\n'
       );
 
@@ -381,11 +381,11 @@ describe('sessionIndex', () => {
       const sessionOld = 'old-session';
       const sessionNew = 'new-session';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
 
       // Create old session first
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionOld}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionOld}.json`),
         JSON.stringify({ id: sessionOld, updatedAt: '2024-01-01T00:00:00.000Z' })
       );
 
@@ -393,7 +393,7 @@ describe('sessionIndex', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
 
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionNew}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionNew}.json`),
         JSON.stringify({ id: sessionNew, updatedAt: '2024-12-31T23:59:59.999Z' })
       );
 
@@ -407,15 +407,15 @@ describe('sessionIndex', () => {
       const readySession = 'ready-session';
       const attentionSession = 'attention-session';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
 
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${readySession}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${readySession}.json`),
         JSON.stringify({ id: readySession, status: 'ready', updatedAt: '2024-12-31T23:59:59.999Z' })
       );
 
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${attentionSession}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${attentionSession}.json`),
         JSON.stringify({ id: attentionSession, status: 'needs_attention', updatedAt: '2024-01-01T00:00:00.000Z' })
       );
 
@@ -441,7 +441,7 @@ describe('sessionIndex', () => {
     });
 
     it('handles missing transcripts directory gracefully', async () => {
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       // Don't create transcripts dir
 
       const result = await listSessions(tempDir);
@@ -451,10 +451,10 @@ describe('sessionIndex', () => {
     it('handles malformed transcript entries gracefully', async () => {
       const sessionId = 'malformed-transcript';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'transcripts'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'transcripts'), { recursive: true });
       // Write malformed JSON in transcript
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'transcripts', `${sessionId}.jsonl`),
+        path.join(tempDir, '.irg', 'transcripts', `${sessionId}.jsonl`),
         '{ invalid json }\n' + JSON.stringify({ id: '1', type: 'user', content: 'Valid line' })
       );
 
@@ -467,16 +467,16 @@ describe('sessionIndex', () => {
     it('uses transcript mtime when no updatedAt in metadata', async () => {
       const sessionId = 'mtime-test';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       // Create session with minimal info (no updatedAt)
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify({ id: sessionId })
       );
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'transcripts'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'transcripts'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'transcripts', `${sessionId}.jsonl`),
+        path.join(tempDir, '.irg', 'transcripts', `${sessionId}.jsonl`),
         JSON.stringify({ id: '1', type: 'user', content: 'Test' }) + '\n'
       );
 
@@ -490,15 +490,15 @@ describe('sessionIndex', () => {
   describe('deleteSessionInfo', () => {
     it('deletes session info file when it exists', async () => {
       const sessionId = 'to-delete';
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify({ id: sessionId })
       );
 
       await deleteSessionInfo(tempDir, sessionId);
 
-      const exists = await fs.stat(path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`))
+      const exists = await fs.stat(path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`))
         .then(() => true)
         .catch(() => false);
 
@@ -515,19 +515,19 @@ describe('sessionIndex', () => {
     it('deletes only session info, not transcript', async () => {
       const sessionId = 'partial-delete';
 
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'sessions'), { recursive: true });
-      await fs.mkdir(path.join(tempDir, '.claude-code-lite', 'transcripts'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
+      await fs.mkdir(path.join(tempDir, '.irg', 'transcripts'), { recursive: true });
       await fs.writeFile(
-        path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`),
+        path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`),
         JSON.stringify({ id: sessionId })
       );
-      const transcriptPath = path.join(tempDir, '.claude-code-lite', 'transcripts', `${sessionId}.jsonl`);
+      const transcriptPath = path.join(tempDir, '.irg', 'transcripts', `${sessionId}.jsonl`);
       await fs.writeFile(transcriptPath, JSON.stringify({ id: '1' }));
 
       await deleteSessionInfo(tempDir, sessionId);
 
       // Session info should be gone
-      const sessionExists = await fs.stat(path.join(tempDir, '.claude-code-lite', 'sessions', `${sessionId}.json`))
+      const sessionExists = await fs.stat(path.join(tempDir, '.irg', 'sessions', `${sessionId}.json`))
         .then(() => true)
         .catch(() => false);
 

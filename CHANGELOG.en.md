@@ -2,7 +2,7 @@
 
 [中文](./CHANGELOG.md)
 
-All notable changes to `claude-code-lite` will be documented here.
+All notable changes to `irg` will be documented here.
 
 ## [0.1.0] - 2026-04-01
 

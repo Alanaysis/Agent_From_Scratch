@@ -1,6 +1,6 @@
 import { createId } from "../../shared/ids";
 import type { Message, AssistantMessage } from "../../runtime/messages";
-import { getLlmConfigFromEnv, runLlmTurn, type LlmToolDefinition } from "../../runtime/llm";
+import { getLlmConfig, runLlmTurn, type LlmToolDefinition } from "../../runtime/llm";
 import { createSubagentContext } from "./subagentContext";
 import { compressSubagentResult } from "./resultCompressor";
 import { findToolByName, type CanUseToolFn, type ToolUseContext, type Tools } from "../Tool";
@@ -319,7 +319,7 @@ export async function runTeam(params: TeamRunParams): Promise<TeamRunResult> {
   const permissionFn = params.canUseTool ?? canUseTool;
   const maxTurnsPerMember = params.maxTurnsPerMember ?? 6;
 
-  if (!getLlmConfigFromEnv()) {
+  if (!getLlmConfig()?.apiKey) {
     return {
       summary: `Team "${teamName}" cannot run without LLM configuration.`,
       taskResults: {},

@@ -79,6 +79,20 @@ export interface SessionMessageEvent {
   message: unknown
 }
 
+export interface ApprovalRequestEvent {
+  taskId: string
+  taskTitle: string
+  approvalMessage?: string
+  stepIndex: number
+  stepTotal: number
+  proposalTitle?: string
+}
+
+export interface ApprovalResponseEvent {
+  taskId: string
+  action: 'execute' | 'later' | 'abort'
+}
+
 export interface EventBusEvents {
   // Tool lifecycle
   'tool:start': ToolStartEvent
@@ -109,6 +123,10 @@ export interface EventBusEvents {
 
   // Real-time session messages
   'session:message-appended': SessionMessageEvent
+
+  // Approval workflow
+  'approval:required': ApprovalRequestEvent
+  'approval:resolved': ApprovalResponseEvent
 }
 
 class TypedEventBus extends EventEmitter {

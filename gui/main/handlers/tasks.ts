@@ -270,6 +270,45 @@ export function registerTaskHandlers() {
     }
   });
 
+  ipcMain.handle("tasks:approve", async (_event, input: { taskId: string; action: 'execute' | 'later' | 'abort' }): Promise<{ ok: boolean; action: string }> => {
+    log('INFO', 'Tasks', `tasks:approve called for ${input.taskId} action=${input.action}`)
+    try {
+      if (input.action === 'abort') {
+        await updateTaskInfo(cwd(), input.taskId, { status: "failed", lastError: "Aborted by user" }, "user")
+        return { ok: true, action: "abort" }
+      }
+      if (input.action === 'later') {
+        return { ok: true, action: "later" }
+      }
+      // action === 'execute' — trigger execution via forceExecuteTask
+      const { forceExecuteTask, initLlmConfig } = await import("../../../runtime/executor/ExecutorAgent");
+      await initLlmConfig()
+      let executor = getExecutor()
+      if (!executor || !executor.isRunning()) {
+        const { startExecutor } = await import("../../../runtime/executor/ExecutorAgent");
+        const { createSubagentContext } = await import("../../../tools/agent/subagentContext");
+        const { createInitialAppState } = await import("../../../runtime/state");
+        const emptyState = createInitialAppState()
+        const mockContext = createSubagentContext({
+          cwd: cwd(), messages: [], agentId: 'general-purpose', agentType: 'general-purpose',
+          abortController: new AbortController(), setAppState: () => {}, getAppState: () => emptyState,
+        }, { agentType: 'general-purpose' })
+        executor = startExecutor(mockContext as any, {})
+      }
+      setTimeout(async () => {
+        try {
+          await forceExecuteTask(input.taskId)
+        } catch (e) {
+          log('ERROR', 'Tasks', `tasks:approve force execute failed for ${input.taskId}`, e)
+        }
+      }, 100)
+      return { ok: true, action: "execute" }
+    } catch (e) {
+      log('ERROR', 'Tasks', `tasks:approve ${input.taskId} failed`, e)
+      throw e
+    }
+  });
+
   ipcMain.handle("tasks:release", async (_event, input: { taskId: string; actor?: string }): Promise<{ task: TaskInfo | null }> => {
     log('INFO', 'Tasks', `tasks:release called for ${input.taskId}`)
     try {

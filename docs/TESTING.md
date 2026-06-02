@@ -317,7 +317,7 @@ describe('Storage Transcript', () => {
       const nonExistentDir = path.join(tempDir, 'new', 'nested', 'dir');
       await appendTranscript(nonExistentDir, sessionId, []);
 
-      const dirExists = await fs.stat(path.join(nonExistentDir, '.claude-code-lite')).then(
+      const dirExists = await fs.stat(path.join(nonExistentDir, '.irg')).then(
         () => true,
         () => false
       );

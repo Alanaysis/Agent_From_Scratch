@@ -16,19 +16,19 @@ interface TaskDetailPanelProps {
 
 const statusConfig: Record<string, { color: string; bgColor: string; label: string; icon: React.ReactNode }> = {
   todo: { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', label: 'To Do', icon: <ChevronRight size={11} /> },
-  in_progress: { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', label: 'In Progress', icon: <Loader2 size={11} /> },
-  verify: { color: '#a855f7', bgColor: 'rgba(168, 85, 247, 0.1)', label: 'Verify', icon: <Clock size={11} /> },
-  done: { color: '#22c55e', bgColor: 'rgba(34, 197, 94, 0.1)', label: 'Done', icon: <CheckCircle size={11} /> },
-  failed: { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', label: 'Failed', icon: <XCircle size={11} /> },
+  in_progress: { color: 'var(--amber)', bgColor: 'rgba(245, 158, 11, 0.08)', label: 'In Progress', icon: <Loader2 size={11} /> },
+  verify: { color: '#7b68c0', bgColor: 'rgba(123, 104, 192, 0.1)', label: 'Verify', icon: <Clock size={11} /> },
+  done: { color: '#5cb85c', bgColor: 'rgba(92, 184, 92, 0.1)', label: 'Done', icon: <CheckCircle size={11} /> },
+  failed: { color: 'var(--warm-red)', bgColor: 'rgba(220, 80, 80, 0.08)', label: 'Failed', icon: <XCircle size={11} /> },
 }
 
 const actionLabels: Record<string, { label: string; color: string }> = {
-  created: { label: 'Created', color: '#666' },
+  created: { label: 'Created', color: 'var(--text-muted)' },
   assigned: { label: 'Assigned', color: '#3b82f6' },
-  released: { label: 'Released', color: '#f59e0b' },
-  status_changed: { label: 'Status changed', color: '#a855f7' },
-  updated: { label: 'Updated', color: '#666' },
-  comment_added: { label: 'Comment', color: '#22c55e' },
+  released: { label: 'Released', color: 'var(--amber)' },
+  status_changed: { label: 'Status changed', color: '#7b68c0' },
+  updated: { label: 'Updated', color: 'var(--text-muted)' },
+  comment_added: { label: 'Comment', color: '#5cb85c' },
 }
 
 export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
@@ -146,26 +146,27 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
     <div style={{
       width: 380,
       height: '100%',
-      backgroundColor: '#111',
-      borderLeft: '1px solid #1a1a1a',
+      backgroundColor: 'var(--surface-0)',
+      borderLeft: '1px solid var(--border-subtle)',
       display: 'flex',
       flexDirection: 'column',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       {/* Header */}
       <div style={{
         padding: '12px 16px',
-        borderBottom: '1px solid #1a1a1a',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: `linear-gradient(180deg, ${status.color}08 0%, transparent 100%)`,
+        background: `linear-gradient(180deg, ${status.bgColor} 0%, transparent 100%)`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 22,
             height: 22,
-            borderRadius: 5,
+            borderRadius: 2,
             backgroundColor: status.bgColor,
             display: 'flex',
             alignItems: 'center',
@@ -174,7 +175,13 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           }}>
             {status.icon}
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Task Details</span>
+          <span style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.03em',
+          }}>Task Details</span>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} style={{ width: 24, height: 24 }}>
           <X size={14} />
@@ -184,39 +191,54 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         {/* Title & Description */}
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 6, lineHeight: 1.3 }}>{task.title}</h2>
+          <h2 style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            marginBottom: 6,
+            lineHeight: 1.3,
+            fontFamily: 'IBM Plex Sans, sans-serif',
+          }}>{task.title}</h2>
           {task.description && (
-            <p style={{ fontSize: 12, color: '#888', lineHeight: 1.5, marginBottom: 10 }}>{task.description}</p>
+            <p style={{
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+              marginBottom: 10,
+            }}>{task.description}</p>
           )}
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <span style={{
               padding: '3px 8px',
-              borderRadius: 5,
+              borderRadius: 2,
               backgroundColor: status.bgColor,
               color: status.color,
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: 4,
+              fontFamily: 'IBM Plex Mono, monospace',
+              letterSpacing: '0.04em',
             }}>
               {status.icon}
               {status.label}
             </span>
             <span style={{
               padding: '3px 8px',
-              borderRadius: 5,
-              backgroundColor: task.priority === 'high' ? 'rgba(239,68,68,0.1)' : task.priority === 'medium' ? 'rgba(245,158,11,0.1)' : 'rgba(102,102,102,0.1)',
-              color: task.priority === 'high' ? '#ef4444' : task.priority === 'medium' ? '#f59e0b' : '#666',
-              fontSize: 10,
+              borderRadius: 2,
+              backgroundColor: task.priority === 'high' ? 'rgba(220,80,80,0.08)' : task.priority === 'medium' ? 'rgba(245,158,11,0.08)' : 'rgba(102,102,102,0.08)',
+              color: task.priority === 'high' ? 'var(--warm-red)' : task.priority === 'medium' ? 'var(--amber)' : 'var(--text-muted)',
+              fontSize: 9,
               fontWeight: 700,
               textTransform: 'uppercase',
-              letterSpacing: 0.5,
+              letterSpacing: '0.1em',
+              fontFamily: 'IBM Plex Mono, monospace',
             }}>
               {task.priority}
             </span>
-            {(task.status === 'in_progress' || task.status === 'verify') && task.sessionId && (
+            {task.sessionId && (
               <button
                 onClick={handleViewInChat}
                 style={{
@@ -224,12 +246,13 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                   alignItems: 'center',
                   gap: 4,
                   padding: '3px 8px',
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: 500,
-                  backgroundColor: 'rgba(124, 58, 237, 0.15)',
-                  border: '1px solid rgba(124, 58, 237, 0.3)',
-                  borderRadius: 5,
-                  color: '#a78bfa',
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 2,
+                  color: 'var(--amber)',
                   cursor: 'pointer'
                 }}
               >
@@ -242,7 +265,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
         {/* Assignee */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+          <label style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 8,
+            display: 'block',
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}>
             Assignee
           </label>
           <div style={{ position: 'relative' }} data-agent-dropdown="true">
@@ -253,7 +285,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                   onChange={(e) => setAssigneeInput(e.target.value)}
                   onFocus={() => setShowAgentList(true)}
                   placeholder="Select agent..."
-                  style={{ flex: 1, height: 34, fontSize: 12, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 6 }}
+                  style={{
+                    flex: 1,
+                    height: 34,
+                    fontSize: 12,
+                    backgroundColor: 'var(--surface-1)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 2,
+                    color: 'var(--text-primary)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                  }}
                 />
                 {showAgentList && (
                   <div style={{
@@ -262,9 +303,9 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                     left: 0,
                     right: 0,
                     marginTop: 4,
-                    backgroundColor: '#1a1a1a',
-                    border: '1px solid #333',
-                    borderRadius: 8,
+                    backgroundColor: 'var(--surface-2)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 2,
                     maxHeight: 200,
                     overflow: 'auto',
                     zIndex: 50,
@@ -281,31 +322,33 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                           padding: '8px 10px',
                           fontSize: 12,
                           cursor: 'pointer',
-                          backgroundColor: assigneeInput === agent.id ? '#2a2a2a' : 'transparent',
+                          backgroundColor: assigneeInput === agent.id ? 'var(--surface-3)' : 'transparent',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
-                          borderBottom: '1px solid #222',
+                          borderBottom: '1px solid var(--border-subtle)',
+                          fontFamily: 'IBM Plex Sans, sans-serif',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#222')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = assigneeInput === agent.id ? '#2a2a2a' : 'transparent')}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--surface-3)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = assigneeInput === agent.id ? 'var(--surface-3)' : 'transparent')}
                       >
                         <img
                           src={pixelAvatarToDataUrl(agent.id, 20)}
                           alt={agent.name}
-                          style={{ width: 20, height: 20, borderRadius: 4 }}
+                          style={{ width: 20, height: 20, borderRadius: 2 }}
                         />
                         <div style={{ flex: 1 }}>
-                          <div style={{ color: '#fff', fontWeight: 500 }}>{agent.name}</div>
+                          <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{agent.name}</div>
                           {agent.capabilities.length > 0 && (
                             <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>
                               {agent.capabilities.map((cap: string) => (
                                 <span key={cap} style={{
                                   fontSize: 8,
-                                  color: '#888',
-                                  backgroundColor: '#333',
+                                  color: 'var(--text-muted)',
+                                  backgroundColor: 'var(--surface-3)',
                                   padding: '1px 4px',
-                                  borderRadius: 3,
+                                  borderRadius: 2,
+                                  fontFamily: 'IBM Plex Mono, monospace',
                                 }}>
                                   {cap}
                                 </span>
@@ -318,7 +361,13 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                   </div>
                 )}
               </div>
-              <Button onClick={handleAssign} disabled={!assigneeInput.trim() || isLoading} style={{ height: 34, borderRadius: 6 }}>
+              <Button onClick={handleAssign} disabled={!assigneeInput.trim() || isLoading} style={{
+                height: 34,
+                borderRadius: 0,
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontSize: 11,
+                letterSpacing: '0.03em',
+              }}>
                 Assign
               </Button>
             </div>
@@ -330,18 +379,18 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               gap: 8,
               marginTop: 8,
               padding: '6px 10px',
-              backgroundColor: '#0d0d0d',
-              borderRadius: 6,
-              border: `1px solid ${getAgentColor(task.assignee)}33`,
+              backgroundColor: 'var(--surface-1)',
+              borderRadius: 2,
+              border: '1px solid var(--border-subtle)',
             }}>
               <img
                 src={pixelAvatarToDataUrl(task.assignee, 24)}
                 alt={task.assignee}
-                style={{ width: 24, height: 24, borderRadius: 4 }}
+                style={{ width: 24, height: 24, borderRadius: 2 }}
               />
-              <span style={{ fontSize: 12, color: '#fff', fontWeight: 500, flex: 1 }}>{task.assignee}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, flex: 1 }}>{task.assignee}</span>
               <Button variant="ghost" size="icon" onClick={handleRelease} style={{ width: 20, height: 20 }}>
-                <X size={12} color="#888" />
+                <X size={12} color="var(--text-muted)" />
               </Button>
             </div>
           )}
@@ -349,7 +398,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
         {/* Dependencies */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+          <label style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 8,
+            display: 'block',
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}>
             Dependencies
           </label>
           {depTasks.length > 0 ? (
@@ -359,25 +417,26 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                 return (
                   <div key={dep.id} style={{
                     padding: '8px 10px',
-                    backgroundColor: '#0d0d0d',
-                    borderRadius: 6,
+                    backgroundColor: 'var(--surface-1)',
+                    borderRadius: 2,
                     fontSize: 11,
-                    border: `1px solid ${dep.resolved ? '#22c55e22' : '#f59e0b33'}`,
+                    border: `1px solid ${dep.resolved ? 'rgba(92,184,92,0.2)' : 'rgba(245,158,11,0.2)'}`,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
                   }}>
                     {dep.resolved ? (
-                      <CheckCircle size={12} color="#22c55e" />
+                      <CheckCircle size={12} color="#5cb85c" />
                     ) : (
-                      <AlertCircle size={12} color="#f59e0b" />
+                      <AlertCircle size={12} color="var(--amber)" />
                     )}
-                    <span style={{ flex: 1, color: '#fff' }}>{dep.title}</span>
+                    <span style={{ flex: 1, color: 'var(--text-primary)' }}>{dep.title}</span>
                     <span style={{
                       padding: '2px 6px',
-                      borderRadius: 3,
+                      borderRadius: 2,
                       fontSize: 9,
                       fontWeight: 600,
+                      fontFamily: 'IBM Plex Mono, monospace',
                       backgroundColor: depStatus?.bgColor,
                       color: depStatus?.color,
                     }}>
@@ -389,14 +448,15 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               {blockedByDeps && (
                 <div style={{
                   padding: '6px 10px',
-                  borderRadius: 6,
-                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(245, 158, 11, 0.06)',
                   border: '1px dashed rgba(245, 158, 11, 0.25)',
                   fontSize: 10,
-                  color: '#f59e0b',
+                  color: 'var(--amber)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
+                  fontFamily: 'IBM Plex Mono, monospace',
                 }}>
                   <AlertCircle size={10} />
                   Blocked — dependencies not resolved
@@ -404,7 +464,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               )}
             </div>
           ) : (
-            <div style={{ fontSize: 11, color: '#444', padding: '4px 0' }}>No dependencies</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 0' }}>No dependencies</div>
           )}
         </div>
 
@@ -414,18 +474,27 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           if (relatedDocs.length === 0) return null
           return (
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+              <label style={{
+                fontSize: 9,
+                fontWeight: 600,
+                color: 'var(--text-faint)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                marginBottom: 8,
+                display: 'block',
+                fontFamily: 'IBM Plex Mono, monospace',
+              }}>
                 Related Documents
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {relatedDocs.map(doc => {
-                  const docColor = { prd: '#3b82f6', tech_design: '#8b5cf6', adr: '#f59e0b', spec: '#22c55e', guide: '#06b6d4', report: '#ef4444' }[doc.type] || '#666'
+                  const docColor = { prd: '#3b82f6', tech_design: '#7b68c0', adr: 'var(--amber)', spec: '#5cb85c', guide: '#06b6d4', report: 'var(--warm-red)' }[doc.type] || 'var(--text-muted)'
                   return (
                     <div key={doc.id} style={{
                       padding: '6px 8px',
-                      backgroundColor: '#0d0d0d',
-                      borderRadius: 6,
-                      border: `1px solid ${docColor}22`,
+                      backgroundColor: 'var(--surface-1)',
+                      borderRadius: 2,
+                      border: `1px solid var(--border-subtle)`,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
@@ -433,10 +502,19 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                     }}
                       onClick={() => useAppStore.getState().setViewMode('documents')}
                     >
-                      <span style={{ fontSize: 8, fontWeight: 700, color: docColor, backgroundColor: docColor + '15', padding: '1px 4px', borderRadius: 3 }}>
+                      <span style={{
+                        fontSize: 8,
+                        fontWeight: 700,
+                        color: docColor,
+                        backgroundColor: 'var(--surface-2)',
+                        padding: '1px 4px',
+                        borderRadius: 2,
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        letterSpacing: '0.05em',
+                      }}>
                         {doc.type === 'tech_design' ? 'TECH' : doc.type.toUpperCase()}
                       </span>
-                      <span style={{ flex: 1, fontSize: 11, color: '#ccc' }}>{doc.title}</span>
+                      <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }}>{doc.title}</span>
                     </div>
                   )
                 })}
@@ -448,19 +526,28 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
         {/* Acceptance Criteria */}
         {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+            <label style={{
+              fontSize: 9,
+              fontWeight: 600,
+              color: 'var(--text-faint)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              marginBottom: 8,
+              display: 'block',
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}>
               Acceptance Criteria
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {(task.acceptanceCriteria || []).map((ac) => {
                 const acStatus = ac.status || 'pending'
-                const acColor = acStatus === 'passed' ? '#22c55e' : acStatus === 'failed' ? '#ef4444' : '#666'
+                const acColor = acStatus === 'passed' ? '#5cb85c' : acStatus === 'failed' ? 'var(--warm-red)' : 'var(--text-muted)'
                 return (
                   <div key={ac.id} style={{
                     padding: '6px 8px',
-                    backgroundColor: '#0d0d0d',
-                    borderRadius: 6,
-                    border: `1px solid ${acColor}22`,
+                    backgroundColor: 'var(--surface-1)',
+                    borderRadius: 2,
+                    border: `1px solid var(--border-subtle)`,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
@@ -468,8 +555,8 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                     <div style={{
                       width: 16,
                       height: 16,
-                      borderRadius: 4,
-                      backgroundColor: acColor + '15',
+                      borderRadius: 2,
+                      backgroundColor: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -479,7 +566,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                        acStatus === 'failed' ? <XCircle size={10} color={acColor} /> :
                        <Clock size={10} color={acColor} />}
                     </div>
-                    <span style={{ flex: 1, fontSize: 11, color: '#ccc' }}>{ac.text}</span>
+                    <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }}>{ac.text}</span>
                     {(task.status === 'verify' || task.status === 'in_progress') && acStatus === 'pending' && (
                       <div style={{ display: 'flex', gap: 2 }}>
                         <button
@@ -494,7 +581,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
                           title="Mark as passed"
                         >
-                          <CheckCircle size={12} color="#22c55e" />
+                          <CheckCircle size={12} color="#5cb85c" />
                         </button>
                         <button
                           onClick={async () => {
@@ -508,7 +595,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
                           title="Mark as failed"
                         >
-                          <XCircle size={12} color="#ef4444" />
+                          <XCircle size={12} color="var(--warm-red)" />
                         </button>
                       </div>
                     )}
@@ -521,15 +608,54 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
         {/* Actions */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+          <label style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 8,
+            display: 'block',
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}>
             Actions
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {task.status === 'todo' && (
+            {task.status === 'todo' && task.assignee && (
+              <ActionButton
+                onClick={async () => {
+                  setIsLoading(true)
+                  try {
+                    // Trigger task execution via SSE
+                    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3002/api/tasks/${task.id}/execute`, { method: 'POST' })
+                    if (response.body) {
+                      const reader = response.body.getReader()
+                      const decoder = new TextDecoder()
+                      while (true) {
+                        const { done } = await reader.read()
+                        if (done) break
+                      }
+                    }
+                    // Refresh tasks after execution
+                    await useAppStore.getState().loadTasks()
+                  } catch (e) {
+                    console.error('[TaskDetail] Execute error:', e)
+                  } finally {
+                    setIsLoading(false)
+                  }
+                }}
+                disabled={isLoading || blockedByDeps}
+                color="#5cb85c"
+                icon={<ArrowRight size={13} />}
+                label={task.requiresApproval ? 'Execute (requires approval)' : 'Execute'}
+                hint={blockedByDeps ? 'Resolve dependencies first' : undefined}
+              />
+            )}
+            {task.status === 'todo' && !task.assignee && (
               <ActionButton
                 onClick={() => handleStatusChange('in_progress')}
                 disabled={isLoading || blockedByDeps}
-                color="#f59e0b"
+                color="var(--amber)"
                 icon={<ArrowRight size={13} />}
                 label="Start Working"
                 hint={blockedByDeps ? 'Resolve dependencies first' : undefined}
@@ -539,7 +665,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               <ActionButton
                 onClick={() => handleStatusChange('verify')}
                 disabled={isLoading}
-                color="#a855f7"
+                color="#7b68c0"
                 icon={<CheckCircle size={13} />}
                 label="Submit for Verify"
               />
@@ -549,14 +675,14 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                 <ActionButton
                   onClick={() => handleStatusChange('done')}
                   disabled={isLoading}
-                  color="#22c55e"
+                  color="#5cb85c"
                   icon={<CheckCircle size={13} />}
                   label="Approve & Complete"
                 />
                 <ActionButton
                   onClick={() => handleStatusChange('in_progress')}
                   disabled={isLoading}
-                  color="#f59e0b"
+                  color="var(--amber)"
                   icon={<XCircle size={13} />}
                   label="Reject & Retry"
                 />
@@ -566,16 +692,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               <ActionButton
                 onClick={() => handleStatusChange('failed')}
                 disabled={isLoading}
-                color="#ef4444"
+                color="var(--warm-red)"
                 icon={<AlertCircle size={13} />}
                 label="Mark as Failed"
               />
             )}
-            <div style={{ height: 1, backgroundColor: '#1a1a1a', margin: '4px 0' }} />
+            <div style={{ height: 1, backgroundColor: 'var(--border-subtle)', margin: '4px 0' }} />
             <ActionButton
               onClick={handleDelete}
               disabled={isLoading}
-              color="#ef4444"
+              color="var(--warm-red)"
               icon={<XCircle size={13} />}
               label="Delete Task"
               variant="ghost"
@@ -585,7 +711,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
         {/* Add Comment */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+          <label style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 8,
+            display: 'block',
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}>
             Add Comment
           </label>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -594,9 +729,23 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               onChange={(e) => setCommentInput(e.target.value)}
               placeholder="Write a comment..."
               onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
-              style={{ flex: 1, height: 34, fontSize: 12, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 6 }}
+              style={{
+                flex: 1,
+                height: 34,
+                fontSize: 12,
+                backgroundColor: 'var(--surface-1)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 2,
+                color: 'var(--text-primary)',
+                fontFamily: 'IBM Plex Sans, sans-serif',
+              }}
             />
-            <Button onClick={handleAddComment} disabled={!commentInput.trim() || isLoading} style={{ height: 34, borderRadius: 6 }}>
+            <Button onClick={handleAddComment} disabled={!commentInput.trim() || isLoading} style={{
+              height: 34,
+              borderRadius: 0,
+              fontFamily: 'IBM Plex Mono, monospace',
+              fontSize: 11,
+            }}>
               <MessageSquare size={14} />
             </Button>
           </div>
@@ -604,40 +753,50 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
         {/* Activity Timeline */}
         <div>
-          <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'block' }}>
+          <label style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 8,
+            display: 'block',
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}>
             Activity
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {[...activities].reverse().map((activity, i) => {
-              const actionCfg = actionLabels[activity.action] || { label: activity.action, color: '#666' }
+              const actionCfg = actionLabels[activity.action] || { label: activity.action, color: 'var(--text-muted)' }
               return (
                 <div key={activity.id} style={{ display: 'flex', gap: 10, position: 'relative' }}>
                   {/* Timeline line */}
                   {i < activities.length - 1 && (
                     <div style={{
                       position: 'absolute',
-                      left: 5,
+                      left: 4,
                       top: 14,
                       bottom: -4,
                       width: 1,
-                      backgroundColor: '#1a1a1a',
+                      backgroundColor: 'var(--border-subtle)',
                     }} />
                   )}
                   <div style={{
-                    width: 10,
-                    height: 10,
+                    width: 8,
+                    height: 8,
                     borderRadius: '50%',
-                    backgroundColor: actionCfg.color,
-                    marginTop: 4,
+                    backgroundColor: 'var(--amber)',
+                    marginTop: 5,
                     flexShrink: 0,
-                    border: '2px solid #111',
+                    border: '1px solid var(--surface-0)',
+                    opacity: 0.8,
                   }} />
                   <div style={{ flex: 1, paddingBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: '#ccc' }}>
-                      <span style={{ color: actionCfg.color, fontWeight: 500 }}>{actionCfg.label}</span>
-                      {activity.details && <span style={{ color: '#666' }}> — {activity.details}</span>}
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      <span style={{ color: actionCfg.color, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace', fontSize: 10 }}>{actionCfg.label}</span>
+                      {activity.details && <span style={{ color: 'var(--text-muted)' }}> — {activity.details}</span>}
                     </div>
-                    <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2, fontFamily: 'IBM Plex Mono, monospace' }}>
                       {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
                       {activity.actor && ` by ${activity.actor}`}
                     </div>
@@ -646,7 +805,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               )
             })}
             {activities.length === 0 && (
-              <div style={{ fontSize: 11, color: '#444' }}>No activity yet</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No activity yet</div>
             )}
           </div>
         </div>
@@ -656,15 +815,30 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           <div style={{
             marginTop: 16,
             padding: 10,
-            backgroundColor: 'rgba(239, 68, 68, 0.08)',
-            borderRadius: 8,
-            border: '1px solid rgba(239, 68, 68, 0.2)'
+            backgroundColor: 'rgba(220, 80, 80, 0.06)',
+            borderRadius: 2,
+            border: '1px solid rgba(220, 80, 80, 0.2)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <AlertCircle size={12} color="#ef4444" />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#ef4444' }}>Last Error</span>
+              <AlertCircle size={12} color="var(--warm-red)" />
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: 'var(--warm-red)',
+                fontFamily: 'IBM Plex Mono, monospace',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>Last Error</span>
             </div>
-            <p style={{ fontSize: 11, color: '#ccc', lineHeight: 1.4, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{task.lastError}</p>
+            <p style={{
+              fontSize: 11,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.4,
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}>{task.lastError}</p>
           </div>
         )}
       </div>
@@ -672,11 +846,12 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       {/* Footer */}
       <div style={{
         padding: '10px 16px',
-        borderTop: '1px solid #1a1a1a',
+        borderTop: '1px solid var(--border-subtle)',
         fontSize: 10,
-        color: '#444',
+        color: 'var(--text-faint)',
         display: 'flex',
         justifyContent: 'space-between',
+        fontFamily: 'IBM Plex Mono, monospace',
       }}>
         <span>Created {formatDistanceToNow(task.createdAt, { addSuffix: true })}</span>
         <span>{format(task.createdAt, 'MMM d, HH:mm')}</span>
@@ -703,28 +878,30 @@ function ActionButton({ onClick, disabled, color, icon, label, hint, variant }: 
         alignItems: 'center',
         gap: 8,
         padding: '8px 10px',
-        borderRadius: 6,
-        backgroundColor: variant === 'ghost' ? 'transparent' : color + '10',
-        border: `1px solid ${variant === 'ghost' ? '#1a1a1a' : color + '25'}`,
-        color: disabled ? '#444' : color,
+        borderRadius: 0,
+        backgroundColor: variant === 'ghost' ? 'transparent' : 'var(--surface-1)',
+        border: `1px solid ${variant === 'ghost' ? 'var(--border-subtle)' : 'var(--border-subtle)'}`,
+        color: disabled ? 'var(--text-faint)' : color,
         fontSize: 12,
         fontWeight: 500,
+        fontFamily: 'IBM Plex Mono, monospace',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
         textAlign: 'left',
         width: '100%',
         transition: 'all 0.15s',
+        letterSpacing: '0.02em',
       }}
       onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.backgroundColor = color + '20'
+        if (!disabled) e.currentTarget.style.backgroundColor = 'var(--surface-2)'
       }}
       onMouseLeave={(e) => {
-        if (!disabled) e.currentTarget.style.backgroundColor = variant === 'ghost' ? 'transparent' : color + '10'
+        if (!disabled) e.currentTarget.style.backgroundColor = variant === 'ghost' ? 'transparent' : 'var(--surface-1)'
       }}
     >
       {icon}
       <span style={{ flex: 1 }}>{label}</span>
-      {hint && <span style={{ fontSize: 9, color: '#555' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{hint}</span>}
     </button>
   )
 }

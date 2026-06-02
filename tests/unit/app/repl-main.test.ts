@@ -193,8 +193,8 @@ describe("startRepl - integration tests", () => {
       { stdin: mockStdin, stdout: mockStdout }
     );
 
-    // formatHelp() outputs "Claude Code-lite CLI" header
-    expect(output).toContain("Claude Code-lite CLI");
+    // formatHelp() outputs "IRG CLI" header
+    expect(output).toContain("IRG CLI");
   });
 
   it("handles /resume with specific session ID", async () => {

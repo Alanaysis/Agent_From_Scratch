@@ -367,16 +367,19 @@ export class ExecutorAgent extends EventEmitter {
         console.error(`[Executor] Failed to update session info:`, e)
       }
 
-      // Always go through verify so the user can review the work
-      const finalStatus = "verify"
-      await updateTaskInfo(
-        cwd(),
-        taskId,
-        { status: finalStatus },
-        this.config.executorName,
-      )
+      // Always go to verify first (state machine requires in_progress → verify)
+      await updateTaskInfo(cwd(), taskId, { status: "verify" }, this.config.executorName)
 
-      console.log(`[Executor] Task ${taskId} completed with status: ${finalStatus}`)
+      // Auto-approve if no acceptance criteria
+      const updatedTask = await readTaskInfo(cwd(), taskId)
+      const hasCriteria = updatedTask?.acceptanceCriteria && updatedTask.acceptanceCriteria.length > 0
+      if (!hasCriteria) {
+        await updateTaskInfo(cwd(), taskId, { status: "done" }, this.config.executorName)
+        console.log(`[Executor] Task ${taskId} auto-approved → done`)
+      } else {
+        console.log(`[Executor] Task ${taskId} → verify, waiting for manual review`)
+      }
+
       this.emit("taskCompleted", taskId, true, result)
     } catch (error) {
       if (abortController.signal.aborted) {

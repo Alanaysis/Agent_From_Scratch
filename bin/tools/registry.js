@@ -12,6 +12,7 @@ import { ImageUploadTool } from "./web/imageUploadTool";
 import { ImageAnalyzeTool } from "./web/imageAnalyzeTool";
 import { ImageGenerateTool } from "./web/imageGenerateTool";
 import { SkillTool } from "../skills/skillTool";
+import { DiscoveryTool } from "../discovery/DiscoveryTool";
 export function getTools() {
     return [
         ReadTool,
@@ -28,5 +29,6 @@ export function getTools() {
         ImageUploadTool,
         ImageAnalyzeTool,
         ImageGenerateTool,
+        DiscoveryTool,
     ];
 }

@@ -123,7 +123,7 @@ export interface Agent {
   }
 }
 
-export type ViewMode = 'chat' | 'kanban' | 'proposals' | 'documents' | 'sessions' | 'settings'
+export type ViewMode = 'chat' | 'kanban' | 'proposals' | 'proposal-editor' | 'documents' | 'sessions' | 'settings'
 
 export interface TaskDraft {
   tempId: string
@@ -134,6 +134,8 @@ export interface TaskDraft {
   dependsOnTempIds?: string[]
   acceptanceCriteria?: string[]
   relatedDocumentTempIds?: string[]
+  requiresApproval?: boolean
+  approvalMessage?: string
 }
 
 export interface DocumentDraft {
@@ -175,6 +177,15 @@ export interface StoredDocument {
   createdAt: number
   updatedAt: number
   createdBy?: string
+}
+
+export interface ApprovalRequest {
+  taskId: string
+  taskTitle: string
+  approvalMessage?: string
+  stepIndex: number
+  stepTotal: number
+  proposalTitle?: string
 }
 
 export interface AppState {

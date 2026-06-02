@@ -1,6 +1,176 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppState, Message, Session, Task, ViewMode, Agent, AgentPresence, Notification, PermissionRequest, ToolCallEvent, Proposal, TaskDraft, StoredDocument } from '@/types'
+import type { AppState, Message, Session, Task, ViewMode, Agent, AgentPresence, Notification, PermissionRequest, ApprovalRequest, ToolCallEvent, Proposal, TaskDraft, StoredDocument } from '@/types'
+
+// HTTP API fallback for browser (non-Electron) access
+const API_BASE = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:3002`
+  : ''
+
+const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: string }> = {
+  // Sessions
+  'sessions:list':          { method: 'GET',  path: '/api/sessions' },
+  'sessions:get':           { method: 'GET',  path: '/api/sessions/{0}' },
+  'sessions:delete':        { method: 'DELETE', path: '/api/sessions/{0}', bodyKey: 'sessionId' },
+  'sessions:heartbeat':     { method: 'POST', path: '/api/sessions/{0}/heartbeat', bodyKey: 'sessionId' },
+  'sessions:close':         { method: 'POST', path: '/api/sessions/{0}/close', bodyKey: 'sessionId' },
+  'sessions:messages':      { method: 'GET',  path: '/api/sessions/{0}/messages' },
+
+  // Tasks
+  'tasks:list':             { method: 'GET',  path: '/api/tasks' },
+  'tasks:get':              { method: 'GET',  path: '/api/tasks/{0}' },
+  'tasks:create':           { method: 'POST', path: '/api/tasks' },
+  'tasks:update':           { method: 'PATCH', path: '/api/tasks/{0}', bodyKey: 'taskId' },
+  'tasks:delete':           { method: 'DELETE', path: '/api/tasks/{0}', bodyKey: 'taskId' },
+  'tasks:assign':           { method: 'POST', path: '/api/tasks/{0}/assign', bodyKey: 'taskId' },
+  'tasks:release':          { method: 'POST', path: '/api/tasks/{0}/release', bodyKey: 'taskId' },
+  'tasks:claim':            { method: 'POST', path: '/api/tasks/{0}/claim', bodyKey: 'taskId' },
+  'tasks:complete':         { method: 'POST', path: '/api/tasks/{0}/complete', bodyKey: 'taskId' },
+  'tasks:fail':             { method: 'POST', path: '/api/tasks/{0}/fail', bodyKey: 'taskId' },
+  'tasks:submit_verify':    { method: 'POST', path: '/api/tasks/{0}/submit-verify', bodyKey: 'taskId' },
+  'tasks:add_comment':      { method: 'POST', path: '/api/tasks/{0}/comment', bodyKey: 'taskId' },
+  'tasks:get_unblocked':    { method: 'GET',  path: '/api/tasks/unblocked' },
+  'tasks:createBatch':      { method: 'POST', path: '/api/tasks/batch' },
+  'tasks:update_criterion': { method: 'POST', path: '/api/tasks/{0}/criterion', bodyKey: 'taskId' },
+  'tasks:abort':            { method: 'POST', path: '/api/tasks/{0}/abort' },
+  'tasks:execute':          { method: 'POST', path: '/api/tasks/{0}/execute' },
+  'tasks:approve':          { method: 'POST', path: '/api/tasks/{0}/approve' },
+
+  // Proposals
+  'proposals:list':         { method: 'GET',  path: '/api/proposals' },
+  'proposals:get':          { method: 'GET',  path: '/api/proposals/{0}' },
+  'proposals:create':       { method: 'POST', path: '/api/proposals' },
+  'proposals:update':       { method: 'PATCH', path: '/api/proposals/{0}', bodyKey: 'proposalId' },
+  'proposals:delete':       { method: 'DELETE', path: '/api/proposals/{0}' },
+  'proposals:submit':       { method: 'POST', path: '/api/proposals/{0}/submit' },
+  'proposals:approve':      { method: 'POST', path: '/api/proposals/{0}/approve' },
+  'proposals:reject':       { method: 'POST', path: '/api/proposals/{0}/reject' },
+  'proposals:add_task_draft':     { method: 'POST', path: '/api/proposals/{0}/task-drafts', bodyKey: 'proposalId' },
+  'proposals:remove_task_draft':  { method: 'DELETE', path: '/api/proposals/{0}/task-drafts/{1}', bodyKey: 'proposalId' },
+  'proposals:update_task_draft':  { method: 'PATCH', path: '/api/proposals/{0}/task-drafts/{1}' },
+  'proposals:add_document_draft': { method: 'POST', path: '/api/proposals/{0}/document-drafts' },
+  'proposals:remove_document_draft': { method: 'DELETE', path: '/api/proposals/{0}/document-drafts/{1}' },
+  'proposals:update_document_draft': { method: 'PATCH', path: '/api/proposals/{0}/document-drafts/{1}' },
+
+  // Documents
+  'documents:list':             { method: 'GET',  path: '/api/documents' },
+  'documents:get':              { method: 'GET',  path: '/api/documents/{0}' },
+  'documents:create':           { method: 'POST', path: '/api/documents' },
+  'documents:update':           { method: 'PATCH', path: '/api/documents/{0}', bodyKey: 'docId' },
+  'documents:delete':           { method: 'DELETE', path: '/api/documents/{0}' },
+  'documents:list_by_proposal': { method: 'GET',  path: '/api/documents/by-proposal/{0}' },
+
+  // Agents
+  'agents:list':            { method: 'GET',  path: '/api/agents' },
+  'agents:get':             { method: 'GET',  path: '/api/agents/{0}' },
+  'agents:create':          { method: 'POST', path: '/api/agents' },
+  'agents:update':          { method: 'PATCH', path: '/api/agents/{0}', bodyKey: 'agentId' },
+  'agents:delete':          { method: 'DELETE', path: '/api/agents/{0}', bodyKey: 'agentId' },
+  'agents:generate':        { method: 'POST', path: '/api/agents/generate' },
+  'agents:list_by_capability': { method: 'GET', path: '/api/agents/by-capability' },
+
+  // Workflows
+  'workflows:list':         { method: 'GET',  path: '/api/workflows' },
+  'workflows:get':          { method: 'GET',  path: '/api/workflows/{0}' },
+  'workflows:delete':       { method: 'DELETE', path: '/api/workflows/{0}' },
+  'workflows:import_yaml':  { method: 'POST', path: '/api/workflows/import' },
+  'workflows:import_file':  { method: 'POST', path: '/api/workflows/import-file' },
+  'workflows:list_files':   { method: 'GET',  path: '/api/workflows/files' },
+  'workflows:import_remote':{ method: 'POST', path: '/api/workflows/import-remote' },
+  'workflows:import_and_execute': { method: 'POST', path: '/api/workflows/import-and-execute' },
+
+  // Recipes
+  'recipes:list':           { method: 'GET',  path: '/api/recipes' },
+  'recipes:get':            { method: 'GET',  path: '/api/recipes/{0}' },
+  'recipes:create':         { method: 'POST', path: '/api/recipes' },
+  'recipes:update':         { method: 'PATCH', path: '/api/recipes/{0}' },
+  'recipes:delete':         { method: 'DELETE', path: '/api/recipes/{0}' },
+  'recipes:find':           { method: 'POST', path: '/api/recipes/find' },
+
+  // Plans
+  'plans:list':             { method: 'GET',  path: '/api/plans' },
+  'plans:get':              { method: 'GET',  path: '/api/plans/{0}' },
+  'plans:create':           { method: 'POST', path: '/api/plans' },
+  'plans:update':           { method: 'PATCH', path: '/api/plans/{0}' },
+  'plans:delete':           { method: 'DELETE', path: '/api/plans/{0}' },
+  'plans:confirm':          { method: 'POST', path: '/api/plans/{0}/confirm' },
+
+  // Config (read-only via HTTP, API key masked)
+  'config:get':             { method: 'GET',  path: '/api/config' },
+  'config:set':             { method: 'PATCH', path: '/api/config' },
+
+  // Executor
+  'executor:status':        { method: 'GET',  path: '/api/health' },
+  'approvals:pending':      { method: 'GET',  path: '/api/approvals/pending' },
+  'executor:start':         { method: 'POST', path: '/api/executor/start' },
+  'executor:stop':          { method: 'POST', path: '/api/executor/stop' },
+
+  // Chat
+  'chat:send':              { method: 'POST', path: '/api/chat' },
+  'chat:cancel':            { method: 'POST', path: '/api/chat/cancel' },
+  'chat:permission-response': { method: 'POST', path: '/api/chat/permission-response' },
+
+  // PM
+  'pm:create_plan_from_goal': { method: 'POST', path: '/api/pm/create-plan' },
+}
+
+async function sendViaHttp(channel: string, data?: unknown): Promise<any> {
+  const route = IPC_TO_HTTP[channel]
+  if (!route) {
+    console.warn(`[HTTP] No mapping for IPC channel: ${channel}`)
+    return null
+  }
+
+  let path = route.path
+  const body = data && typeof data === 'object' ? { ...data as Record<string, unknown> } : data
+
+  // Replace path params from body object
+  if (typeof body === 'object' && body !== null && !Array.isArray(body)) {
+    const bodyObj = body as Record<string, unknown>
+    // Collect all body keys in order for positional param mapping
+    const bodyKeys = Object.keys(bodyObj)
+    // Find all {N} placeholders and replace them
+    let match: RegExpExecArray | null
+    const paramRegex = /\{(\d+)\}/g
+    const usedKeys = new Set<string>()
+    while ((match = paramRegex.exec(path)) !== null) {
+      const idx = parseInt(match[1])
+      const key = bodyKeys[idx]
+      if (key && bodyObj[key] !== undefined) {
+        path = path.replace(`{${idx}}`, String(bodyObj[key]))
+        usedKeys.add(key)
+      }
+    }
+    // Remove used keys from body so they don't get sent as request body
+    for (const key of usedKeys) {
+      delete bodyObj[key]
+    }
+  } else if (typeof data === 'string') {
+    // Direct ID passed (e.g., proposals:delete with just an ID string)
+    path = path.replace('{0}', data)
+  }
+
+  // Replace remaining {0}, {1} from data array
+  if (Array.isArray(data)) {
+    data.forEach((v, i) => { path = path.replace(`{${i}}`, String(v)) })
+  }
+
+  const url = `${API_BASE}${path}`
+  const opts: RequestInit = {
+    method: route.method,
+    headers: { 'Content-Type': 'application/json' },
+  }
+  if (route.method !== 'GET' && route.method !== 'DELETE' && body !== undefined) {
+    opts.body = JSON.stringify(body)
+  }
+
+  const res = await fetch(url, opts)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
 
 export interface LlmConfig {
   provider: 'openai' | 'anthropic'
@@ -26,6 +196,8 @@ type Actions = {
   setLoading: (loading: boolean) => void
   setStreamingText: (text: string) => void
   setPermissionRequest: (request: PermissionRequest | null) => void
+  setApprovalRequest: (request: ApprovalRequest | null) => void
+  resolveApproval: (taskId: string, action: 'execute' | 'later' | 'abort') => Promise<void>
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void
   updateTask: (id: string, updates: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -54,12 +226,14 @@ type Actions = {
   setLlmConfig: (config: Partial<LlmConfig>) => Promise<void>
   getLlmConfig: () => LlmConfig | null
   sendChatMessage: (message: string, sessionId?: string) => Promise<{ sessionId: string }>
+  sendChatMessageSse: (message: string, sessionId?: string) => Promise<{ sessionId: string }>
   cancelChat: () => Promise<void>
   startHeartbeat: () => void
   stopHeartbeat: () => void
   initBackendConnection: () => void
   // Proposals
   proposals: Proposal[]
+  editingProposalId: string | null
   loadProposals: () => Promise<void>
   createProposal: (input: { title: string; description?: string }) => Promise<Proposal | null>
   updateProposal: (id: string, updates: { title?: string; description?: string }) => Promise<void>
@@ -154,6 +328,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
       isLoading: false,
       tasks: [],
       proposals: [],
+      editingProposalId: null,
       documents: [],
       agentPresences: [],
       notifications: [],
@@ -163,6 +338,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
       llmConfig: null,
       streamingText: '',
       permissionRequest: null,
+      approvalRequest: null,
       activeToolCalls: new Map<string, ToolCallEvent>(),
       heartbeatTimer: null,
 
@@ -174,6 +350,17 @@ export const useAppStore = create<AppStoreState & Actions>()(
         set({ currentSession: session, messages: [] })
       },
       setPermissionRequest: (request) => set({ permissionRequest: request }),
+      setApprovalRequest: (request) => set({ approvalRequest: request }),
+      resolveApproval: async (taskId, action) => {
+        try {
+          await get().sendToBackend('tasks:approve', { taskId, action })
+          set({ approvalRequest: null })
+          // Refresh tasks after action
+          setTimeout(() => get().loadTasks(), 500)
+        } catch (e) {
+          console.error('[Store] resolveApproval error:', e)
+        }
+      },
       jumpToSession: async (sessionId: string) => {
         try {
           const result = await get().sendToBackend('sessions:get', sessionId) as { session: Session; messages: any[] }
@@ -210,18 +397,29 @@ export const useAppStore = create<AppStoreState & Actions>()(
         })),
       deleteSession: async (id) => {
         console.log('[Store] deleteSession called:', id)
+        // Optimistic delete — remove from local state immediately
+        set((s) => ({
+          sessions: s.sessions.filter((sess) => sess.id !== id),
+          currentSession: s.currentSession?.id === id ? null : s.currentSession,
+          messages: s.currentSession?.id === id ? [] : s.messages,
+          streamingText: s.currentSession?.id === id ? '' : s.streamingText,
+        }))
+        // Also clear from localStorage to prevent stale data on refresh
+        try {
+          const stored = localStorage.getItem('irg-store')
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            if (parsed?.state?.sessions) {
+              parsed.state.sessions = parsed.state.sessions.filter((s: any) => s.id !== id)
+              localStorage.setItem('irg-store', JSON.stringify(parsed))
+            }
+          }
+        } catch {}
         try {
           await get().sendToBackend('sessions:delete', { sessionId: id })
           console.log('[Store] deleteSession backend call succeeded')
-          set((s) => ({
-            sessions: s.sessions.filter(( sess ) => sess.id !== id),
-            currentSession: s.currentSession?.id === id ? null : s.currentSession,
-            messages: s.currentSession?.id === id ? [] : s.messages,
-            streamingText: s.currentSession?.id === id ? '' : s.streamingText,
-          }))
-          console.log('[Store] deleteSession store updated')
         } catch (e) {
-          console.error('[Store] deleteSession failed:', e)
+          console.error('[Store] deleteSession backend failed (session already removed from UI):', e)
         }
       },
       loadSessions: async () => {
@@ -270,6 +468,27 @@ export const useAppStore = create<AppStoreState & Actions>()(
               updatedAt: new Date(t.updatedAt).getTime(),
             }))
             set({ tasks })
+
+            // Update agent presence based on task status (for browser mode)
+            if (!window.electronAPI?.invoke) {
+              const runningTasks = tasks.filter(t => t.status === 'in_progress' && t.assignee)
+              for (const t of runningTasks) {
+                get().updateAgentPresence({
+                  agentId: t.assignee!,
+                  agentName: t.assignee!,
+                  status: 'running',
+                  currentTask: t.title?.slice(0, 60) || 'Working...',
+                  lastSeen: Date.now(),
+                })
+              }
+              // Clear presence for agents with no running tasks
+              const activeAgents = new Set(runningTasks.map(t => t.assignee))
+              for (const p of get().agentPresences) {
+                if (p.status === 'running' && !activeAgents.has(p.agentId)) {
+                  get().updateAgentPresence({ ...p, status: 'idle', currentTask: undefined, lastSeen: Date.now() })
+                }
+              }
+            }
           }
         } catch (e) {
           console.error('[Store] loadTasks error:', e)
@@ -578,8 +797,8 @@ export const useAppStore = create<AppStoreState & Actions>()(
           console.log('[Store] sendToBackend result:', result)
           return result
         }
-        console.log('[Store] sendToBackend: no electronAPI')
-        throw new Error('Backend not connected')
+        // HTTP fallback for browser access
+        return await sendViaHttp(channel, data)
       },
 
       loadConfig: async () => {
@@ -726,6 +945,13 @@ export const useAppStore = create<AppStoreState & Actions>()(
       sendChatMessage: async (message, sessionId) => {
         set({ isLoading: true, streamingText: '', activeToolCalls: new Map() })
         get().startHeartbeat()
+
+        // Browser mode — use SSE
+        if (!window.electronAPI?.invoke) {
+          return await get().sendChatMessageSse(message, sessionId)
+        }
+
+        // Electron mode — use IPC
         try {
           const result = await get().sendToBackend('chat:send', { message, sessionId }) as {
             messages: any[]
@@ -759,6 +985,99 @@ export const useAppStore = create<AppStoreState & Actions>()(
         return { sessionId: '' }
       },
 
+      sendChatMessageSse: async (message: string, sessionId?: string) => {
+        const collectedMessages: any[] = []
+        let resultSessionId = ''
+
+        try {
+          const res = await fetch(`${API_BASE}/api/chat/sse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, sessionId }),
+          })
+
+          if (!res.ok || !res.body) {
+            throw new Error(`HTTP ${res.status}`)
+          }
+
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            let currentEvent = ''
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEvent = line.slice(7)
+              } else if (line.startsWith('data: ')) {
+                const data = JSON.parse(line.slice(6))
+
+                if (currentEvent === 'delta') {
+                  set({ streamingText: (get().streamingText || '') + data.text })
+                } else if (currentEvent === 'message') {
+                  collectedMessages.push(data)
+                  set({ streamingText: '' })
+                } else if (currentEvent === 'permission') {
+                  // Show permission modal
+                  const permPromise = new Promise<boolean>((resolve) => {
+                    get().setPermissionRequest({
+                      id: data.id,
+                      toolName: data.toolName || 'Unknown',
+                      input: data.input,
+                      message: data.message || 'Permission required',
+                      requestType: (data.requestType as any) || 'permission',
+                      options: data.options,
+                      schema: data.schema,
+                      resolve: (resp: any) => resolve(typeof resp === 'boolean' ? resp : resp.approved !== false),
+                    })
+                  })
+
+                  const approved = await permPromise
+                  // Send response back
+                  await fetch(`${API_BASE}/api/chat/permission-response`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: data.id, approved }),
+                  })
+                  get().setPermissionRequest(null)
+                } else if (currentEvent === 'done') {
+                  resultSessionId = data.sessionId
+                } else if (currentEvent === 'error') {
+                  console.error('[SSE] Error:', data.message)
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[SSE] Chat error:', e)
+        }
+
+        get().stopHeartbeat()
+        const newMessages = collectedMessages.map(rawMessageToMessage)
+        set({
+          currentSession: resultSessionId ? {
+            id: resultSessionId,
+            title: message.slice(0, 50),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messageCount: newMessages.length,
+            status: 'active',
+          } : get().currentSession,
+          messages: [...get().messages, ...newMessages],
+          isLoading: false,
+          streamingText: '',
+        })
+
+        return { sessionId: resultSessionId }
+      },
+
       initBackendConnection: async () => {
         console.log('[Store] initBackendConnection called, initialized:', get().backendInitialized)
         if (get().backendInitialized) {
@@ -766,6 +1085,19 @@ export const useAppStore = create<AppStoreState & Actions>()(
           return
         }
         console.log('[Store] window.electronAPI exists:', !!window.electronAPI)
+
+        // Clear stale localStorage sessions — always load fresh from backend
+        try {
+          const stored = localStorage.getItem('irg-store')
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            if (parsed?.state?.sessions) {
+              parsed.state.sessions = []
+              localStorage.setItem('irg-store', JSON.stringify(parsed))
+            }
+          }
+        } catch {}
+
         try {
           const api = window.electronAPI
           if (api) {
@@ -999,6 +1331,11 @@ export const useAppStore = create<AppStoreState & Actions>()(
                 }
               }
 
+              const onApprovalRequired = (data: unknown) => {
+                const event = data as ApprovalRequest
+                get().setApprovalRequest(event)
+              }
+
               api.on('chat:delta', onDelta)
               api.on('chat:permission', onPermission)
               api.on('event:tool:start', onToolStart)
@@ -1010,6 +1347,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
               api.on('event:executor:task-completed', onExecutorTaskCompleted)
               api.on('event:executor:cycle', onExecutorCycle)
               api.on('event:session:message-appended', onSessionMessageAppended)
+              api.on('event:approval:required', onApprovalRequired)
 
               // Store cleanup functions for potential future use
               ;(window as any).__ipcCleanup = () => {
@@ -1024,12 +1362,34 @@ export const useAppStore = create<AppStoreState & Actions>()(
                 api.off?.('event:executor:task-completed', onExecutorTaskCompleted)
                 api.off?.('event:executor:cycle', onExecutorCycle)
                 api.off?.('event:session:message-appended', onSessionMessageAppended)
+                api.off?.('event:approval:required', onApprovalRequired)
                 set({ listenersRegistered: false })
               }
             }
             console.log('[Store] initBackendConnection complete')
           } else {
-            console.log('[Store] API NOT found')
+            // Browser mode — use HTTP API fallback
+            console.log('[Store] No Electron API, using HTTP fallback')
+            set({ backendInitialized: true })
+            get().setBackendConnected(true)
+            get().loadSessions()
+            get().loadTasks()
+            get().loadProposals()
+            get().loadDocuments()
+            get().loadAgents()
+
+            // Poll for updates every 3 seconds
+            setInterval(() => {
+              get().loadTasks()
+              get().loadProposals()
+              get().loadSessions()
+              // Check for pending approvals
+              get().sendToBackend('approvals:pending').then((result: any) => {
+                if (result?.approvals?.length > 0 && !get().approvalRequest) {
+                  get().setApprovalRequest(result.approvals[0])
+                }
+              }).catch(() => {})
+            }, 3000)
           }
         } catch (e) {
           console.error('[Store] initBackendConnection error:', e)

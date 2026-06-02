@@ -37,6 +37,12 @@ interactive_skill.py
 # IRG config and runtime data
 .irg/
 
+# Proto files (C# service definitions, may contain proprietary interfaces)
+protos/
+
+# Workflow definitions (project-specific, not for version control)
+workflows/
+
 # IDE and personal config files
 opencode.json
 Gui\ Design\ Template.png

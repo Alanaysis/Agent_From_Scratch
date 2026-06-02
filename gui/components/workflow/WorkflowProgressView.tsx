@@ -5,11 +5,11 @@ import { CheckCircle, XCircle, Clock, Loader2, AlertCircle, Eye, ChevronRight } 
 import type { Task } from '@/types'
 
 const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  todo: { color: '#6b7280', icon: <ChevronRight size={12} />, label: 'Pending' },
-  in_progress: { color: '#f59e0b', icon: <Loader2 size={12} />, label: 'Running' },
-  verify: { color: '#a855f7', icon: <Eye size={12} />, label: 'Verify' },
-  done: { color: '#22c55e', icon: <CheckCircle size={12} />, label: 'Done' },
-  failed: { color: '#ef4444', icon: <XCircle size={12} />, label: 'Failed' },
+  todo: { color: 'var(--text-muted)', icon: <ChevronRight size={12} />, label: 'Pending' },
+  in_progress: { color: 'var(--amber)', icon: <Loader2 size={12} />, label: 'Running' },
+  verify: { color: '#7b68c0', icon: <Eye size={12} />, label: 'Verify' },
+  done: { color: '#5cb85c', icon: <CheckCircle size={12} />, label: 'Done' },
+  failed: { color: 'var(--warm-red)', icon: <XCircle size={12} />, label: 'Failed' },
 }
 
 interface WorkflowStep {
@@ -98,36 +98,68 @@ export function WorkflowProgressView({ steps, title }: Props) {
   const progressPct = steps.length > 0 ? Math.round((doneCount / steps.length) * 100) : 0
 
   return (
-    <div style={{ padding: 12 }}>
+    <div style={{ padding: 12, fontFamily: 'IBM Plex Sans, sans-serif' }}>
       {/* Header */}
       {title && (
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 8 }}>{title}</div>
+        <div style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--text-primary)',
+          marginBottom: 8,
+          fontFamily: 'IBM Plex Mono, monospace',
+          letterSpacing: '0.02em',
+        }}>{title}</div>
       )}
 
       {/* Progress bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <div style={{ flex: 1, height: 6, backgroundColor: '#1a1a1a', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{
+          flex: 1,
+          height: 6,
+          backgroundColor: 'var(--surface-2)',
+          borderRadius: 0,
+          overflow: 'hidden',
+          border: '1px solid var(--border-subtle)',
+        }}>
           <div style={{
             width: `${progressPct}%`,
             height: '100%',
-            backgroundColor: failedCount > 0 ? '#ef4444' : '#22c55e',
-            borderRadius: 3,
+            backgroundColor: failedCount > 0 ? 'var(--warm-red)' : '#5cb85c',
+            borderRadius: 0,
             transition: 'width 0.3s',
           }} />
         </div>
-        <span style={{ fontSize: 11, color: '#888', minWidth: 36 }}>{progressPct}%</span>
+        <span style={{
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          minWidth: 36,
+          fontFamily: 'IBM Plex Mono, monospace',
+        }}>{progressPct}%</span>
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 10 }}>
-        {runningCount > 0 && <span style={{ color: '#f59e0b' }}>{runningCount} running</span>}
-        {doneCount > 0 && <span style={{ color: '#22c55e' }}>{doneCount} done</span>}
-        {failedCount > 0 && <span style={{ color: '#ef4444' }}>{failedCount} failed</span>}
-        <span style={{ color: '#666' }}>{steps.length - doneCount - failedCount - runningCount} pending</span>
+      <div style={{
+        display: 'flex',
+        gap: 12,
+        marginBottom: 12,
+        fontSize: 10,
+        fontFamily: 'IBM Plex Mono, monospace',
+      }}>
+        {runningCount > 0 && <span style={{ color: 'var(--amber)' }}>{runningCount} running</span>}
+        {doneCount > 0 && <span style={{ color: '#5cb85c' }}>{doneCount} done</span>}
+        {failedCount > 0 && <span style={{ color: 'var(--warm-red)' }}>{failedCount} failed</span>}
+        <span style={{ color: 'var(--text-faint)' }}>{steps.length - doneCount - failedCount - runningCount} pending</span>
       </div>
 
       {/* DAG visualization */}
-      <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+      <div style={{
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        backgroundColor: 'var(--surface-0)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 2,
+        padding: 4,
+      }}>
         <svg width={svgWidth} height={svgHeight} style={{ display: 'block' }}>
           {/* Edges */}
           {edges.map((edge, i) => {
@@ -136,7 +168,7 @@ export function WorkflowProgressView({ steps, title }: Props) {
             if (!fromPos || !toPos) return null
             const fromCfg = statusConfig[stepMap.get(edge.from)?.status || 'todo']
             const toCfg = statusConfig[stepMap.get(edge.to)?.status || 'todo']
-            const edgeColor = fromCfg?.color === '#22c55e' ? '#22c55e44' : '#333'
+            const edgeColor = fromCfg?.color === '#5cb85c' ? '#5cb85c44' : 'var(--border-medium)'
 
             const x1 = fromPos.x + nodeWidth
             const y1 = fromPos.y + nodeHeight / 2
@@ -149,9 +181,9 @@ export function WorkflowProgressView({ steps, title }: Props) {
                 key={i}
                 d={`M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`}
                 stroke={edgeColor}
-                strokeWidth={2}
+                strokeWidth={1.5}
                 fill="none"
-                strokeDasharray={fromCfg?.color === '#22c55e' ? 'none' : '4 4'}
+                strokeDasharray={fromCfg?.color === '#5cb85c' ? 'none' : '4 4'}
               />
             )
           })}
@@ -170,28 +202,29 @@ export function WorkflowProgressView({ steps, title }: Props) {
                   y={pos.y}
                   width={nodeWidth}
                   height={nodeHeight}
-                  rx={8}
-                  fill="#0d0d0d"
-                  stroke={cfg.color}
+                  rx={2}
+                  fill="var(--surface-1)"
+                  stroke={step.status === 'in_progress' ? 'var(--amber)' : cfg.color}
                   strokeWidth={step.status === 'in_progress' ? 2 : 1}
-                  strokeOpacity={step.status === 'in_progress' ? 1 : 0.4}
+                  strokeOpacity={step.status === 'in_progress' ? 1 : 0.5}
                 />
                 {/* Status indicator */}
                 <circle
                   cx={pos.x + 14}
                   cy={pos.y + 14}
-                  r={5}
+                  r={4}
                   fill={cfg.color}
                 />
                 {/* Title */}
                 <text
                   x={pos.x + 26}
                   y={pos.y + 18}
-                  fill="#fff"
+                  fill="var(--text-primary)"
                   fontSize={11}
                   fontWeight={500}
+                  fontFamily="IBM Plex Mono, monospace"
                 >
-                  {step.title.length > 16 ? step.title.slice(0, 16) + '…' : step.title}
+                  {step.title.length > 16 ? step.title.slice(0, 16) + '...' : step.title}
                 </text>
                 {/* Status label */}
                 <text
@@ -199,6 +232,7 @@ export function WorkflowProgressView({ steps, title }: Props) {
                   y={pos.y + 40}
                   fill={cfg.color}
                   fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
                 >
                   {cfg.label}
                 </text>
@@ -207,9 +241,10 @@ export function WorkflowProgressView({ steps, title }: Props) {
                   <text
                     x={pos.x + nodeWidth - 8}
                     y={pos.y + 40}
-                    fill="#555"
+                    fill="var(--text-faint)"
                     fontSize={9}
                     textAnchor="end"
+                    fontFamily="IBM Plex Mono, monospace"
                   >
                     {step.assignee}
                   </text>
@@ -221,10 +256,23 @@ export function WorkflowProgressView({ steps, title }: Props) {
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: '#666' }}>
+      <div style={{
+        display: 'flex',
+        gap: 12,
+        marginTop: 8,
+        fontSize: 9,
+        color: 'var(--text-muted)',
+        fontFamily: 'IBM Plex Mono, monospace',
+      }}>
         {Object.entries(statusConfig).map(([key, cfg]) => (
           <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cfg.color, display: 'inline-block' }} />
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: cfg.color,
+              display: 'inline-block',
+            }} />
             {cfg.label}
           </span>
         ))}

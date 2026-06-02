@@ -22,7 +22,7 @@ export type CronRunRecord = {
 };
 
 function getCronDir(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "cron");
+  return join(cwd, ".irg", "cron");
 }
 
 function getJobFilePath(cwd: string, jobId: string): string {

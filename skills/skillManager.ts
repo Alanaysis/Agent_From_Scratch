@@ -32,7 +32,7 @@ export type EvolvableSkill = {
 };
 
 function getUserSkillsDir(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "skills");
+  return join(cwd, ".irg", "skills");
 }
 
 async function ensureSkillsDir(cwd: string): Promise<void> {

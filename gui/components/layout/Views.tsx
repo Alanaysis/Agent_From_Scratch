@@ -1,4 +1,5 @@
 export { ChatView } from '../chat/ChatView'
 export { SettingsView } from '../settings/SettingsView'
 export { ProposalView } from '../proposals/ProposalView'
+export { ProposalEditor } from '../proposals/ProposalEditor'
 export { DocumentsView } from '../documents/DocumentsView'

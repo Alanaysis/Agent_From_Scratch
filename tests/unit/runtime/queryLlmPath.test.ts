@@ -16,12 +16,12 @@ describe('query with LLM enabled - coverage paths', () => {
   });
 
   describe('LLM-enabled code path', () => {
-    it('uses queryWithLlm when CCL_LLM_PROVIDER is set to OpenAI', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+    it('uses queryWithLlm when IRG_LLM_PROVIDER is set to OpenAI', async () => {
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'read test.txt' }))) {
@@ -32,21 +32,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
-    it('uses queryWithLlm when CCL_LLM_PROVIDER is set to Anthropic', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+    it('uses queryWithLlm when IRG_LLM_PROVIDER is set to Anthropic', async () => {
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'anthropic';
+        process.env.IRG_LLM_PROVIDER = 'anthropic';
         process.env.ANTHROPIC_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'claude-3-haiku-20240307';
+        process.env.IRG_LLM_MODEL = 'claude-3-haiku-20240307';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'run echo hello' }))) {
@@ -56,20 +56,20 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.ANTHROPIC_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('falls back to planner when LLM config is missing', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        delete process.env.CCL_LLM_PROVIDER;
-        delete process.env.CCL_LLM_API_KEY;
+        delete process.env.IRG_LLM_PROVIDER;
+        delete process.env.IRG_LLM_API_KEY;
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'read README.md' }))) {
@@ -80,16 +80,16 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         }
       }
     });
 
     it('falls back to planner when LLM call fails', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'invalid-key-that-will-fail';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'invalid-key-that-will-fail';
         process.env.CLLM_MODEL = 'gpt-4o';
 
         const messages: any[] = [];
@@ -101,22 +101,22 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
+        delete process.env.IRG_LLM_API_KEY;
         delete process.env.CLLM_MODEL;
       }
     });
 
     it('handles custom base URL with LLM', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_BASE_URL = 'https://custom-api.example.com/v1';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_BASE_URL = 'https://custom-api.example.com/v1';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'write output.txt test content' }))) {
@@ -126,22 +126,22 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_BASE_URL;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_BASE_URL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles Ollama provider', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'ollama';
+        process.env.IRG_LLM_PROVIDER = 'ollama';
         process.env.OLLAMA_API_BASE = 'http://localhost:11434';
-        process.env.CCL_LLM_MODEL = 'llama2';
+        process.env.IRG_LLM_MODEL = 'llama2';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'edit file.txt old => new' }))) {
@@ -151,21 +151,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.OLLAMA_API_BASE;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles cohere provider', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'cohere';
+        process.env.IRG_LLM_PROVIDER = 'cohere';
         process.env.COHERE_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'command-r-plus';
+        process.env.IRG_LLM_MODEL = 'command-r-plus';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'read config.json' }))) {
@@ -175,21 +175,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.COHERE_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles google provider', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'google';
+        process.env.IRG_LLM_PROVIDER = 'google';
         process.env.GOOGLE_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gemini-pro';
+        process.env.IRG_LLM_MODEL = 'gemini-pro';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'run ls -la' }))) {
@@ -199,19 +199,19 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.GOOGLE_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles azure provider', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'azure';
+        process.env.IRG_LLM_PROVIDER = 'azure';
         process.env.AZURE_API_KEY = 'test-key';
         process.env.AZURE_API_BASE = 'https://example.openai.azure.com';
         process.env.AZURE_DEPLOYMENT_NAME = 'gpt-4';
@@ -224,9 +224,9 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.AZURE_API_KEY;
         delete process.env.AZURE_API_BASE;
@@ -235,11 +235,11 @@ describe('query with LLM enabled - coverage paths', () => {
     });
 
     it('handles missing required env vars gracefully', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
         // Set provider but not API key - should fall back to planner
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        delete process.env.CCL_LLM_API_KEY;
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        delete process.env.IRG_LLM_API_KEY;
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: 'read package.json' }))) {
@@ -250,19 +250,19 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
       }
     });
 
     it('handles multiple sequential queries with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         // First query
         let messages: any[] = [];
@@ -286,21 +286,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles empty prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: '' }))) {
@@ -310,21 +310,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles whitespace-only prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: '   \n\t  ' }))) {
@@ -334,21 +334,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles complex prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const complexPrompt = `I need to:
 1. Read the package.json file
@@ -364,21 +364,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles Chinese prompts with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({ prompt: '读取 package.json 并分析依赖' }))) {
@@ -388,21 +388,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles toolUseContext with custom cwd', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -415,21 +415,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles messages array in params with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -445,21 +445,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles systemPrompt in params with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -475,21 +475,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles canUseTool callback with allow behavior', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -502,21 +502,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles canUseTool callback with deny behavior', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -529,21 +529,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles canUseTool callback with ask behavior', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const messages: any[] = [];
         for await (const msg of query(createMockParams({
@@ -556,21 +556,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles all command types with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const commands = [
           'read README.md',
@@ -589,21 +589,21 @@ describe('query with LLM enabled - coverage paths', () => {
         }
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles very long prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const longPrompt = 'read '.repeat(100) + '/path/to/file.txt';
 
@@ -615,21 +615,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles special characters in prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const specialPrompt = 'read /path/to/file with spaces & "quotes" and \'apostrophes\'';
 
@@ -641,21 +641,21 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles Unicode content in prompt with LLM enabled', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
-        process.env.CCL_LLM_PROVIDER = 'openai';
-        process.env.CCL_LLM_API_KEY = 'test-key';
-        process.env.CCL_LLM_MODEL = 'gpt-4o-mini';
+        process.env.IRG_LLM_PROVIDER = 'openai';
+        process.env.IRG_LLM_API_KEY = 'test-key';
+        process.env.IRG_LLM_MODEL = 'gpt-4o-mini';
 
         const unicodePrompt = '读取 文件.txt and write output.json {"key": "value"}';
 
@@ -667,42 +667,42 @@ describe('query with LLM enabled - coverage paths', () => {
         expect(messages.length).toBeGreaterThan(0);
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
-        delete process.env.CCL_LLM_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_API_KEY;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
 
     it('handles all providers with fallback', async () => {
-      const originalProvider = process.env.CCL_LLM_PROVIDER;
+      const originalProvider = process.env.IRG_LLM_PROVIDER;
       try {
         const providers = ['openai', 'anthropic', 'cohere', 'google', 'azure'];
 
         for (const provider of providers) {
-          delete process.env.CCL_LLM_API_KEY;
+          delete process.env.IRG_LLM_API_KEY;
           delete process.env.ANTHROPIC_API_KEY;
           delete process.env.COHERE_API_KEY;
           delete process.env.GOOGLE_API_KEY;
           delete process.env.AZURE_API_KEY;
 
           if (provider === 'openai') {
-            process.env.CCL_LLM_PROVIDER = 'openai';
+            process.env.IRG_LLM_PROVIDER = 'openai';
             // Missing API key - should fall back to planner
           } else if (provider === 'anthropic') {
-            process.env.CCL_LLM_PROVIDER = 'anthropic';
+            process.env.IRG_LLM_PROVIDER = 'anthropic';
             process.env.ANTHROPIC_API_KEY = 'test-key';
-            process.env.CCL_LLM_MODEL = 'claude-3-haiku';
+            process.env.IRG_LLM_MODEL = 'claude-3-haiku';
           } else if (provider === 'cohere') {
-            process.env.CCL_LLM_PROVIDER = 'cohere';
+            process.env.IRG_LLM_PROVIDER = 'cohere';
             // Missing API key - should fall back to planner
           } else if (provider === 'google') {
-            process.env.CCL_LLM_PROVIDER = 'google';
+            process.env.IRG_LLM_PROVIDER = 'google';
             // Missing API key - should fall back to planner
           } else if (provider === 'azure') {
-            process.env.CCL_LLM_PROVIDER = 'azure';
+            process.env.IRG_LLM_PROVIDER = 'azure';
             // Missing API keys - should fall back to planner
           }
 
@@ -715,12 +715,12 @@ describe('query with LLM enabled - coverage paths', () => {
         }
       } finally {
         if (originalProvider !== undefined) {
-          process.env.CCL_LLM_PROVIDER = originalProvider;
+          process.env.IRG_LLM_PROVIDER = originalProvider;
         } else {
-          delete process.env.CCL_LLM_PROVIDER;
+          delete process.env.IRG_LLM_PROVIDER;
         }
         delete process.env.ANTHROPIC_API_KEY;
-        delete process.env.CCL_LLM_MODEL;
+        delete process.env.IRG_LLM_MODEL;
       }
     });
   });

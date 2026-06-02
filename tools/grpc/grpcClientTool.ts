@@ -2,17 +2,22 @@ import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
 import { join } from "path";
 import { existsSync } from "fs";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
+
+// Use createRequire to load CJS modules (gRPC uses require() internally)
+const __require = createRequire(import.meta.url);
 
 // Lazy-loaded gRPC modules (loaded on first use, not at import time)
-let grpc: typeof import("@grpc/grpc-js") | null = null;
-let protoLoader: typeof import("@grpc/proto-loader") | null = null;
+let grpc: any = null;
+let protoLoader: any = null;
 
 async function ensureGrpcLoaded() {
   if (!grpc) {
-    grpc = await import("@grpc/grpc-js");
+    grpc = __require("@grpc/grpc-js");
   }
   if (!protoLoader) {
-    protoLoader = await import("@grpc/proto-loader");
+    protoLoader = __require("@grpc/proto-loader");
   }
 }
 
@@ -108,7 +113,13 @@ function callMethod(
 
     const deadline = new Date(Date.now() + deadlineMs);
 
+    // Safety timeout — prevents hanging on streaming RPCs
+    const timer = setTimeout(() => {
+      reject(new Error(`gRPC call timed out after ${deadlineMs}ms (is this a streaming RPC? Only unary calls are supported)`));
+    }, deadlineMs + 1000);
+
     method.call(client, payload, meta, { deadline }, (error: any, response: unknown) => {
+      clearTimeout(timer);
       if (error) {
         reject(new Error(`gRPC error [${error.code}]: ${error.details || error.message}`));
       } else {

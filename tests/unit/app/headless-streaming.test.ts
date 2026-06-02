@@ -398,9 +398,9 @@ describe("headless.ts - streaming and interrupt paths", () => {
         expect.unreachable();
       } catch (error) {
         const errorMessage = String(error);
-        expect(errorMessage).toContain("CCL_LLM_PROVIDER");
-        expect(errorMessage).toContain("CCL_LLM_API_KEY");
-        expect(errorMessage).toContain("CCL_LLM_MODEL");
+        expect(errorMessage).toContain("IRG_LLM_PROVIDER");
+        expect(errorMessage).toContain("IRG_LLM_API_KEY");
+        expect(errorMessage).toContain("IRG_LLM_MODEL");
       }
     });
   });

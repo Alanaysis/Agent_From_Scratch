@@ -16,7 +16,7 @@ import {
 const TEST_DIR = join('/tmp', 'knowledge-test-' + Date.now());
 
 beforeEach(async () => {
-  await mkdir(join(TEST_DIR, '.claude-code-lite'), { recursive: true });
+  await mkdir(join(TEST_DIR, '.irg'), { recursive: true });
 });
 
 afterEach(async () => {

@@ -486,7 +486,14 @@ async function* queryWithPlanner(params) {
     yield createAssistantTextMessage(planned.summarizeResult(result));
 }
 async function* queryWithLlm(params) {
-    const conversation = [...params.messages];
+    const lastMsg = params.messages[params.messages.length - 1];
+    const alreadyHasPrompt = lastMsg?.type === "user" && lastMsg.content === params.prompt;
+    const conversation = alreadyHasPrompt
+        ? [...params.messages]
+        : [
+            ...params.messages,
+            { id: createId("user"), type: "user", content: params.prompt },
+        ];
     const maxTurns = params.maxTurns ?? 8;
     const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
     try {
@@ -505,10 +512,11 @@ async function* queryWithLlm(params) {
         systemPrompt.push(skillsMeta);
     }
     for (let turn = 0; turn < maxTurns; turn += 1) {
+        const defs = getToolDefinitions();
         const llmResponse = await runLlmTurn({
             messages: conversation,
             systemPrompt,
-            tools: getToolDefinitions(),
+            tools: defs,
             onTextDelta: params.onAssistantTextDelta,
         });
         if (!llmResponse.text && llmResponse.toolCalls.length === 0) {

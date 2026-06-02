@@ -97,7 +97,7 @@ describe('REPL E2E', () => {
       const session = new SessionEngine({ id: 'test-transcript', cwd: tempDir });
       const expectedPath = getTranscriptPath(tempDir, session.sessionId);
 
-      expect(expectedPath).toContain('.claude-code-lite');
+      expect(expectedPath).toContain('.irg');
       expect(expectedPath).toContain('transcripts');
       expect(expectedPath.slice(-6)).toBe('.jsonl');
     });

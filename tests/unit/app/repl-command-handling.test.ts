@@ -453,7 +453,7 @@ describe("repl.ts transcript path logging", () => {
   it("logs transcript path after each turn completion", () => {
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const cwd = "/tmp/test-transcript";
-    const transcriptPath = `${cwd}/.claude-code-lite/transcripts/${sessionId}.jsonl`;
+    const transcriptPath = `${cwd}/.irg/transcripts/${sessionId}.jsonl`;
 
     expect(transcriptPath).toMatch(/\/transcripts\/session-\d+-\w+\.jsonl$/);
   });
@@ -461,7 +461,7 @@ describe("repl.ts transcript path logging", () => {
   it("handles transcript path with special characters in session ID", () => {
     const sessionId = "test-session-with-special-chars-123";
     const cwd = "/tmp/test";
-    const transcriptPath = `${cwd}/.claude-code-lite/transcripts/${sessionId}.jsonl`;
+    const transcriptPath = `${cwd}/.irg/transcripts/${sessionId}.jsonl`;
 
     expect(transcriptPath).toContain("test-session-with-special-chars-123");
   });

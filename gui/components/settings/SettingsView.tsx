@@ -59,56 +59,70 @@ export function SettingsView() {
     <div style={{
       maxWidth: 520,
       margin: '0 auto',
-      padding: 24
+      padding: 24,
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          marginBottom: 4
+          marginBottom: 4,
+          color: 'var(--text-primary)',
+          fontFamily: 'IBM Plex Mono, monospace',
+          letterSpacing: '0.02em',
         }}>
           <div style={{
             width: 36,
             height: 36,
-            borderRadius: 8,
-            backgroundColor: '#111',
+            borderRadius: 2,
+            backgroundColor: 'var(--surface-2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: '1px solid #1a1a1a'
+            border: '1px solid var(--border-medium)',
           }}>
-            <Bot size={18} />
+            <Bot size={18} style={{ color: 'var(--amber)' }} />
           </div>
           Settings
         </h1>
-        <p style={{ fontSize: 13, color: '#666' }}>Configure your LLM provider</p>
+        <p style={{
+          fontSize: 13,
+          color: 'var(--text-muted)',
+          fontFamily: 'IBM Plex Sans, sans-serif',
+        }}>Configure your LLM provider</p>
       </div>
 
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 14,
-        backgroundColor: '#111',
-        borderRadius: 10,
-        border: '1px solid #1a1a1a',
-        marginBottom: 20
+        padding: '10px 14px',
+        backgroundColor: 'var(--surface-1)',
+        borderRadius: 2,
+        border: '1px solid var(--border-subtle)',
+        marginBottom: 20,
       }}>
-        <span style={{ fontSize: 13, fontWeight: 500 }}>Connection Status</span>
+        <span style={{
+          fontSize: 13,
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          fontFamily: 'IBM Plex Mono, monospace',
+        }}>Connection Status</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 8,
             height: 8,
             borderRadius: '50%',
-            backgroundColor: store.backendConnected ? '#22c55e' : '#ef4444'
+            backgroundColor: store.backendConnected ? '#5cb85c' : 'var(--warm-red)',
           }} />
           <span style={{
             fontSize: 12,
-            color: store.backendConnected ? '#22c55e' : '#ef4444',
-            fontWeight: 500
+            color: store.backendConnected ? '#5cb85c' : 'var(--warm-red)',
+            fontWeight: 500,
+            fontFamily: 'IBM Plex Mono, monospace',
           }}>
             {store.backendConnected ? 'Connected' : 'Disconnected'}
           </span>
@@ -119,24 +133,33 @@ export function SettingsView() {
         display: 'flex',
         flexDirection: 'column',
         gap: 16,
-        backgroundColor: '#111',
-        borderRadius: 12,
-        border: '1px solid #1a1a1a',
-        padding: 20
+        backgroundColor: 'var(--surface-1)',
+        borderRadius: 2,
+        border: '1px solid var(--border-subtle)',
+        padding: 20,
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Provider</Label>
+          <Label style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>Provider</Label>
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
             style={{
-              height: 38,
+              height: 36,
               padding: '0 12px',
-              borderRadius: 8,
-              border: '1px solid #222',
-              backgroundColor: '#0a0a0a',
-              color: '#fff',
-              fontSize: 13
+              borderRadius: 0,
+              border: '1px solid var(--border-medium)',
+              backgroundColor: 'var(--surface-0)',
+              color: 'var(--text-primary)',
+              fontSize: 13,
+              fontFamily: 'IBM Plex Sans, sans-serif',
+              outline: 'none',
             }}
           >
             {providers.map((p) => (
@@ -146,47 +169,77 @@ export function SettingsView() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>API Key</Label>
+          <Label style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>API Key</Label>
           <Input
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
             style={{
-              height: 38,
+              height: 36,
               fontSize: 13,
-              backgroundColor: '#0a0a0a',
-              border: '1px solid #222'
+              backgroundColor: 'var(--surface-0)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 0,
+              color: 'var(--text-primary)',
+              fontFamily: 'IBM Plex Mono, monospace',
             }}
           />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Model</Label>
+          <Label style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>Model</Label>
           <Input
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="gpt-4, claude-3-opus, etc."
             style={{
-              height: 38,
+              height: 36,
               fontSize: 13,
-              backgroundColor: '#0a0a0a',
-              border: '1px solid #222'
+              backgroundColor: 'var(--surface-0)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 0,
+              color: 'var(--text-primary)',
+              fontFamily: 'IBM Plex Mono, monospace',
             }}
           />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Base URL</Label>
+          <Label style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>Base URL</Label>
           <Input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="https://api.openai.com/v1"
             style={{
-              height: 38,
+              height: 36,
               fontSize: 13,
-              backgroundColor: '#0a0a0a',
-              border: '1px solid #222'
+              backgroundColor: 'var(--surface-0)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 0,
+              color: 'var(--text-primary)',
+              fontFamily: 'IBM Plex Mono, monospace',
             }}
           />
         </div>
@@ -195,10 +248,17 @@ export function SettingsView() {
           onClick={handleSave}
           disabled={!store.backendConnected || saving}
           style={{
-            height: 38,
+            height: 36,
             marginTop: 4,
-            backgroundColor: store.backendConnected && !saving ? '#3b82f6' : '#1a1a1a',
-            border: 'none'
+            backgroundColor: store.backendConnected && !saving ? 'var(--amber)' : 'var(--surface-2)',
+            border: '1px solid ' + (store.backendConnected && !saving ? 'var(--amber)' : 'var(--border-subtle)'),
+            borderRadius: 0,
+            color: store.backendConnected && !saving ? '#000' : 'var(--text-muted)',
+            fontFamily: 'IBM Plex Mono, monospace',
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            cursor: store.backendConnected && !saving ? 'pointer' : 'default',
           }}
         >
           {saving ? (
@@ -217,9 +277,22 @@ export function SettingsView() {
         </Button>
       </div>
 
-      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid #1a1a1a' }}>
-        <p style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>IRG v0.1.0</p>
-        <p style={{ fontSize: 11, color: '#444' }}>A lightweight, modular agentic framework</p>
+      <div style={{
+        marginTop: 32,
+        paddingTop: 20,
+        borderTop: '1px solid var(--border-subtle)',
+      }}>
+        <p style={{
+          fontSize: 12,
+          color: 'var(--text-muted)',
+          marginBottom: 4,
+          fontFamily: 'IBM Plex Mono, monospace',
+        }}>IRG v0.1.0</p>
+        <p style={{
+          fontSize: 11,
+          color: 'var(--text-faint)',
+          fontFamily: 'IBM Plex Sans, sans-serif',
+        }}>A lightweight, modular agentic framework</p>
       </div>
     </div>
   )
@@ -228,14 +301,15 @@ export function SettingsView() {
     <div style={{
       height: '100%',
       overflow: 'auto',
-      backgroundColor: '#0a0a0a',
-      color: '#fff'
+      backgroundColor: 'var(--surface-0)',
+      color: 'var(--text-primary)',
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       <div style={{
-        borderBottom: '1px solid #1a1a1a',
+        borderBottom: '1px solid var(--border-subtle)',
         padding: '0 24px',
         display: 'flex',
-        gap: 24
+        gap: 24,
       }}>
         <button
           onClick={() => setActiveTab('llm')}
@@ -243,12 +317,14 @@ export function SettingsView() {
             padding: '12px 0',
             background: 'none',
             border: 'none',
-            color: activeTab === 'llm' ? '#fff' : '#666',
-            fontSize: 14,
+            color: activeTab === 'llm' ? 'var(--text-primary)' : 'var(--text-muted)',
+            fontSize: 13,
             fontWeight: 500,
             cursor: 'pointer',
-            borderBottom: activeTab === 'llm' ? '2px solid #3b82f6' : '2px solid transparent',
-            marginBottom: -1
+            borderBottom: activeTab === 'llm' ? '2px solid var(--amber)' : '2px solid transparent',
+            marginBottom: -1,
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.02em',
           }}
         >
           LLM Configuration
@@ -259,12 +335,14 @@ export function SettingsView() {
             padding: '12px 0',
             background: 'none',
             border: 'none',
-            color: activeTab === 'agents' ? '#fff' : '#666',
-            fontSize: 14,
+            color: activeTab === 'agents' ? 'var(--text-primary)' : 'var(--text-muted)',
+            fontSize: 13,
             fontWeight: 500,
             cursor: 'pointer',
-            borderBottom: activeTab === 'agents' ? '2px solid #3b82f6' : '2px solid transparent',
-            marginBottom: -1
+            borderBottom: activeTab === 'agents' ? '2px solid var(--amber)' : '2px solid transparent',
+            marginBottom: -1,
+            fontFamily: 'IBM Plex Mono, monospace',
+            letterSpacing: '0.02em',
           }}
         >
           Agents

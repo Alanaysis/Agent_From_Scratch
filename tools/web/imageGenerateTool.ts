@@ -45,11 +45,11 @@ async function generateWithOpenAI(
   });
 
   if (!response.ok) {
-    const payload = await response.json();
+    const payload = await response.json() as { error?: { message?: string } };
     throw new Error(payload.error?.message || `OpenAI DALL-E error: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { data?: Array<{ b64_json: string }> };
   return data.data || [];
 }
 
@@ -82,8 +82,8 @@ async function generateWithStabilityAI(
     throw new Error(`Stability AI error: ${response.status} - ${text}`);
   }
 
-  const data = await response.json();
-  return (data.artifacts || []).map((art: any) => ({ b64_json: art.base64 }));
+  const data = await response.json() as { artifacts?: Array<{ base64: string }> };
+  return (data.artifacts || []).map((art) => ({ b64_json: art.base64 }));
 }
 
 export const ImageGenerateTool: Tool<ImageGenerateInput, ImageGenerateOutput> = {
@@ -120,7 +120,7 @@ export const ImageGenerateTool: Tool<ImageGenerateInput, ImageGenerateOutput> = 
     const quality = args.quality || "standard";
     const n = args.n || 1;
 
-    const imageDir = join(context.cwd, ".claude-code-lite", "images");
+    const imageDir = join(context.cwd, ".irg", "images");
     await mkdir(imageDir, { recursive: true });
 
     let images: Array<{ url?: string; b64_json?: string }> = [];

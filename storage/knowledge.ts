@@ -25,7 +25,7 @@ const MAX_ENTRIES = 100;
 const CHAR_LIMIT = 500;
 
 function getKnowledgePath(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "knowledge.json");
+  return join(cwd, ".irg", "knowledge.json");
 }
 
 function emptyStore(): KnowledgeStore {
@@ -45,7 +45,7 @@ export async function saveKnowledgeStore(
   cwd: string,
   store: KnowledgeStore,
 ): Promise<void> {
-  await mkdir(join(cwd, ".claude-code-lite"), { recursive: true });
+  await mkdir(join(cwd, ".irg"), { recursive: true });
   await writeFile(
     getKnowledgePath(cwd),
     JSON.stringify(store, null, 2),

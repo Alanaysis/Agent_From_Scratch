@@ -16,12 +16,12 @@ describe('LLM Module - Integration Tests', () => {
     vi.clearAllMocks();
     // Reset environment before each test
     process.env = { ...originalEnv };
-    delete process.env.CCL_LLM_API_KEY;
-    delete process.env.CCL_LLM_MODEL;
-    delete process.env.CCL_LLM_PROVIDER;
-    delete process.env.CCL_LLM_BASE_URL;
-    delete process.env.CCL_LLM_SYSTEM_PROMPT;
-    delete process.env.CCL_ANTHROPIC_VERSION;
+    delete process.env.IRG_LLM_API_KEY;
+    delete process.env.IRG_LLM_MODEL;
+    delete process.env.IRG_LLM_PROVIDER;
+    delete process.env.IRG_LLM_BASE_URL;
+    delete process.env.IRG_LLM_SYSTEM_PROMPT;
+    delete process.env.IRG_ANTHROPIC_VERSION;
   });
 
   afterEach(async () => {
@@ -38,8 +38,8 @@ describe('LLM Module - Integration Tests', () => {
       // We need to access the private extractOpenAiText function
       // Since it's not exported, we test indirectly through runLlmTurn
 
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -92,8 +92,8 @@ data: [DONE]
     });
 
     it('handles array content with text blocks', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -137,8 +137,8 @@ data: [DONE]
     });
 
     it('handles empty content gracefully', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -157,8 +157,8 @@ data: [DONE]
     });
 
     it('handles null content in response', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -201,8 +201,8 @@ data: [DONE]
     });
 
     it('handles undefined content in response', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -247,8 +247,8 @@ data: [DONE]
 
   describe('parseToolArguments - helper function', () => {
     it('parses valid JSON correctly', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -299,8 +299,8 @@ data: [DONE]
     });
 
     it('handles empty string arguments', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -345,8 +345,8 @@ data: [DONE]
     });
 
     it('falls back to raw object when JSON parsing fails', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -391,8 +391,8 @@ data: [DONE]
     });
 
     it('handles null arguments', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -439,8 +439,8 @@ data: [DONE]
 
   describe('readSseEvents - streaming handler', () => {
     it('handles multiple SSE events correctly', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -501,8 +501,8 @@ data: [DONE]
     });
 
     it('handles incomplete SSE frames gracefully', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -550,8 +550,8 @@ data: [DONE]
     });
 
     it('handles malformed data lines', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -601,8 +601,8 @@ data: [DONE]
     });
 
     it('handles empty data lines', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -652,8 +652,8 @@ data: [DONE]
     });
 
     it('handles [DONE] marker correctly', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -689,8 +689,8 @@ data: [DONE]
     });
 
     it('handles missing response body', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -709,8 +709,8 @@ data: [DONE]
 
   describe('OpenAI Provider - Tool Call Handling', () => {
     it('handles multiple tool calls in sequence', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -765,8 +765,8 @@ data: [DONE]
     });
 
     it('handles incremental tool call arguments', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -837,8 +837,8 @@ data: [DONE]
     });
 
     it('handles tool call with missing id', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -885,9 +885,9 @@ data: [DONE]
 
   describe('Anthropic Provider - Tool Call Handling', () => {
     beforeEach(() => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'claude-3-opus';
-      process.env.CCL_LLM_PROVIDER = 'anthropic';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'claude-3-opus';
+      process.env.IRG_LLM_PROVIDER = 'anthropic';
     });
 
     it('handles tool_use content_block_start event', async () => {
@@ -1148,9 +1148,9 @@ data: {"type":"message_stop"}
 
   describe('getProvider - provider selection', () => {
     it('selects OpenAI provider for openai config', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
-      process.env.CCL_LLM_PROVIDER = 'openai';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_PROVIDER = 'openai';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -1173,9 +1173,9 @@ data: {"type":"message_stop"}
     });
 
     it('selects Anthropic provider for anthropic config', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'claude-3-opus';
-      process.env.CCL_LLM_PROVIDER = 'anthropic';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'claude-3-opus';
+      process.env.IRG_LLM_PROVIDER = 'anthropic';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -1203,8 +1203,8 @@ data: {"type":"message_stop"}
     });
 
     it('defaults to OpenAI when provider is not anthropic', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
       // No provider specified - should default to openai
 
       mockFetch.mockResolvedValue({
@@ -1229,8 +1229,8 @@ data: {"type":"message_stop"}
 
   describe('runLlmTurn - comprehensive scenarios', () => {
     it('handles complete conversation with tool calls and responses', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       // First call returns a tool use
       mockFetch.mockResolvedValue({
@@ -1278,8 +1278,8 @@ data: [DONE]
     });
 
     it('handles empty messages array', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -1298,8 +1298,8 @@ data: [DONE]
     });
 
     it('handles empty systemPrompt array', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -1318,8 +1318,8 @@ data: [DONE]
     });
 
     it('handles empty tools array', async () => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
 
       mockFetch.mockResolvedValue({
         ok: true,

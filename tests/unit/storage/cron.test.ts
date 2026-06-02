@@ -15,7 +15,7 @@ import {
 const TEST_DIR = join('/tmp', 'cron-test-' + Date.now());
 
 beforeEach(async () => {
-  await mkdir(join(TEST_DIR, '.claude-code-lite', 'cron'), { recursive: true });
+  await mkdir(join(TEST_DIR, '.irg', 'cron'), { recursive: true });
 });
 
 afterEach(async () => {

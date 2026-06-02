@@ -12,16 +12,16 @@ import type { Task } from '@/types'
 
 const columns: { id: Task['status']; label: string; color: string; icon: React.ReactNode }[] = [
   { id: 'todo', label: 'To Do', color: '#3b82f6', icon: <ChevronRight size={12} /> },
-  { id: 'in_progress', label: 'In Progress', color: '#f59e0b', icon: <Loader2 size={12} /> },
-  { id: 'verify', label: 'Verify', color: '#a855f7', icon: <Eye size={12} /> },
-  { id: 'done', label: 'Done', color: '#22c55e', icon: <CheckCircle2 size={12} /> },
-  { id: 'failed', label: 'Failed', color: '#ef4444', icon: <XCircle size={12} /> },
+  { id: 'in_progress', label: 'In Progress', color: 'var(--amber)', icon: <Loader2 size={12} /> },
+  { id: 'verify', label: 'Verify', color: '#7b68c0', icon: <Eye size={12} /> },
+  { id: 'done', label: 'Done', color: '#5cb85c', icon: <CheckCircle2 size={12} /> },
+  { id: 'failed', label: 'Failed', color: 'var(--warm-red)', icon: <XCircle size={12} /> },
 ]
 
 const priorityConfig = {
-  low: { color: '#666', bg: 'rgba(102,102,102,0.15)', label: 'L' },
-  medium: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', label: 'M' },
-  high: { color: '#ef4444', bg: 'rgba(239,68,68,0.15)', label: 'H' },
+  low: { color: 'var(--text-muted)', bg: 'rgba(102,102,102,0.12)', label: 'LOW' },
+  medium: { color: 'var(--amber)', bg: 'rgba(245,158,11,0.12)', label: 'MED' },
+  high: { color: 'var(--warm-red)', bg: 'rgba(239,68,68,0.12)', label: 'HI' },
 }
 
 export function KanbanView() {
@@ -94,11 +94,13 @@ export function KanbanView() {
         alignItems: 'center',
         justifyContent: 'center',
         height: '100%',
-        backgroundColor: '#0a0a0a',
-        color: '#666',
+        backgroundColor: 'var(--surface-0)',
+        color: 'var(--text-muted)',
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        fontSize: 12,
         gap: 8,
       }}>
-        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', color: 'var(--amber)' }} />
         Loading tasks...
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -109,8 +111,9 @@ export function KanbanView() {
     <div style={{
       display: 'flex',
       height: '100%',
-      backgroundColor: '#0a0a0a',
-      overflow: 'hidden'
+      backgroundColor: 'var(--surface-0)',
+      overflow: 'hidden',
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       <div style={{
         flex: 1,
@@ -128,9 +131,9 @@ export function KanbanView() {
               flexDirection: 'column',
               flex: 1,
               minWidth: 0,
-              backgroundColor: '#111',
-              borderRadius: 10,
-              border: '1px solid #1a1a1a',
+              backgroundColor: 'var(--surface-1)',
+              borderRadius: 0,
+              border: '1px solid var(--border-subtle)',
               overflow: 'hidden'
             }}>
               {/* Column header */}
@@ -139,16 +142,17 @@ export function KanbanView() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '10px 12px',
-                borderBottom: '1px solid #1a1a1a',
+                borderBottom: '1px solid var(--border-subtle)',
+                borderTop: `2px solid ${col.color}`,
                 flexShrink: 0,
-                background: `linear-gradient(180deg, ${col.color}08 0%, transparent 100%)`,
+                backgroundColor: 'var(--surface-1)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{
                     width: 18,
                     height: 18,
-                    borderRadius: 4,
-                    backgroundColor: col.color + '20',
+                    borderRadius: 2,
+                    backgroundColor: 'var(--surface-2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -156,14 +160,24 @@ export function KanbanView() {
                   }}>
                     {col.icon}
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{col.label}</span>
                   <span style={{
-                    fontSize: 10,
-                    color: col.color,
-                    backgroundColor: col.color + '15',
-                    padding: '1px 6px',
-                    borderRadius: 10,
+                    fontSize: 11,
                     fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    letterSpacing: 0.3,
+                    textTransform: 'uppercase',
+                  }}>
+                    {col.label}
+                  </span>
+                  <span style={{
+                    fontSize: 9,
+                    color: 'var(--text-muted)',
+                    backgroundColor: 'var(--surface-2)',
+                    padding: '1px 6px',
+                    borderRadius: 0,
+                    fontWeight: 600,
+                    fontFamily: 'IBM Plex Mono, monospace',
                   }}>
                     {colTasks.length}
                   </span>
@@ -187,19 +201,20 @@ export function KanbanView() {
                   return (
                     <div key={task.id} style={{
                       padding: 10,
-                      backgroundColor: selectedTask?.id === task.id ? '#1a2a3a' : '#0d0d0d',
-                      borderRadius: 8,
-                      border: `1px solid ${selectedTask?.id === task.id ? col.color + '66' : blocked ? '#f59e0b33' : '#1a1a1a'}`,
+                      backgroundColor: selectedTask?.id === task.id ? 'var(--surface-2)' : 'var(--surface-0)',
+                      borderRadius: 0,
+                      border: `1px solid ${selectedTask?.id === task.id ? col.color : blocked ? 'var(--amber)' : 'var(--border-subtle)'}`,
                       cursor: 'pointer',
-                      transition: 'all 0.15s',
+                      transition: 'background-color 0.15s',
                       position: 'relative',
+                      boxShadow: 'none',
                     }}
                       onClick={() => handleTaskClick(task)}
                       onMouseEnter={(e) => {
-                        if (selectedTask?.id !== task.id) e.currentTarget.style.borderColor = col.color + '44'
+                        if (selectedTask?.id !== task.id) e.currentTarget.style.backgroundColor = 'var(--surface-1)'
                       }}
                       onMouseLeave={(e) => {
-                        if (selectedTask?.id !== task.id) e.currentTarget.style.borderColor = blocked ? '#f59e0b33' : '#1a1a1a'
+                        if (selectedTask?.id !== task.id) e.currentTarget.style.backgroundColor = 'var(--surface-0)'
                       }}
                     >
                       {/* Blocked indicator */}
@@ -210,12 +225,21 @@ export function KanbanView() {
                           gap: 4,
                           marginBottom: 6,
                           padding: '3px 6px',
-                          borderRadius: 4,
-                          backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                          border: '1px dashed rgba(245, 158, 11, 0.3)',
+                          borderRadius: 0,
+                          backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                          border: '1px dashed var(--amber)',
                         }}>
-                          <Link2 size={9} color="#f59e0b" />
-                          <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 500 }}>Blocked by dependency</span>
+                          <Link2 size={9} color="var(--amber)" />
+                          <span style={{
+                            fontSize: 9,
+                            color: 'var(--amber)',
+                            fontWeight: 500,
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.3,
+                          }}>
+                            Blocked by dependency
+                          </span>
                         </div>
                       )}
 
@@ -224,7 +248,7 @@ export function KanbanView() {
                         <div style={{
                           width: 3,
                           height: 32,
-                          borderRadius: 2,
+                          borderRadius: 0,
                           backgroundColor: pCfg.color,
                           flexShrink: 0,
                           marginTop: 1,
@@ -234,7 +258,7 @@ export function KanbanView() {
                           <h4 style={{
                             fontSize: 12,
                             fontWeight: 500,
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             marginBottom: 4,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -247,7 +271,7 @@ export function KanbanView() {
                           {task.description && (
                             <p style={{
                               fontSize: 10,
-                              color: '#555',
+                              color: 'var(--text-muted)',
                               marginBottom: 6,
                               lineHeight: 1.3,
                               overflow: 'hidden',
@@ -270,8 +294,10 @@ export function KanbanView() {
                                 color: pCfg.color,
                                 backgroundColor: pCfg.bg,
                                 padding: '1px 4px',
-                                borderRadius: 3,
-                                letterSpacing: 0.5,
+                                borderRadius: 0,
+                                letterSpacing: 0.8,
+                                fontFamily: 'IBM Plex Mono, monospace',
+                                textTransform: 'uppercase',
                               }}>
                                 {pCfg.label}
                               </span>
@@ -282,9 +308,16 @@ export function KanbanView() {
                                   <img
                                     src={pixelAvatarToDataUrl(task.assignee, 14)}
                                     alt={task.assignee}
-                                    style={{ width: 14, height: 14, borderRadius: 3 }}
+                                    style={{ width: 14, height: 14, borderRadius: 0 }}
                                   />
-                                  <span style={{ fontSize: 9, color: agentColor, fontWeight: 500 }}>{task.assignee}</span>
+                                  <span style={{
+                                    fontSize: 9,
+                                    color: agentColor,
+                                    fontWeight: 500,
+                                    fontFamily: 'IBM Plex Mono, monospace',
+                                  }}>
+                                    {task.assignee}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -292,13 +325,27 @@ export function KanbanView() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               {/* Dependency count */}
                               {task.dependsOn && task.dependsOn.length > 0 && (
-                                <span style={{ fontSize: 9, color: '#555', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <span style={{
+                                  fontSize: 9,
+                                  color: 'var(--text-faint)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                  fontFamily: 'IBM Plex Mono, monospace',
+                                }}>
                                   <Link2 size={8} />
                                   {task.dependsOn.length}
                                 </span>
                               )}
 
-                              <span style={{ fontSize: 9, color: '#444', display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <span style={{
+                                fontSize: 9,
+                                color: 'var(--text-faint)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                fontFamily: 'IBM Plex Mono, monospace',
+                              }}>
                                 <Clock size={8} />
                                 {formatDistanceToNow(task.updatedAt, { addSuffix: false })}
                               </span>
@@ -317,7 +364,7 @@ export function KanbanView() {
                                 onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                 onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
                               >
-                                <Trash2 size={10} color="#888" />
+                                <Trash2 size={10} color="var(--text-muted)" />
                               </button>
                             </div>
                           </div>
@@ -338,16 +385,23 @@ export function KanbanView() {
                       flex: 1,
                       height: 30,
                       fontSize: 11,
-                      backgroundColor: '#0a0a0a',
-                      border: '1px solid #1a1a1a',
-                      borderRadius: 6,
+                      fontFamily: 'IBM Plex Sans, sans-serif',
+                      backgroundColor: 'var(--surface-0)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 0,
+                      color: 'var(--text-primary)',
                     }}
                   />
                   <Button
                     size="icon"
                     variant="ghost"
                     onClick={() => handleAddTask(col.id)}
-                    style={{ width: 30, height: 30, borderRadius: 6 }}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 0,
+                      color: 'var(--text-muted)',
+                    }}
                   >
                     <Plus size={12} />
                   </Button>

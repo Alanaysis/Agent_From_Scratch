@@ -2,50 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --radius: 0.5rem;
-  }
+/* ========================================
+   Obsidian Terminal — Global Theme
+   All custom properties on :root directly
+   so inline styles can access them via var()
+   ======================================== */
+
+:root {
+  /* shadcn/ui HSL tokens (space-separated, used with hsl()) */
+  --background: 0 0% 4.5%;
+  --foreground: 30 15% 88%;
+  --card: 0 0% 6.5%;
+  --card-foreground: 30 15% 88%;
+  --popover: 0 0% 6.5%;
+  --popover-foreground: 30 15% 88%;
+  --primary: 32 45% 65%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 0 0% 8.5%;
+  --secondary-foreground: 30 15% 88%;
+  --muted: 0 0% 8.5%;
+  --muted-foreground: 30 10% 45%;
+  --accent: 32 45% 65%;
+  --accent-foreground: 0 0% 4%;
+  --destructive: 0 55% 50%;
+  --destructive-foreground: 0 0% 95%;
+  --border: 32 20% 12%;
+  --input: 32 15% 10%;
+  --ring: 32 45% 65%;
+  --radius: 2px;
+
+  /* ====== Custom palette (valid CSS colors for var() in inline styles) ====== */
+
+  /* Accent: warm amber / copper / bronze */
+  --amber: #d4a574;
+  --copper: #c0785a;
+  --bronze: #8b7355;
+
+  /* Status (warm-shifted) */
+  --warm-green: #5cb85c;
+  --warm-red: #c05050;
+  --warm-purple: #7b68c0;
+
+  /* Surfaces (darkest → lightest) */
+  --surface-0: #0c0c0c;
+  --surface-1: #131313;
+  --surface-2: #1a1a1a;
+  --surface-3: #222222;
+
+  /* Text (brightest → dimmest) */
+  --text-primary: #ede6de;
+  --text-secondary: #a89888;
+  --text-muted: #6e6458;
+  --text-faint: #403830;
+
+  /* Borders (amber-tinted, subtle → strong) */
+  --border-subtle: rgba(212,165,116,0.07);
+  --border-medium: rgba(212,165,116,0.14);
+  --border-strong: rgba(212,165,116,0.25);
+
+  /* Glow */
+  --glow-amber: 0 0 12px rgba(212,165,116,0.15);
+  --glow-amber-strong: 0 0 20px rgba(212,165,116,0.25);
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+/* Noise texture overlay */
+.noise-bg::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.015'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
 
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(212,165,116,0.12); border-radius: 1px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212,165,116,0.25); }
+
+/* Glow utility */
+.glow-amber { box-shadow: var(--glow-amber); }
+.glow-amber-strong { box-shadow: var(--glow-amber-strong); }
+
+/* Markdown content */
 .markdown-content { @apply text-sm leading-relaxed; }
 .markdown-content p { @apply mb-3; }
 .markdown-content code { @apply rounded bg-muted px-1.5 py-0.5 font-mono text-xs; }
-.markdown-content pre { @apply mb-3 rounded-lg bg-muted p-3 overflow-x-auto; }
+.markdown-content pre { @apply mb-3 rounded-sm bg-muted p-3 overflow-x-auto; }
 .markdown-content pre code { @apply bg-transparent p-0; }
 .markdown-content ul, .markdown-content ol { @apply list-disc list-inside mb-3 space-y-1; }
 .markdown-content h1, .markdown-content h2, .markdown-content h3 { @apply font-semibold mb-2 mt-4; }
 .markdown-content h1 { @apply text-lg; }
 .markdown-content h2 { @apply text-base; }
 .markdown-content h3 { @apply text-sm; }
-.markdown-content a { @apply text-primary underline underline-offset-2; }
-.markdown-content blockquote { @apply border-l-2 border-muted-foreground/50 pl-3 italic text-muted-foreground mb-3; }
+.markdown-content a { @apply underline underline-offset-2; color: var(--amber); }
+.markdown-content blockquote { @apply border-l-2 pl-3 italic mb-3; border-color: var(--border-medium); color: var(--text-secondary); }
+
+/* Animations */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 8px rgba(212,165,116,0.1); } 50% { box-shadow: 0 0 16px rgba(212,165,116,0.25); } }
+@keyframes slide-in-right { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

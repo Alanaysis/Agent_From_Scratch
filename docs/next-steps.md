@@ -1,8 +1,8 @@
-# Claude Code-lite 下一步优化建议
+# IRG 下一步优化建议
 
 [English](./next-steps.en.md)
 
-这份文档面向准备把 `claude-code-lite` 发布到 GitHub、并作为 AI 编程 agent 参考项目的维护者。
+这份文档面向准备把 `irg` 发布到 GitHub、并作为 AI 编程 agent 参考项目的维护者。
 
 当前版本已经具备发布基础：
 
@@ -20,8 +20,8 @@
 
 当前已补：
 
-- `claude-code-lite/docs/architecture.md`
-- `claude-code-lite/docs/runtime-flow.md`
+- `irg/docs/architecture.md`
+- `irg/docs/runtime-flow.md`
 
 这些文档已经覆盖：
 
@@ -46,7 +46,7 @@
 
 当前已补：
 
-- `claude-code-lite/docs/core-interfaces.md`
+- `irg/docs/core-interfaces.md`
 
 ## 2. 第二优先级：把运行时做稳
 
@@ -296,10 +296,10 @@
 - `bun run build`
 - `bun run typecheck`
 - `npm pack --dry-run`
-- `node ./bin/claude-code-lite.js --help`
-- `node ./bin/claude-code-lite.js sessions`
-- `node ./bin/claude-code-lite.js inspect latest`
-- `node ./bin/claude-code-lite.js export-session latest --format markdown --output /tmp/session.md`
+- `node ./bin/irg.js --help`
+- `node ./bin/irg.js sessions`
+- `node ./bin/irg.js inspect latest`
+- `node ./bin/irg.js export-session latest --format markdown --output /tmp/session.md`
 
 如果这些都通过，这个版本就已经足够作为 GitHub 参考项目发布。
 
@@ -308,12 +308,12 @@
 当前默认发布形态仍然是：
 
 - `npm install -g .`
-- `node ./bin/claude-code-lite.js`
+- `node ./bin/irg.js`
 
 如果你希望像 Claude Code CLI 那样提供“单文件可执行入口”，当前项目可以直接使用 Bun 的 `--compile`：
 
 ```bash
-bun build --compile --outfile ./dist/claude-code-lite ./app/main.ts
+bun build --compile --outfile ./dist/irg ./app/main.ts
 ```
 
 这类产物的特点：

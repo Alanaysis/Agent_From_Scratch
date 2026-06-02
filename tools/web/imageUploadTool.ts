@@ -43,7 +43,7 @@ export const ImageUploadTool: Tool<ImageUploadInput, ImageUploadOutput> = {
     // Generate filename
     const timestamp = Date.now();
     const filename = `image_${timestamp}.${ext}`;
-    const imageDir = join(context.cwd, ".claude-code-lite", "images");
+    const imageDir = join(context.cwd, ".irg", "images");
 
     await mkdir(imageDir, { recursive: true });
     const filePath = join(imageDir, filename);

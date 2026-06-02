@@ -28,14 +28,14 @@ describe('Storage Transcript', () => {
     it('generates correct path with cwd and sessionId', () => {
       const testCwd = '/fake/cwd';
       const testSessionId = 'abc123';
-      const expectedPath = path.join(testCwd, '.claude-code-lite', 'transcripts', `${testSessionId}.jsonl`);
+      const expectedPath = path.join(testCwd, '.irg', 'transcripts', `${testSessionId}.jsonl`);
 
       expect(getTranscriptPath(testCwd, testSessionId)).toBe(expectedPath);
     });
 
     it('handles paths with trailing slashes', () => {
       const result = getTranscriptPath('/fake/cwd/', sessionId);
-      expect(result).toContain('.claude-code-lite');
+      expect(result).toContain('.irg');
       expect(result).toContain(`/${sessionId}.jsonl`);
     });
 
@@ -51,7 +51,7 @@ describe('Storage Transcript', () => {
       await appendTranscript(nonExistentDir, sessionId, []);
 
       // Directory should be created recursively
-      const dirExists = await fs.stat(path.join(nonExistentDir, '.claude-code-lite')).then(
+      const dirExists = await fs.stat(path.join(nonExistentDir, '.irg')).then(
         () => true,
         () => false
       );

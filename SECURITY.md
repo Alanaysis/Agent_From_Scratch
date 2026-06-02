@@ -2,7 +2,7 @@
 
 [English](./SECURITY.en.md)
 
-`claude-code-lite` 是一个本地优先的 AI agent CLI 参考实现。  
+`irg` 是一个本地优先的 AI agent CLI 参考实现。  
 它具备文件读写、shell 执行、网页抓取和会话恢复能力，因此安全边界主要集中在：
 
 - tool permission
@@ -53,8 +53,8 @@
 
 会话和工具结果会落到：
 
-- `.claude-code-lite/transcripts/`
-- `.claude-code-lite/sessions/`
+- `.irg/transcripts/`
+- `.irg/sessions/`
 
 如果工具结果里包含敏感内容，这些内容也可能被持久化。
 
@@ -62,7 +62,7 @@
 
 当前默认通过环境变量注入：
 
-- `CCL_LLM_API_KEY`
+- `IRG_LLM_API_KEY`
 
 不要把这些变量写进仓库、截图、issue 或导出文件。
 
@@ -70,6 +70,6 @@
 
 - 对高风险工具保持 `ask`
 - 不要在不可信目录里盲目运行 shell 动作
-- 定期清理 `.claude-code-lite/`
+- 定期清理 `.irg/`
 - 导出 transcript 前先检查是否包含敏感内容
 - 不要把真实 provider key 写进测试样例

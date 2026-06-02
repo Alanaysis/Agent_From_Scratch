@@ -16,12 +16,12 @@ describe('LLM Module', () => {
     vi.clearAllMocks();
     // Reset environment before each test
     process.env = { ...originalEnv };
-    delete process.env.CCL_LLM_API_KEY;
-    delete process.env.CCL_LLM_MODEL;
-    delete process.env.CCL_LLM_PROVIDER;
-    delete process.env.CCL_LLM_BASE_URL;
-    delete process.env.CCL_LLM_SYSTEM_PROMPT;
-    delete process.env.CCL_ANTHROPIC_VERSION;
+    delete process.env.IRG_LLM_API_KEY;
+    delete process.env.IRG_LLM_MODEL;
+    delete process.env.IRG_LLM_PROVIDER;
+    delete process.env.IRG_LLM_BASE_URL;
+    delete process.env.IRG_LLM_SYSTEM_PROMPT;
+    delete process.env.IRG_ANTHROPIC_VERSION;
   });
 
   afterEach(async () => {
@@ -35,7 +35,7 @@ describe('LLM Module', () => {
   describe('LlmConfigFromEnv', () => {
     it('returns null when API key is missing', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_MODEL = 'test-model';
 
       const config = getLlmConfigFromEnv();
       expect(config).toBeNull();
@@ -43,7 +43,7 @@ describe('LLM Module', () => {
 
     it('returns null when model is missing', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_API_KEY = 'test-key';
 
       const config = getLlmConfigFromEnv();
       expect(config).toBeNull();
@@ -51,8 +51,8 @@ describe('LLM Module', () => {
 
     it('returns config with default values when only required fields are set', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
 
       const config = getLlmConfigFromEnv();
 
@@ -63,11 +63,11 @@ describe('LLM Module', () => {
       expect(config?.baseUrl).toBe('https://api.openai.com/v1');
     });
 
-    it('uses anthropic when CCL_LLM_PROVIDER is set to anthropic', async () => {
+    it('uses anthropic when IRG_LLM_PROVIDER is set to anthropic', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_PROVIDER = 'anthropic';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_PROVIDER = 'anthropic';
 
       const config = getLlmConfigFromEnv();
 
@@ -77,9 +77,9 @@ describe('LLM Module', () => {
 
     it('uses custom base URL when provided', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_BASE_URL = 'https://custom.api.com/v1';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_BASE_URL = 'https://custom.api.com/v1';
 
       const config = getLlmConfigFromEnv();
 
@@ -88,9 +88,9 @@ describe('LLM Module', () => {
 
     it('strips trailing slash from custom base URL', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_BASE_URL = 'https://custom.api.com/v1/';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_BASE_URL = 'https://custom.api.com/v1/';
 
       const config = getLlmConfigFromEnv();
 
@@ -99,9 +99,9 @@ describe('LLM Module', () => {
 
     it('includes system prompt when provided', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_SYSTEM_PROMPT = 'You are a helpful assistant';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_SYSTEM_PROMPT = 'You are a helpful assistant';
 
       const config = getLlmConfigFromEnv();
 
@@ -110,9 +110,9 @@ describe('LLM Module', () => {
 
     it('includes anthropic version when provided', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_ANTHROPIC_VERSION = '2024-01-01';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_ANTHROPIC_VERSION = '2024-01-01';
 
       const config = getLlmConfigFromEnv();
 
@@ -121,9 +121,9 @@ describe('LLM Module', () => {
 
     it('has default anthropic version when not provided', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_PROVIDER = 'anthropic';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_PROVIDER = 'anthropic';
 
       const config = getLlmConfigFromEnv();
 
@@ -132,9 +132,9 @@ describe('LLM Module', () => {
 
     it('handles case-insensitive provider value', async () => {
       const { getLlmConfigFromEnv } = await import('../../../runtime/llm');
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
-      process.env.CCL_LLM_PROVIDER = 'ANTHROPIC';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_PROVIDER = 'ANTHROPIC';
 
       const config = getLlmConfigFromEnv();
 
@@ -145,9 +145,9 @@ describe('LLM Module', () => {
   describe('OpenAI Provider', () => {
     beforeEach(() => {
       // Set up default env for OpenAI tests
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'gpt-4o';
-      process.env.CCL_LLM_PROVIDER = 'openai';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'gpt-4o';
+      process.env.IRG_LLM_PROVIDER = 'openai';
     });
 
     it('makes correct request to OpenAI API', async () => {
@@ -209,7 +209,7 @@ describe('LLM Module', () => {
     it('includes custom system prompt from config when provided', async () => {
       const { runLlmTurn, getLlmConfigFromEnv } = await import('../../../runtime/llm');
 
-      process.env.CCL_LLM_SYSTEM_PROMPT = 'Custom system prompt';
+      process.env.IRG_LLM_SYSTEM_PROMPT = 'Custom system prompt';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -578,9 +578,9 @@ describe('LLM Module', () => {
 
   describe('Anthropic Provider', () => {
     beforeEach(() => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'claude-3-opus';
-      process.env.CCL_LLM_PROVIDER = 'anthropic';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'claude-3-opus';
+      process.env.IRG_LLM_PROVIDER = 'anthropic';
     });
 
     it('makes correct request to Anthropic API', async () => {
@@ -762,7 +762,7 @@ describe('LLM Module', () => {
     it('uses custom anthropic version when provided', async () => {
       const { runLlmTurn } = await import('../../../runtime/llm');
 
-      process.env.CCL_ANTHROPIC_VERSION = '2024-01-01';
+      process.env.IRG_ANTHROPIC_VERSION = '2024-01-01';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -965,8 +965,8 @@ describe('LLM Module', () => {
       const { runLlmTurn } = await import('../../../runtime/llm');
 
       // Ensure no env vars are set
-      delete process.env.CCL_LLM_API_KEY;
-      delete process.env.CCL_LLM_MODEL;
+      delete process.env.IRG_LLM_API_KEY;
+      delete process.env.IRG_LLM_MODEL;
 
       await expect(
         runLlmTurn({
@@ -979,8 +979,8 @@ describe('LLM Module', () => {
 
     it('handles missing response body gracefully', async () => {
       // Set up required env vars first
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
 
       const { runLlmTurn } = await import('../../../runtime/llm');
 
@@ -1265,8 +1265,8 @@ describe('LLM Module', () => {
 
   describe('Message Type Compliance', () => {
     beforeEach(() => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
     });
 
     it('handles user messages with string content correctly', async () => {
@@ -1312,8 +1312,8 @@ describe('LLM Module', () => {
 
   describe('Streaming Handler', () => {
     beforeEach(() => {
-      process.env.CCL_LLM_API_KEY = 'test-key';
-      process.env.CCL_LLM_MODEL = 'test-model';
+      process.env.IRG_LLM_API_KEY = 'test-key';
+      process.env.IRG_LLM_MODEL = 'test-model';
     });
 
     it('handles SSE event parsing correctly', async () => {
@@ -1349,8 +1349,8 @@ describe('LLM Module', () => {
 
 describe('Anthropic Error Handling', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
     mockFetch.mockClear();
   });
 
@@ -1401,8 +1401,8 @@ describe('Anthropic Error Handling', () => {
 
 describe('Anthropic Text Block Length Check', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
     mockFetch.mockClear();
   });
 
@@ -1457,8 +1457,8 @@ describe('Anthropic Text Block Length Check', () => {
 
 describe('Anthropic Input JSON Delta Handling', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
     mockFetch.mockClear();
   });
 
@@ -1546,15 +1546,15 @@ describe('Anthropic Input JSON Delta Handling', () => {
 
 describe('Anthropic Config System Prompt', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
     mockFetch.mockClear();
   });
 
   it('handles config with systemPrompt defined (line 437)', async () => {
     const { runLlmTurn, getLlmConfigFromEnv } = await import('../../../runtime/llm');
 
-    process.env.CCL_LLM_SYSTEM_PROMPT = 'Custom system instruction';
+    process.env.IRG_LLM_SYSTEM_PROMPT = 'Custom system instruction';
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -1603,8 +1603,8 @@ describe('Anthropic Config System Prompt', () => {
 
 describe('Anthropic Streaming Edge Cases', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
     mockFetch.mockClear();
   });
 

@@ -13,6 +13,8 @@ export type TaskDraft = {
   dependsOnTempIds?: string[];
   acceptanceCriteria?: string[];
   relatedDocumentTempIds?: string[];
+  requiresApproval?: boolean;
+  approvalMessage?: string;
 };
 
 export type DocumentDraft = {
@@ -208,6 +210,8 @@ export async function approveProposal(
         assignee: draft.agent,
         createdBy: proposal.createdBy,
         acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
+        requiresApproval: draft.requiresApproval || false,
+        approvalMessage: draft.approvalMessage,
       });
 
       createdTasks.push({ id: taskId, title: draft.title });

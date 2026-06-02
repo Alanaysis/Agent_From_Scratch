@@ -1,8 +1,8 @@
-# Claude Code-lite Architecture
+# IRG Architecture
 
 [English](./architecture.en.md)
 
-这份文档描述 `claude-code-lite` 当前已经落地的架构，而不是理想化设计稿。
+这份文档描述 `irg` 当前已经落地的架构，而不是理想化设计稿。
 
 如果你准备基于这个项目继续做 AI 编程 agent，这份文档的目标是帮你先建立稳定心智模型，再去改代码。
 
@@ -20,7 +20,7 @@
 对应目录：
 
 ```text
-claude-code-lite/
+irg/
   app/           # TUI / REPL / headless CLI
   runtime/       # query loop / llm / messages / session / state
   tools/         # Tool 协议与工具实现
@@ -171,8 +171,8 @@ flowchart TD
 
 当环境变量存在时：
 
-- `CCL_LLM_API_KEY`
-- `CCL_LLM_MODEL`
+- `IRG_LLM_API_KEY`
+- `IRG_LLM_MODEL`
 
 `query()` 会调用 [runtime/llm.ts](../runtime/llm.ts)。
 
@@ -336,8 +336,8 @@ flowchart TD
     S --> T[appendTranscript]
     S --> I[updateSessionInfo]
 
-    T --> TJ[.claude-code-lite/transcripts/<id>.jsonl]
-    I --> SJ[.claude-code-lite/sessions/<id>.json]
+    T --> TJ[.irg/transcripts/<id>.jsonl]
+    I --> SJ[.irg/sessions/<id>.json]
 ```
 
 ## 10. LLM Provider 层

@@ -2,11 +2,11 @@
 
 [中文](./github-release-kit.md)
 
-This document helps you publish `claude-code-lite` as a GitHub repository with ready-to-use description text, topics, and initial release notes.
+This document helps you publish `irg` as a GitHub repository with ready-to-use description text, topics, and initial release notes.
 
 ## 1. Suggested Repository Name
 
-- `claude-code-lite`
+- `irg`
 
 ## 2. Suggested Repository Description
 
@@ -57,7 +57,7 @@ Current preview asset:
 ### Release Notes
 
 ```md
-## Claude Code-lite v0.1.0
+## IRG v0.1.0
 
 Initial public release of a local-first AI coding agent CLI reference implementation.
 
@@ -96,5 +96,5 @@ bun run build
 bun run typecheck
 npm pack --dry-run
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```

@@ -35,13 +35,14 @@ async function duckduckgoSearch(query: string, maxResults: number = 10): Promise
   const titleRegex = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
   const snippetRegex = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]+href="[^"]+"[^>]*>([^<]+)<\/a>/g;
 
-  let titleMatch;
+  let titleMatch: RegExpExecArray | null;
   while ((titleMatch = titleRegex.exec(html)) !== null && results.length < maxResults) {
-    const href = titleMatch[1].replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
+    const matchUrl = titleMatch[1];
+    const href = matchUrl.replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
       try {
         return decodeURIComponent(u);
       } catch {
-        return titleMatch[1];
+        return matchUrl;
       }
     });
     results.push({
@@ -52,7 +53,7 @@ async function duckduckgoSearch(query: string, maxResults: number = 10): Promise
   }
 
   // Extract snippets
-  let snippetMatch;
+  let snippetMatch: RegExpExecArray | null;
   while ((snippetMatch = snippetRegex.exec(html)) !== null && results.length < maxResults) {
     if (results.length > 0 && results[results.length - 1].snippet === "") {
       results[results.length - 1].snippet = snippetMatch[1].trim();
@@ -93,7 +94,7 @@ async function duckduckgoInstantAnswer(query: string): Promise<Array<{
 
     if (!response.ok) return [];
 
-    const data = await response.json();
+    const data = await response.json() as { RelatedTopics?: Array<{ Text?: string; URL?: string; Icon?: { URL?: string } }> };
 
     const results: Array<{ text: string; url: string; icon: string }> = [];
 

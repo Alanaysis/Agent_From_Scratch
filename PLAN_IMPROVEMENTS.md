@@ -21,7 +21,7 @@ Make the project capable of the main functionality that a real Claude Code / Her
 ### 1.3 Image Upload & Analysis
 - New tool: `ImageUpload` - accept base64 image, store in session
 - New tool: `ImageAnalyze` - send image to LLM provider for vision
-- Store uploaded images in `.claude-code-lite/images/`
+- Store uploaded images in `.irg/images/`
 - Support Claude and OpenAI vision APIs
 
 ### 1.4 Web Search Tool
@@ -34,7 +34,7 @@ Make the project capable of the main functionality that a real Claude Code / Her
 - New tool: `ImageGenerate` - generate images via API
 - `prompt` param, `size` param, `model` param
 - Support multiple backends (OpenAI DALL-E, Stability AI, etc.)
-- Save to `.claude-code-lite/images/`
+- Save to `.irg/images/`
 
 ## Phase 2: Conversation Management
 
@@ -56,7 +56,7 @@ Make the project capable of the main functionality that a real Claude Code / Her
 
 ### 2.4 File Write Protection
 - Create backup before Write/Edit operations
-- Store in `.claude-code-lite/backups/`
+- Store in `.irg/backups/`
 - Reference in tool output for easy recovery
 
 ## Phase 3: Advanced Features
@@ -70,12 +70,12 @@ Make the project capable of the main functionality that a real Claude Code / Her
 ### 3.2 Cron Job System
 - Schedule recurring agent tasks
 - `cron list`, `cron create`, `cron remove` CLI commands
-- Store jobs in `.claude-code-lite/cron/`
+- Store jobs in `.irg/cron/`
 - Simple cron expression format
 
 ### 3.3 Better Permissions Model
 - Per-tool permission modes (allow/ask/deny)
-- Save permission rules to `.claude-code-lite/permissions.json`
+- Save permission rules to `.irg/permissions.json`
 - Import/export permission configs
 - Pattern matching for file paths and commands
 

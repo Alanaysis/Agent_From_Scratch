@@ -2,7 +2,7 @@
 
 [English](./CONTRIBUTING.en.md)
 
-感谢你对 `claude-code-lite` 的关注。
+感谢你对 `irg` 的关注。
 
 这个项目的定位不是“完整产品”，而是：
 
@@ -32,18 +32,18 @@
 ## 本地开发
 
 ```bash
-cd claude-code-lite
+cd irg
 npm install
 bun run build
 bun run typecheck
-node ./bin/claude-code-lite.js --help
+node ./bin/irg.js --help
 ```
 
 独立可执行文件构建：
 
 ```bash
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```
 
 ## 提交前检查
@@ -53,16 +53,16 @@ bun run build:exe
 ```bash
 bun run build
 bun run typecheck
-node ./bin/claude-code-lite.js --help
-node ./bin/claude-code-lite.js sessions
+node ./bin/irg.js --help
+node ./bin/irg.js sessions
 ```
 
 如果你改了会话导出、清理、恢复相关逻辑，建议再跑：
 
 ```bash
-node ./bin/claude-code-lite.js inspect latest
-node ./bin/claude-code-lite.js export-session latest --format markdown --output /tmp/session.md
-node ./bin/claude-code-lite.js cleanup-sessions --status needs_attention --dry-run --older-than 0
+node ./bin/irg.js inspect latest
+node ./bin/irg.js export-session latest --format markdown --output /tmp/session.md
+node ./bin/irg.js cleanup-sessions --status needs_attention --dry-run --older-than 0
 ```
 
 ## 代码风格
@@ -95,12 +95,12 @@ node ./bin/claude-code-lite.js cleanup-sessions --status needs_attention --dry-r
 
 运行时需要的变量看：
 
-- `CCL_LLM_PROVIDER`
-- `CCL_LLM_API_KEY`
-- `CCL_LLM_MODEL`
-- `CCL_LLM_BASE_URL`
-- `CCL_LLM_SYSTEM_PROMPT`
-- `CCL_ANTHROPIC_VERSION`
+- `IRG_LLM_PROVIDER`
+- `IRG_LLM_API_KEY`
+- `IRG_LLM_MODEL`
+- `IRG_LLM_BASE_URL`
+- `IRG_LLM_SYSTEM_PROMPT`
+- `IRG_ANTHROPIC_VERSION`
 
 ## 讨论原则
 

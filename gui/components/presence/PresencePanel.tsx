@@ -7,11 +7,11 @@ import { Bot, Loader2, Wifi, WifiOff } from 'lucide-react'
 import type { AgentPresence } from '@/types'
 
 const statusConfig = {
-  idle: { color: '#666', label: 'Idle', animate: false },
-  thinking: { color: '#f59e0b', label: 'Thinking', animate: true },
+  idle: { color: 'var(--text-muted)', label: 'Idle', animate: false },
+  thinking: { color: 'var(--amber)', label: 'Thinking', animate: true },
   running: { color: '#3b82f6', label: 'Working', animate: true },
-  waiting: { color: '#a855f7', label: 'Waiting', animate: false },
-  error: { color: '#ef4444', label: 'Error', animate: false },
+  waiting: { color: '#7b68c0', label: 'Waiting', animate: false },
+  error: { color: 'var(--warm-red)', label: 'Error', animate: false },
 } as const
 
 function AgentCard({ presence }: { presence: AgentPresence }) {
@@ -27,20 +27,20 @@ function AgentCard({ presence }: { presence: AgentPresence }) {
       alignItems: 'center',
       gap: 10,
       padding: '8px 10px',
-      borderRadius: 8,
-      backgroundColor: '#0d0d0d',
-      border: `1px solid ${isStale ? '#1a1a1a' : agentColor + '33'}`,
+      borderRadius: 0,
+      backgroundColor: 'var(--surface-0)',
+      border: `1px solid ${isStale ? 'var(--border-subtle)' : agentColor + '33'}`,
       opacity: isStale ? 0.5 : 1,
-      transition: 'all 0.2s',
+      transition: 'border-color 0.2s',
     }}>
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <img
           src={avatarUrl}
           alt={presence.agentName}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 6,
+            width: 32,
+            height: 32,
+            borderRadius: 0,
             display: 'block',
           }}
         />
@@ -49,11 +49,11 @@ function AgentCard({ presence }: { presence: AgentPresence }) {
           position: 'absolute',
           bottom: -2,
           right: -2,
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
+          width: 8,
+          height: 8,
+          borderRadius: 0,
           backgroundColor: cfg.color,
-          border: '2px solid #0d0d0d',
+          border: '2px solid var(--surface-0)',
           animation: cfg.animate ? 'pulse 2s ease-in-out infinite' : 'none',
         }} />
       </div>
@@ -68,10 +68,11 @@ function AgentCard({ presence }: { presence: AgentPresence }) {
           <span style={{
             fontSize: 12,
             fontWeight: 600,
-            color: '#fff',
+            color: 'var(--text-primary)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            fontFamily: 'IBM Plex Sans, sans-serif',
           }}>
             {presence.agentName}
           </span>
@@ -90,13 +91,14 @@ function AgentCard({ presence }: { presence: AgentPresence }) {
           display: 'flex',
           alignItems: 'center',
           gap: 4,
+          fontFamily: 'IBM Plex Mono, monospace',
         }}>
           <span>{cfg.label}</span>
           {presence.currentTask && (
             <>
-              <span style={{ color: '#444' }}>·</span>
+              <span style={{ color: 'var(--text-faint)' }}>·</span>
               <span style={{
-                color: '#888',
+                color: 'var(--text-muted)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -129,8 +131,9 @@ export function PresencePanel() {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: 6,
+      gap: 4,
       padding: 4,
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       {/* Connection status */}
       <div style={{
@@ -139,7 +142,8 @@ export function PresencePanel() {
         gap: 6,
         padding: '6px 8px',
         fontSize: 10,
-        color: backendConnected ? '#22c55e' : '#ef4444',
+        color: backendConnected ? '#5cb85c' : 'var(--warm-red)',
+        fontFamily: 'IBM Plex Mono, monospace',
       }}>
         {backendConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
         <span>{backendConnected ? 'Connected' : 'Disconnected'}</span>
@@ -149,16 +153,16 @@ export function PresencePanel() {
         <div style={{
           padding: '16px 8px',
           textAlign: 'center',
-          color: '#444',
+          color: 'var(--text-faint)',
           fontSize: 11,
         }}>
-          <Bot size={20} color="#333" style={{ margin: '0 auto 6px' }} />
+          <Bot size={20} color="var(--text-faint)" style={{ margin: '0 auto 6px', opacity: 0.4 }} />
           <div>No agents active</div>
         </div>
       ) : (
         <>
           {activeAgents.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {activeAgents.map((p) => (
                 <AgentCard key={p.agentId} presence={p} />
               ))}
@@ -169,14 +173,15 @@ export function PresencePanel() {
             <>
               <div style={{
                 fontSize: 9,
-                color: '#444',
+                color: 'var(--text-faint)',
                 textTransform: 'uppercase',
-                letterSpacing: 1,
-                padding: '4px 8px 0',
+                letterSpacing: '0.1em',
+                padding: '6px 8px 2px',
+                fontFamily: 'IBM Plex Mono, monospace',
               }}>
                 Recently Active
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: 0.6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, opacity: 0.5 }}>
                 {staleAgents.map((p) => (
                   <AgentCard key={p.agentId} presence={p} />
                 ))}

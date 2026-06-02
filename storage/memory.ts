@@ -5,7 +5,7 @@ import { loadKnowledgeStore, knowledgeToSystemPrompt } from "./knowledge";
 const MEMORY_CHAR_LIMIT = 3575;
 
 function getMemoryPath(cwd: string): string {
-  return join(cwd, ".claude-code-lite", "Memory.md");
+  return join(cwd, ".irg", "Memory.md");
 }
 
 export async function loadMemory(cwd: string): Promise<string> {
@@ -17,7 +17,7 @@ export async function loadMemory(cwd: string): Promise<string> {
 }
 
 export async function saveMemory(cwd: string, content: string): Promise<void> {
-  await mkdir(join(cwd, ".claude-code-lite"), { recursive: true });
+  await mkdir(join(cwd, ".irg"), { recursive: true });
   const truncated =
     content.length > MEMORY_CHAR_LIMIT
       ? content.slice(0, MEMORY_CHAR_LIMIT)

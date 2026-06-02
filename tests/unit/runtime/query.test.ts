@@ -1076,13 +1076,13 @@ describe('queryWithPlanner execution paths', () => {
 
 describe('LLM integration - error paths', () => {
   beforeEach(() => {
-    process.env.CCL_LLM_API_KEY = 'test-key';
-    process.env.CCL_LLM_MODEL = 'test-model';
+    process.env.IRG_LLM_API_KEY = 'test-key';
+    process.env.IRG_LLM_MODEL = 'test-model';
   });
 
   afterEach(() => {
-    delete process.env.CCL_LLM_API_KEY;
-    delete process.env.CCL_LLM_MODEL;
+    delete process.env.IRG_LLM_API_KEY;
+    delete process.env.IRG_LLM_MODEL;
   });
 
   it('falls back to planner when LLM throws network error', async () => {

@@ -2,7 +2,7 @@
 
 [中文](./CONTRIBUTING.md)
 
-Thanks for your interest in `claude-code-lite`.
+Thanks for your interest in `irg`.
 
 This repository is intentionally positioned as:
 
@@ -30,18 +30,18 @@ This repository is intentionally positioned as:
 ## Local Development
 
 ```bash
-cd claude-code-lite
+cd irg
 npm install
 bun run build
 bun run typecheck
-node ./bin/claude-code-lite.js --help
+node ./bin/irg.js --help
 ```
 
 Standalone executable:
 
 ```bash
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```
 
 ## Before Opening a PR
@@ -51,16 +51,16 @@ At minimum, run:
 ```bash
 bun run build
 bun run typecheck
-node ./bin/claude-code-lite.js --help
-node ./bin/claude-code-lite.js sessions
+node ./bin/irg.js --help
+node ./bin/irg.js sessions
 ```
 
 If you changed session/export/cleanup behavior, also run:
 
 ```bash
-node ./bin/claude-code-lite.js inspect latest
-node ./bin/claude-code-lite.js export-session latest --format markdown --output /tmp/session.md
-node ./bin/claude-code-lite.js cleanup-sessions --status needs_attention --dry-run --older-than 0
+node ./bin/irg.js inspect latest
+node ./bin/irg.js export-session latest --format markdown --output /tmp/session.md
+node ./bin/irg.js cleanup-sessions --status needs_attention --dry-run --older-than 0
 ```
 
 ## Code Style Expectations
@@ -93,9 +93,9 @@ Do not commit real API keys to code, tests, issues, or PRs.
 
 Relevant variables:
 
-- `CCL_LLM_PROVIDER`
-- `CCL_LLM_API_KEY`
-- `CCL_LLM_MODEL`
-- `CCL_LLM_BASE_URL`
-- `CCL_LLM_SYSTEM_PROMPT`
-- `CCL_ANTHROPIC_VERSION`
+- `IRG_LLM_PROVIDER`
+- `IRG_LLM_API_KEY`
+- `IRG_LLM_MODEL`
+- `IRG_LLM_BASE_URL`
+- `IRG_LLM_SYSTEM_PROMPT`
+- `IRG_ANTHROPIC_VERSION`

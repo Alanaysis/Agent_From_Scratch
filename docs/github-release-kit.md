@@ -2,11 +2,11 @@
 
 [English](./github-release-kit.en.md)
 
-这份文档用于帮助你把 `claude-code-lite` 作为 GitHub 仓库发布时，快速填好仓库描述、topics 和首个 release。
+这份文档用于帮助你把 `irg` 作为 GitHub 仓库发布时，快速填好仓库描述、topics 和首个 release。
 
 ## 1. 仓库名称建议
 
-- `claude-code-lite`
+- `irg`
 
 ## 2. 仓库简介建议
 
@@ -57,7 +57,7 @@ A local-first, hackable AI coding agent CLI reference implementation with TUI, R
 ### Release Notes
 
 ```md
-## Claude Code-lite v0.1.0
+## IRG v0.1.0
 
 Initial public release of a local-first AI coding agent CLI reference implementation.
 
@@ -98,5 +98,5 @@ bun run build
 bun run typecheck
 npm pack --dry-run
 bun run build:exe
-./dist/claude-code-lite --help
+./dist/irg --help
 ```

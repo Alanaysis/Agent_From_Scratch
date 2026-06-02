@@ -89,7 +89,7 @@ type KnowledgeStore = {
 };
 ```
 
-存储路径：`.claude-code-lite/knowledge.json`
+存储路径：`.irg/knowledge.json`
 
 **关键设计**：
 - 3575 字符上限（与 Hermes 一致），强制筛选真正重要的信息
@@ -138,10 +138,10 @@ type SkillEvolutionRecord = {
 
 #### 2.2 技能存储
 
-新增目录 `.claude-code-lite/skills/`（用户级技能，区别于 `skills/bundled/` 的内置技能）：
+新增目录 `.irg/skills/`（用户级技能，区别于 `skills/bundled/` 的内置技能）：
 
 ```
-.claude-code-lite/
+.irg/
   skills/
     code-review-expert.md      # Agent 自动创建的技能
     debug-patterns.md          # 从失败经验中提取的反模式
@@ -285,14 +285,14 @@ type EvolutionState = {
 
 **文件变更**：
 - 新增 `skills/skillManager.ts` — 技能 CRUD + 版本管理
-- 修改 `skills/loader.ts` — 支持从 `.claude-code-lite/skills/` 加载用户技能
+- 修改 `skills/loader.ts` — 支持从 `.irg/skills/` 加载用户技能
 - 修改 `runtime/query.ts` — 技能热重载支持
 - 新增 `tools/agent/reflectAgent.ts` — 反思 Agent 注册
 
 **核心逻辑**：
 ```
 reflect Agent 分析 transcript → 提取可复用模式 → 
-调用 skillManager.createSkill() → 写入 .claude-code-lite/skills/xxx.md → 
+调用 skillManager.createSkill() → 写入 .irg/skills/xxx.md → 
 下次 detectRelevantSkills() 自动匹配
 ```
 

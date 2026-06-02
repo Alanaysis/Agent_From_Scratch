@@ -2,7 +2,7 @@
 
 [中文](./SECURITY.md)
 
-`claude-code-lite` is a local-first AI agent CLI reference implementation.
+`irg` is a local-first AI agent CLI reference implementation.
 Because it can read/write files, run shell commands, fetch web pages, and persist sessions, the main security boundaries are:
 
 - tool permissions
@@ -51,8 +51,8 @@ The `Shell` tool is a local command execution entrypoint. Confirmation helps, bu
 
 Conversation and tool results are written to:
 
-- `.claude-code-lite/transcripts/`
-- `.claude-code-lite/sessions/`
+- `.irg/transcripts/`
+- `.irg/sessions/`
 
 Sensitive content may therefore be persisted if a tool returns it.
 
@@ -60,7 +60,7 @@ Sensitive content may therefore be persisted if a tool returns it.
 
 The current setup expects keys like:
 
-- `CCL_LLM_API_KEY`
+- `IRG_LLM_API_KEY`
 
 Do not put them into repository files, screenshots, exported transcripts, or issue threads.
 
@@ -68,6 +68,6 @@ Do not put them into repository files, screenshots, exported transcripts, or iss
 
 - keep risky tools in `ask` mode
 - avoid blindly running shell actions in untrusted directories
-- clean `.claude-code-lite/` regularly
+- clean `.irg/` regularly
 - inspect exported transcripts before sharing them
 - never commit real provider keys

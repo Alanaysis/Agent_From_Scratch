@@ -10,11 +10,11 @@ import type { StoredDocument } from '@/types'
 
 const typeConfig: Record<string, { label: string; color: string }> = {
   prd: { label: 'PRD', color: '#3b82f6' },
-  tech_design: { label: 'Tech Design', color: '#8b5cf6' },
-  adr: { label: 'ADR', color: '#f59e0b' },
-  spec: { label: 'Spec', color: '#22c55e' },
-  guide: { label: 'Guide', color: '#06b6d4' },
-  report: { label: 'Report', color: '#ef4444' },
+  tech_design: { label: 'Tech Design', color: '#7b68c0' },
+  adr: { label: 'ADR', color: 'var(--amber)' },
+  spec: { label: 'Spec', color: '#5cb85c' },
+  guide: { label: 'Guide', color: 'var(--copper)' },
+  report: { label: 'Report', color: 'var(--warm-red)' },
 }
 
 export function DocumentsView() {
@@ -73,7 +73,7 @@ export function DocumentsView() {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: '#0a0a0a', color: '#666', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-muted)', gap: 8, fontFamily: 'IBM Plex Sans, sans-serif' }}>
         <FileText size={16} />
         Loading documents...
       </div>
@@ -81,34 +81,34 @@ export function DocumentsView() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', backgroundColor: '#0a0a0a', color: '#fff' }}>
+    <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif' }}>
       {/* Document List */}
-      <div style={{ width: 300, borderRight: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', backgroundColor: '#111' }}>
+      <div style={{ width: 300, borderRight: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--surface-1)' }}>
         {/* Search + Create */}
-        <div style={{ padding: 12, borderBottom: '1px solid #1a1a1a' }}>
+        <div style={{ padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ position: 'relative', marginBottom: 8 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#666' }} />
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <Input
               placeholder="Search documents..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ paddingLeft: 32, height: 34, fontSize: 12, backgroundColor: '#0a0a0a', border: '1px solid #222' }}
+              style={{ paddingLeft: 32, height: 32, fontSize: 12, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
             />
           </div>
-          <Button onClick={() => setShowCreate(!showCreate)} style={{ width: '100%', height: 32, fontSize: 12 }}>
+          <Button onClick={() => setShowCreate(!showCreate)} style={{ width: '100%', height: 30, fontSize: 12, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000', fontWeight: 600 }}>
             <Plus size={14} style={{ marginRight: 6 }} /> New Document
           </Button>
 
           {showCreate && (
-            <div style={{ marginTop: 8, padding: 8, backgroundColor: '#0d0d0d', borderRadius: 6, border: '1px solid #1a1a1a' }}>
+            <div style={{ marginTop: 8, padding: 8, backgroundColor: 'var(--surface-0)', borderRadius: 0, border: '1px solid var(--border-subtle)' }}>
               <Input
                 placeholder="Document title..."
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                style={{ width: '100%', height: 28, fontSize: 11, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 4, marginBottom: 6 }}
+                style={{ width: '100%', height: 26, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, marginBottom: 6, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
               />
-              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', marginBottom: 6 }}>
                 {Object.entries(typeConfig).map(([key, cfg]) => (
                   <button
                     key={key}
@@ -116,19 +116,22 @@ export function DocumentsView() {
                     style={{
                       padding: '2px 6px',
                       fontSize: 9,
-                      borderRadius: 3,
-                      backgroundColor: newType === key ? cfg.color + '20' : '#0a0a0a',
-                      border: `1px solid ${newType === key ? cfg.color + '66' : '#1a1a1a'}`,
-                      color: newType === key ? cfg.color : '#666',
+                      borderRadius: 0,
+                      backgroundColor: newType === key ? 'var(--surface-2)' : 'var(--surface-0)',
+                      border: `1px solid ${newType === key ? cfg.color : 'var(--border-subtle)'}`,
+                      color: newType === key ? cfg.color : 'var(--text-muted)',
                       cursor: 'pointer',
                       fontWeight: 600,
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
                     }}
                   >
                     {cfg.label}
                   </button>
                 ))}
               </div>
-              <Button onClick={handleCreate} style={{ width: '100%', height: 26, fontSize: 11 }}>
+              <Button onClick={handleCreate} style={{ width: '100%', height: 24, fontSize: 11, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000', fontWeight: 600 }}>
                 Create
               </Button>
             </div>
@@ -136,12 +139,12 @@ export function DocumentsView() {
         </div>
 
         {/* List */}
-        <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: '#666', fontSize: 12 }}>No documents</div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>No documents</div>
           ) : (
             filtered.map(doc => {
-              const cfg = typeConfig[doc.type] || { label: doc.type, color: '#666' }
+              const cfg = typeConfig[doc.type] || { label: doc.type, color: 'var(--text-muted)' }
               const isSelected = selectedDoc?.id === doc.id
               return (
                 <div
@@ -149,21 +152,21 @@ export function DocumentsView() {
                   onClick={() => { setSelectedDoc(doc); setIsEditing(false) }}
                   style={{
                     padding: '8px 10px',
-                    marginBottom: 4,
-                    borderRadius: 6,
-                    backgroundColor: isSelected ? '#1e3a5f' : 'transparent',
+                    marginBottom: 2,
+                    borderRadius: 0,
+                    backgroundColor: isSelected ? 'var(--surface-2)' : 'transparent',
                     cursor: 'pointer',
-                    border: isSelected ? '1px solid #3b82f6' : '1px solid transparent',
-                    transition: 'all 0.15s',
+                    border: isSelected ? `1px solid ${cfg.color}` : '1px solid transparent',
+                    transition: 'border-color 0.15s',
                   }}
-                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#1a1a1a' }}
-                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent' }}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--border-medium)' }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'transparent' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: cfg.color, backgroundColor: cfg.color + '15', padding: '1px 4px', borderRadius: 3 }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: cfg.color, backgroundColor: 'var(--surface-0)', padding: '1px 4px', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', border: '1px solid var(--border-subtle)' }}>
                       {cfg.label}
                     </span>
-                    <span style={{ flex: 1, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {doc.title}
                     </span>
                     <button
@@ -172,10 +175,10 @@ export function DocumentsView() {
                       onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                       onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
                     >
-                      <Trash2 size={10} color="#888" />
+                      <Trash2 size={10} color="var(--text-muted)" />
                     </button>
                   </div>
-                  <div style={{ fontSize: 10, color: '#444', marginTop: 4 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4, fontFamily: 'IBM Plex Mono, monospace' }}>
                     {formatDistanceToNow(doc.updatedAt, { addSuffix: true })}
                     {doc.content && <span> · {doc.content.length} chars</span>}
                   </div>
@@ -191,12 +194,12 @@ export function DocumentsView() {
         {selectedDoc ? (
           <>
             {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {(() => {
-                  const cfg = typeConfig[selectedDoc.type] || { label: selectedDoc.type, color: '#666' }
+                  const cfg = typeConfig[selectedDoc.type] || { label: selectedDoc.type, color: 'var(--text-muted)' }
                   return (
-                    <span style={{ fontSize: 9, fontWeight: 700, color: cfg.color, backgroundColor: cfg.color + '15', padding: '2px 6px', borderRadius: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: cfg.color, backgroundColor: 'var(--surface-0)', padding: '2px 6px', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', border: '1px solid var(--border-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {cfg.label}
                     </span>
                   )
@@ -205,30 +208,30 @@ export function DocumentsView() {
                   <Input
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    style={{ flex: 1, height: 28, fontSize: 14, fontWeight: 600, backgroundColor: 'transparent', border: '1px solid #333', borderRadius: 4 }}
+                    style={{ flex: 1, height: 28, fontSize: 14, fontWeight: 600, backgroundColor: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-primary)' }}
                   />
                 ) : (
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{selectedDoc.title}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDoc.title}</span>
                 )}
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {isEditing ? (
-                  <Button onClick={handleSave} style={{ height: 28, fontSize: 11 }}>
+                  <Button onClick={handleSave} style={{ height: 28, fontSize: 11, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000', fontWeight: 600 }}>
                     <Save size={12} style={{ marginRight: 4 }} /> Save
                   </Button>
                 ) : (
-                  <Button variant="ghost" onClick={handleStartEdit} style={{ height: 28, fontSize: 11 }}>
+                  <Button variant="ghost" onClick={handleStartEdit} style={{ height: 28, fontSize: 11, borderRadius: 0, border: '1px solid var(--border-subtle)' }}>
                     <Edit3 size={12} style={{ marginRight: 4 }} /> Edit
                   </Button>
                 )}
-                <Button variant="ghost" size="icon" onClick={() => setSelectedDoc(null)} style={{ width: 28, height: 28 }}>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedDoc(null)} style={{ width: 28, height: 28, borderRadius: 0 }}>
                   <X size={14} />
                 </Button>
               </div>
             </div>
 
             {/* Content */}
-            <div style={{ flex: 1, padding: 16, overflow: 'auto' }}>
+            <div style={{ flex: 1, padding: 14, overflow: 'auto' }}>
               {isEditing ? (
                 <textarea
                   value={editContent}
@@ -236,32 +239,32 @@ export function DocumentsView() {
                   style={{
                     width: '100%',
                     height: '100%',
-                    backgroundColor: '#0d0d0d',
-                    border: '1px solid #1a1a1a',
-                    borderRadius: 8,
+                    backgroundColor: 'var(--surface-0)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 0,
                     padding: 12,
                     fontSize: 13,
-                    color: '#ccc',
+                    color: 'var(--text-secondary)',
                     lineHeight: 1.6,
-                    fontFamily: 'inherit',
+                    fontFamily: 'IBM Plex Mono, monospace',
                     resize: 'none',
                   }}
                   placeholder="Write your document content here..."
                 />
               ) : (
                 <div style={{
-                  backgroundColor: '#0d0d0d',
-                  border: '1px solid #1a1a1a',
-                  borderRadius: 8,
+                  backgroundColor: 'var(--surface-0)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 0,
                   padding: 12,
                   minHeight: 200,
                 }}>
                   {selectedDoc.content ? (
-                    <pre style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
+                    <pre style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'IBM Plex Mono, monospace', margin: 0 }}>
                       {selectedDoc.content}
                     </pre>
                   ) : (
-                    <div style={{ fontSize: 12, color: '#444', fontStyle: 'italic' }}>No content yet. Click Edit to start writing.</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic' }}>No content yet. Click Edit to start writing.</div>
                   )}
                 </div>
               )}
@@ -272,19 +275,19 @@ export function DocumentsView() {
               const relatedTasks = useAppStore.getState().tasks.filter(t => selectedDoc.relatedTaskIds?.includes(t.id))
               if (relatedTasks.length === 0) return null
               return (
-                <div style={{ padding: '0 16px 12px' }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, display: 'block' }}>
+                <div style={{ padding: '0 14px 12px' }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6, display: 'block', fontFamily: 'IBM Plex Mono, monospace' }}>
                     Related Tasks
                   </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {relatedTasks.map(t => {
-                      const statusColor = { todo: '#3b82f6', in_progress: '#f59e0b', verify: '#a855f7', done: '#22c55e', failed: '#ef4444' }[t.status] || '#666'
+                      const statusColor = { todo: '#3b82f6', in_progress: 'var(--amber)', verify: '#7b68c0', done: '#5cb85c', failed: 'var(--warm-red)' }[t.status] || 'var(--text-muted)'
                       return (
                         <div key={t.id} style={{
                           padding: '6px 8px',
-                          backgroundColor: '#0d0d0d',
-                          borderRadius: 6,
-                          border: `1px solid ${statusColor}22`,
+                          backgroundColor: 'var(--surface-0)',
+                          borderRadius: 0,
+                          border: '1px solid var(--border-subtle)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
@@ -292,9 +295,9 @@ export function DocumentsView() {
                         }}
                           onClick={() => useAppStore.getState().setViewMode('kanban')}
                         >
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: statusColor, flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: 11, color: '#ccc' }}>{t.title}</span>
-                          <span style={{ fontSize: 9, color: statusColor }}>{t.status}</span>
+                          <div style={{ width: 6, height: 6, borderRadius: 0, backgroundColor: statusColor, flexShrink: 0 }} />
+                          <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }}>{t.title}</span>
+                          <span style={{ fontSize: 9, color: statusColor, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase' }}>{t.status}</span>
                         </div>
                       )
                     })}
@@ -304,13 +307,13 @@ export function DocumentsView() {
             })()}
 
             {/* Footer */}
-            <div style={{ padding: '8px 16px', borderTop: '1px solid #1a1a1a', fontSize: 10, color: '#444', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: 10, color: 'var(--text-faint)', display: 'flex', justifyContent: 'space-between', fontFamily: 'IBM Plex Mono, monospace' }}>
               <span>Created {formatDistanceToNow(selectedDoc.createdAt, { addSuffix: true })}</span>
               <span>Updated {formatDistanceToNow(selectedDoc.updatedAt, { addSuffix: true })}</span>
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 13 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
             Select a document to view
           </div>
         )}

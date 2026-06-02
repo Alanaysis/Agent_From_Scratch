@@ -14,6 +14,7 @@ import { registerProposalHandlers } from "./handlers/proposals";
 import { registerDocumentHandlers } from "./handlers/documents";
 import { registerWorkflowHandlers } from "./handlers/workflows";
 import { initIpcPush } from "./ipcPush";
+import { startHttpServer } from "./httpServer";
 import { log } from "./logger";
 
 app.disableHardwareAcceleration();
@@ -91,6 +92,11 @@ app.whenReady().then(() => {
   try {
     registerHandlers();
     createWindow();
+
+    // Start HTTP API server for non-Electron access (CORS enabled)
+    const httpPort = parseInt(process.env.IRG_HTTP_PORT || '3002', 10);
+    startHttpServer(httpPort);
+
     log('INFO', 'Main', 'Initialization complete')
   } catch (e) {
     log('ERROR', 'Main', 'Initialization failed', e)

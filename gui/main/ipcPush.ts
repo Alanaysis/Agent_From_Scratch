@@ -49,6 +49,10 @@ export function initIpcPush(window: BrowserWindow) {
   // Real-time session messages
   forward(window, 'session:message-appended', 'event:session:message-appended')
 
+  // Approval workflow
+  forward(window, 'approval:required', 'event:approval:required')
+  forward(window, 'approval:resolved', 'event:approval:resolved')
+
   log('INFO', 'IpcPush', 'IPC push bridge initialized')
 }
 

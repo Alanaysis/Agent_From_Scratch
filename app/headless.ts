@@ -402,7 +402,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
     case "-v":
       return {
         kind: "meta",
-        output: "claude-code-lite 0.1.0",
+        output: "irg 0.1.0",
       };
     case "tools":
       return {
@@ -518,7 +518,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
 
 export function formatHelp(): string {
   return [
-    "Claude Code-lite CLI",
+    "IRG CLI",
     "",
     "Commands:",
     "  help",
@@ -546,12 +546,12 @@ export function formatHelp(): string {
     "  --no-stream   Disable streaming chat output",
     "",
     "LLM env:",
-    "  CCL_LLM_PROVIDER   openai | anthropic, defaults to openai",
-    "  CCL_LLM_API_KEY",
-    "  CCL_LLM_MODEL",
-    "  CCL_LLM_BASE_URL   Optional, defaults to https://api.openai.com/v1",
-    "  CCL_LLM_SYSTEM_PROMPT   Optional extra system prompt",
-    "  CCL_ANTHROPIC_VERSION   Optional, defaults to 2023-06-01",
+    "  IRG_LLM_PROVIDER   openai | anthropic, defaults to openai",
+    "  IRG_LLM_API_KEY",
+    "  IRG_LLM_MODEL",
+    "  IRG_LLM_BASE_URL   Optional, defaults to https://api.openai.com/v1",
+    "  IRG_LLM_SYSTEM_PROMPT   Optional extra system prompt",
+    "  IRG_ANTHROPIC_VERSION   Optional, defaults to 2023-06-01",
   ].join("\n");
 }
 

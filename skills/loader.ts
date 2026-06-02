@@ -333,7 +333,7 @@ export async function loadSkills(): Promise<LoadedSkill[]> {
     console.warn('Tried paths:', possiblePaths);
   }
 
-  const userSkillsPath = join(process.cwd(), '.claude-code-lite', 'skills');
+  const userSkillsPath = join(process.cwd(), '.irg', 'skills');
   if (await directoryExists(userSkillsPath)) {
     console.log(`Loading user skills from: ${userSkillsPath}`);
     await registerSkillsFromDirectory(userSkillsPath);

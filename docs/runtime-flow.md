@@ -1,4 +1,4 @@
-# Claude Code-lite Runtime Flow
+# IRG Runtime Flow
 
 [English](./runtime-flow.en.md)
 

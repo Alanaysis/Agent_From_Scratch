@@ -962,7 +962,7 @@ describe("repl.ts - comprehensive coverage", () => {
         );
 
         // Should display help text on startup
-        expect(mockStdout.write).toHaveBeenCalledWith(expect.stringContaining("Claude Code-lite CLI"));
+        expect(mockStdout.write).toHaveBeenCalledWith(expect.stringContaining("IRG CLI"));
 
       } finally {
         vi.restoreAllMocks();

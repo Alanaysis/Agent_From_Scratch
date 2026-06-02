@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Integration: CLI Command Execution', () => {
-  const agentPath = path.join(process.cwd(), 'bin', 'claude-code-lite.js');
+  const agentPath = path.join(process.cwd(), 'bin', 'irg.js');
 
   it('should execute the --help command and return output', async () => {
     // Use node to run the script with help flag - exits immediately without readline issues
@@ -23,6 +23,6 @@ describe('Integration: CLI Command Execution', () => {
       env: { ...process.env, NODE_ENV: 'test' }
     });
 
-    expect(stdout).toContain('claude-code-lite');
+    expect(stdout).toContain('irg');
   });
 });

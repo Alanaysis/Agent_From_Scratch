@@ -1,8 +1,8 @@
-# Claude Code-lite Architecture
+# IRG Architecture
 
 [中文](./architecture.md)
 
-This document describes the current implemented architecture of `claude-code-lite`, not an idealized design.
+This document describes the current implemented architecture of `irg`, not an idealized design.
 
 ## Layers
 

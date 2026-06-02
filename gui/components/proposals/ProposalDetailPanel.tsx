@@ -11,16 +11,16 @@ import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView
 import type { Proposal, TaskDraft } from '@/types'
 
 const statusConfig: Record<string, { color: string; bgColor: string; label: string; icon: React.ReactNode }> = {
-  draft: { color: '#6b7280', bgColor: 'rgba(107,114,128,0.1)', label: 'Draft', icon: <FileText size={11} /> },
-  pending: { color: '#f59e0b', bgColor: 'rgba(245,158,11,0.1)', label: 'Pending', icon: <Clock size={11} /> },
-  approved: { color: '#22c55e', bgColor: 'rgba(34,197,94,0.1)', label: 'Approved', icon: <CheckCircle size={11} /> },
-  rejected: { color: '#ef4444', bgColor: 'rgba(239,68,68,0.1)', label: 'Rejected', icon: <XCircle size={11} /> },
+  draft: { color: '#3b82f6', bgColor: 'rgba(59,130,246,0.1)', label: 'Draft', icon: <FileText size={11} /> },
+  pending: { color: 'var(--amber)', bgColor: 'rgba(245,158,11,0.08)', label: 'Pending', icon: <Clock size={11} /> },
+  approved: { color: '#5cb85c', bgColor: 'rgba(92,184,92,0.1)', label: 'Approved', icon: <CheckCircle size={11} /> },
+  rejected: { color: 'var(--warm-red)', bgColor: 'rgba(239,68,68,0.1)', label: 'Rejected', icon: <XCircle size={11} /> },
 }
 
 const priorityConfig = {
-  low: { color: '#666', label: 'Low' },
-  medium: { color: '#f59e0b', label: 'Medium' },
-  high: { color: '#ef4444', label: 'High' },
+  low: { color: 'var(--text-muted)', label: 'Low' },
+  medium: { color: 'var(--amber)', label: 'Medium' },
+  high: { color: 'var(--warm-red)', label: 'High' },
 }
 
 interface Props {
@@ -98,27 +98,29 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
     <div style={{
       width: 380,
       height: '100%',
-      backgroundColor: '#111',
-      borderLeft: '1px solid #1a1a1a',
+      backgroundColor: 'var(--surface-1)',
+      borderLeft: '1px solid var(--border-subtle)',
       display: 'flex',
       flexDirection: 'column',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
       {/* Header */}
       <div style={{
-        padding: '12px 16px',
-        borderBottom: '1px solid #1a1a1a',
+        padding: '10px 14px',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: `linear-gradient(180deg, ${status.color}08 0%, transparent 100%)`,
+        borderTop: `2px solid ${status.color}`,
+        backgroundColor: 'var(--surface-1)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
-            width: 22,
-            height: 22,
-            borderRadius: 5,
-            backgroundColor: status.bgColor,
+            width: 20,
+            height: 20,
+            borderRadius: 0,
+            backgroundColor: 'transparent',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -126,30 +128,34 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
           }}>
             {status.icon}
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Proposal</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Proposal</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} style={{ width: 24, height: 24 }}>
+        <Button variant="ghost" size="icon" onClick={onClose} style={{ width: 22, height: 22, borderRadius: 0 }}>
           <X size={14} />
         </Button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: 14 }}>
         {/* Title & Status */}
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 6 }}>{proposal.title}</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>{proposal.title}</h2>
           {proposal.description && (
-            <p style={{ fontSize: 12, color: '#888', lineHeight: 1.5, marginBottom: 8 }}>{proposal.description}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>{proposal.description}</p>
           )}
           <span style={{
-            padding: '3px 8px',
-            borderRadius: 5,
-            backgroundColor: status.bgColor,
+            padding: '2px 8px',
+            borderRadius: 0,
+            backgroundColor: 'var(--surface-0)',
             color: status.color,
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 600,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
+            fontFamily: 'IBM Plex Mono, monospace',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            border: '1px solid var(--border-subtle)',
           }}>
             {status.icon}
             {status.label}
@@ -159,11 +165,11 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
         {/* Task Drafts */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace' }}>
               Task Drafts ({proposal.taskDrafts.length})
             </label>
             {isDraft && (
-              <Button size="icon" variant="ghost" onClick={() => setShowAddTask(!showAddTask)} style={{ width: 20, height: 20 }}>
+              <Button size="icon" variant="ghost" onClick={() => setShowAddTask(!showAddTask)} style={{ width: 18, height: 18, borderRadius: 0 }}>
                 <Plus size={12} />
               </Button>
             )}
@@ -176,15 +182,15 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-                style={{ flex: 1, height: 30, fontSize: 11, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 6 }}
+                style={{ flex: 1, height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
               />
-              <Button size="icon" variant="ghost" onClick={handleAddTask} style={{ width: 30, height: 30 }}>
+              <Button size="icon" variant="ghost" onClick={handleAddTask} style={{ width: 28, height: 28, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}>
                 <Plus size={12} />
               </Button>
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {proposal.taskDrafts.map((draft, index) => {
               const isExpanded = expandedDraft === draft.tempId
               const deps = getDraftDependencies(draft)
@@ -193,38 +199,40 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
               return (
                 <div key={draft.tempId} style={{
                   padding: '8px 10px',
-                  backgroundColor: '#0d0d0d',
-                  borderRadius: 6,
-                  border: '1px solid #1a1a1a',
-                  cursor: isDraft ? 'pointer' : 'default',
-                }}
-                  onClick={() => isDraft && setExpandedDraft(isExpanded ? null : draft.tempId)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 9, color: '#444', minWidth: 16 }}>{index + 1}</span>
+                  backgroundColor: 'var(--surface-0)',
+                  borderRadius: 0,
+                  border: '1px solid var(--border-subtle)',
+                }}>
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: isDraft ? 'pointer' : 'default' }}
+                    onClick={() => isDraft && setExpandedDraft(isExpanded ? null : draft.tempId)}
+                  >
+                    <span style={{ fontSize: 9, color: 'var(--text-faint)', minWidth: 16, fontFamily: 'IBM Plex Mono, monospace' }}>{index + 1}</span>
                     <span style={{
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: 700,
                       color: pCfg.color,
-                      backgroundColor: pCfg.color + '15',
+                      backgroundColor: 'var(--surface-1)',
                       padding: '1px 4px',
-                      borderRadius: 3,
+                      borderRadius: 0,
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      border: '1px solid var(--border-subtle)',
                     }}>
                       {pCfg.label.charAt(0)}
                     </span>
-                    <span style={{ flex: 1, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {draft.title}
                     </span>
                     {draft.agent && (
                       <img
                         src={pixelAvatarToDataUrl(draft.agent, 14)}
                         alt={draft.agent}
-                        style={{ width: 14, height: 14, borderRadius: 3 }}
+                        style={{ width: 14, height: 14, borderRadius: 0 }}
                         title={draft.agent}
                       />
                     )}
                     {deps.length > 0 && (
-                      <span style={{ fontSize: 9, color: '#555', display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <span style={{ fontSize: 9, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', gap: 2, fontFamily: 'IBM Plex Mono, monospace' }}>
                         <Link2 size={8} />{deps.length}
                       </span>
                     )}
@@ -235,22 +243,22 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
                       >
-                        <Trash2 size={10} color="#888" />
+                        <Trash2 size={10} color="var(--text-muted)" />
                       </button>
                     )}
-                    {isDraft && (isExpanded ? <ChevronUp size={10} color="#666" /> : <ChevronDown size={10} color="#666" />)}
+                    {isDraft && (isExpanded ? <ChevronUp size={10} color="var(--text-muted)" /> : <ChevronDown size={10} color="var(--text-muted)" />)}
                   </div>
 
                   {/* Expanded details */}
                   {isExpanded && isDraft && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1a1a1a' }}>
+                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
                       {/* Agent selector */}
                       <div style={{ marginBottom: 6 }}>
-                        <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Agent</label>
+                        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Agent</label>
                         <select
                           value={draft.agent || ''}
                           onChange={(e) => updateTaskDraft(proposal.id, draft.tempId, { agent: e.target.value || undefined })}
-                          style={{ width: '100%', height: 26, fontSize: 11, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 4, color: '#fff', padding: '0 6px' }}
+                          style={{ width: '100%', height: 26, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-primary)', padding: '0 6px', fontFamily: 'IBM Plex Mono, monospace' }}
                         >
                           <option value="">Auto</option>
                           {agents.map(a => (
@@ -261,8 +269,8 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
 
                       {/* Priority */}
                       <div style={{ marginBottom: 6 }}>
-                        <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Priority</label>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Priority</label>
+                        <div style={{ display: 'flex', gap: 2 }}>
                           {(['low', 'medium', 'high'] as const).map(p => (
                             <button
                               key={p}
@@ -271,12 +279,15 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                                 flex: 1,
                                 height: 24,
                                 fontSize: 10,
-                                backgroundColor: draft.priority === p ? priorityConfig[p].color + '20' : '#0a0a0a',
-                                border: `1px solid ${draft.priority === p ? priorityConfig[p].color + '66' : '#1a1a1a'}`,
-                                borderRadius: 4,
-                                color: draft.priority === p ? priorityConfig[p].color : '#666',
+                                backgroundColor: draft.priority === p ? 'var(--surface-2)' : 'var(--surface-0)',
+                                border: `1px solid ${draft.priority === p ? priorityConfig[p].color : 'var(--border-subtle)'}`,
+                                borderRadius: 0,
+                                color: draft.priority === p ? priorityConfig[p].color : 'var(--text-muted)',
                                 cursor: 'pointer',
                                 fontWeight: 600,
+                                fontFamily: 'IBM Plex Mono, monospace',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
                               }}
                             >
                               {priorityConfig[p].label}
@@ -287,14 +298,14 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
 
                       {/* Dependencies */}
                       <div style={{ marginBottom: 6 }}>
-                        <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Depends on</label>
+                        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Depends on</label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           {proposal.taskDrafts
                             .filter(d => d.tempId !== draft.tempId)
                             .map(d => {
                               const isDep = draft.dependsOnTempIds?.includes(d.tempId)
                               return (
-                                <label key={d.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isDep ? '#fff' : '#666', cursor: 'pointer' }}>
+                                <label key={d.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isDep ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer' }}>
                                   <input
                                     type="checkbox"
                                     checked={isDep}
@@ -316,10 +327,10 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
 
                       {/* Acceptance Criteria */}
                       <div>
-                        <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Acceptance Criteria</label>
+                        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Acceptance Criteria</label>
                         {(draft.acceptanceCriteria || []).map((ac, i) => (
                           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                            <span style={{ fontSize: 10, color: '#888', flex: 1 }}>{ac}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', flex: 1 }}>{ac}</span>
                             <button
                               onClick={() => {
                                 const next = (draft.acceptanceCriteria || []).filter((_, j) => j !== i)
@@ -327,7 +338,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                               }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
                             >
-                              <X size={10} color="#666" />
+                              <X size={10} color="var(--text-muted)" />
                             </button>
                           </div>
                         ))}
@@ -340,13 +351,13 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                       {/* Related Documents */}
                       {proposal.documentDrafts.length > 0 && (
                         <div style={{ marginTop: 6 }}>
-                          <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Related Documents</label>
+                          <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Related Documents</label>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {proposal.documentDrafts.map(doc => {
                               const isLinked = draft.relatedDocumentTempIds?.includes(doc.tempId)
-                              const docColor = { prd: '#3b82f6', tech_design: '#8b5cf6', adr: '#f59e0b', spec: '#22c55e', guide: '#06b6d4', report: '#ef4444' }[doc.type] || '#666'
+                              const docColor = { prd: '#3b82f6', tech_design: '#7b68c0', adr: 'var(--amber)', spec: '#5cb85c', guide: 'var(--copper)', report: 'var(--warm-red)' }[doc.type] || 'var(--text-muted)'
                               return (
-                                <label key={doc.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isLinked ? '#fff' : '#666', cursor: 'pointer' }}>
+                                <label key={doc.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isLinked ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer' }}>
                                   <input
                                     type="checkbox"
                                     checked={isLinked}
@@ -359,7 +370,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                                     }}
                                     style={{ width: 12, height: 12 }}
                                   />
-                                  <span style={{ fontSize: 8, fontWeight: 700, color: docColor, backgroundColor: docColor + '15', padding: '1px 3px', borderRadius: 2 }}>
+                                  <span style={{ fontSize: 8, fontWeight: 700, color: docColor, backgroundColor: 'var(--surface-1)', padding: '1px 3px', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', border: '1px solid var(--border-subtle)' }}>
                                     {doc.type === 'tech_design' ? 'TECH' : doc.type.toUpperCase()}
                                   </span>
                                   {doc.title}
@@ -380,25 +391,25 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
         {/* Document Drafts */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace' }}>
               Document Drafts ({proposal.documentDrafts.length})
             </label>
             {isDraft && (
-              <Button size="icon" variant="ghost" onClick={() => setShowAddDoc(!showAddDoc)} style={{ width: 20, height: 20 }}>
+              <Button size="icon" variant="ghost" onClick={() => setShowAddDoc(!showAddDoc)} style={{ width: 18, height: 18, borderRadius: 0 }}>
                 <Plus size={12} />
               </Button>
             )}
           </div>
 
           {showAddDoc && (
-            <div style={{ marginBottom: 8, padding: 8, backgroundColor: '#0d0d0d', borderRadius: 6, border: '1px solid #1a1a1a' }}>
+            <div style={{ marginBottom: 8, padding: 8, backgroundColor: 'var(--surface-0)', borderRadius: 0, border: '1px solid var(--border-subtle)' }}>
               <Input
                 placeholder="Document title..."
                 value={newDocTitle}
                 onChange={(e) => setNewDocTitle(e.target.value)}
-                style={{ width: '100%', height: 28, fontSize: 11, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 4, marginBottom: 6 }}
+                style={{ width: '100%', height: 26, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, marginBottom: 6, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
               />
-              <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              <div style={{ display: 'flex', gap: 2, marginBottom: 6 }}>
                 {(['prd', 'tech_design', 'adr', 'spec', 'guide', 'report'] as const).map(t => (
                   <button
                     key={t}
@@ -406,12 +417,15 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                     style={{
                       padding: '2px 6px',
                       fontSize: 9,
-                      borderRadius: 3,
-                      backgroundColor: newDocType === t ? '#3b82f6' + '20' : '#0a0a0a',
-                      border: `1px solid ${newDocType === t ? '#3b82f6' + '66' : '#1a1a1a'}`,
-                      color: newDocType === t ? '#3b82f6' : '#666',
+                      borderRadius: 0,
+                      backgroundColor: newDocType === t ? 'var(--surface-2)' : 'var(--surface-0)',
+                      border: `1px solid ${newDocType === t ? 'var(--amber)' : 'var(--border-subtle)'}`,
+                      color: newDocType === t ? 'var(--amber)' : 'var(--text-muted)',
                       cursor: 'pointer',
                       fontWeight: 600,
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
                     }}
                   >
                     {t === 'tech_design' ? 'Tech' : t.toUpperCase()}
@@ -419,39 +433,41 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
-                <Button size="icon" variant="ghost" onClick={handleAddDocument} style={{ width: 24, height: 24 }}>
+                <Button size="icon" variant="ghost" onClick={handleAddDocument} style={{ width: 24, height: 24, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}>
                   <Plus size={10} />
                 </Button>
               </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {proposal.documentDrafts.map((doc) => {
               const typeColors: Record<string, string> = {
-                prd: '#3b82f6', tech_design: '#8b5cf6', adr: '#f59e0b',
-                spec: '#22c55e', guide: '#06b6d4', report: '#ef4444',
+                prd: '#3b82f6', tech_design: '#7b68c0', adr: 'var(--amber)',
+                spec: '#5cb85c', guide: 'var(--copper)', report: 'var(--warm-red)',
               }
-              const color = typeColors[doc.type] || '#666'
+              const color = typeColors[doc.type] || 'var(--text-muted)'
               return (
                 <div key={doc.tempId} style={{
                   padding: '8px 10px',
-                  backgroundColor: '#0d0d0d',
-                  borderRadius: 6,
-                  border: '1px solid #1a1a1a',
+                  backgroundColor: 'var(--surface-0)',
+                  borderRadius: 0,
+                  border: '1px solid var(--border-subtle)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
                       fontSize: 8,
                       fontWeight: 700,
                       color,
-                      backgroundColor: color + '15',
+                      backgroundColor: 'var(--surface-1)',
                       padding: '1px 4px',
-                      borderRadius: 3,
+                      borderRadius: 0,
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      border: '1px solid var(--border-subtle)',
                     }}>
                       {doc.type === 'tech_design' ? 'TECH' : doc.type.toUpperCase()}
                     </span>
-                    <span style={{ flex: 1, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {doc.title}
                     </span>
                     {isDraft && (
@@ -461,24 +477,24 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
                       >
-                        <Trash2 size={10} color="#888" />
+                        <Trash2 size={10} color="var(--text-muted)" />
                       </button>
                     )}
                   </div>
                   {doc.content && (
-                    <p style={{ fontSize: 10, color: '#555', marginTop: 4, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <p style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {doc.content}
                     </p>
                   )}
                   {/* Related Tasks */}
                   {isDraft && proposal.taskDrafts.length > 0 && (
-                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #1a1a1a' }}>
-                      <label style={{ fontSize: 9, color: '#555', display: 'block', marginBottom: 3 }}>Related Tasks</label>
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+                      <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Related Tasks</label>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {proposal.taskDrafts.map(td => {
                           const isLinked = doc.relatedTaskTempIds?.includes(td.tempId)
                           return (
-                            <label key={td.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isLinked ? '#fff' : '#666', cursor: 'pointer' }}>
+                            <label key={td.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isLinked ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer' }}>
                               <input
                                 type="checkbox"
                                 checked={isLinked}
@@ -515,7 +531,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
             <ActionButton
               onClick={handleSubmit}
               disabled={isProcessing}
-              color="#f59e0b"
+              color="var(--amber)"
               icon={<ArrowRight size={13} />}
               label="Submit for Review"
             />
@@ -525,21 +541,21 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
               <ActionButton
                 onClick={handleApprove}
                 disabled={isProcessing}
-                color="#22c55e"
+                color="#5cb85c"
                 icon={<CheckCircle size={13} />}
                 label="Approve & Create Tasks"
               />
               <ActionButton
                 onClick={handleReject}
                 disabled={isProcessing}
-                color="#ef4444"
+                color="var(--warm-red)"
                 icon={<XCircle size={13} />}
                 label="Reject"
               />
             </>
           )}
           {proposal.status === 'rejected' && (
-            <div style={{ fontSize: 11, color: '#888', padding: '8px 0' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 0' }}>
               Revise the proposal and resubmit.
             </div>
           )}
@@ -562,7 +578,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
               )
             }
             return (
-              <div style={{ fontSize: 11, color: '#22c55e', padding: '8px 0' }}>
+              <div style={{ fontSize: 11, color: '#5cb85c', padding: '8px 0' }}>
                 Tasks have been created. Check the Kanban view.
               </div>
             )
@@ -572,12 +588,13 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
 
       {/* Footer */}
       <div style={{
-        padding: '10px 16px',
-        borderTop: '1px solid #1a1a1a',
+        padding: '8px 14px',
+        borderTop: '1px solid var(--border-subtle)',
         fontSize: 10,
-        color: '#444',
+        color: 'var(--text-faint)',
         display: 'flex',
         justifyContent: 'space-between',
+        fontFamily: 'IBM Plex Mono, monospace',
       }}>
         <span>Created {formatDistanceToNow(proposal.createdAt, { addSuffix: true })}</span>
         <span>{proposal.taskDrafts.length} tasks</span>
@@ -602,19 +619,20 @@ function ActionButton({ onClick, disabled, color, icon, label }: {
         alignItems: 'center',
         gap: 8,
         padding: '8px 10px',
-        borderRadius: 6,
-        backgroundColor: color + '10',
-        border: `1px solid ${color + '25'}`,
-        color: disabled ? '#444' : color,
+        borderRadius: 0,
+        backgroundColor: 'var(--surface-0)',
+        border: `1px solid ${color}`,
+        color: disabled ? 'var(--text-faint)' : color,
         fontSize: 12,
         fontWeight: 500,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
         width: '100%',
-        transition: 'all 0.15s',
+        transition: 'background-color 0.15s',
+        fontFamily: 'IBM Plex Sans, sans-serif',
       }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.backgroundColor = color + '20' }}
-      onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.backgroundColor = color + '10' }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.backgroundColor = 'var(--surface-2)' }}
+      onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.backgroundColor = 'var(--surface-0)' }}
     >
       {icon}
       <span>{label}</span>
@@ -636,9 +654,9 @@ function AddCriterionInput({ onAdd }: { onAdd: (text: string) => void }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-        style={{ flex: 1, height: 24, fontSize: 10, backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 4 }}
+        style={{ flex: 1, height: 24, fontSize: 10, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
       />
-      <Button size="icon" variant="ghost" onClick={handleAdd} style={{ width: 24, height: 24 }}>
+      <Button size="icon" variant="ghost" onClick={handleAdd} style={{ width: 24, height: 24, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}>
         <Plus size={10} />
       </Button>
     </div>

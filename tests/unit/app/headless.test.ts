@@ -7,7 +7,7 @@ import {
 describe("formatHelp", () => {
   it("returns help text with all commands", () => {
     const result = formatHelp();
-    expect(result).toContain("Claude Code-lite CLI");
+    expect(result).toContain("IRG CLI");
     expect(result).toContain("help");
     expect(result).toContain("--help, -h");
     expect(result).toContain("--version, -v");
@@ -37,9 +37,9 @@ describe("formatHelp", () => {
 
   it("includes LLM env section", () => {
     const result = formatHelp();
-    expect(result).toContain("CCL_LLM_PROVIDER");
-    expect(result).toContain("CCL_LLM_API_KEY");
-    expect(result).toContain("CCL_LLM_MODEL");
+    expect(result).toContain("IRG_LLM_PROVIDER");
+    expect(result).toContain("IRG_LLM_API_KEY");
+    expect(result).toContain("IRG_LLM_MODEL");
     expect(result).toContain("openai | anthropic");
   });
 
@@ -47,7 +47,7 @@ describe("formatHelp", () => {
     const result = formatHelp();
     const lines = result.split("\n");
     expect(lines.length).toBeGreaterThan(10);
-    expect(lines[0]).toBe("Claude Code-lite CLI");
+    expect(lines[0]).toBe("IRG CLI");
   });
 });
 
@@ -80,7 +80,7 @@ describe("parseCommand - meta commands", () => {
     const result = parseCommand(["--version"]);
     expect(result).toEqual({
       kind: "meta",
-      output: "claude-code-lite 0.1.0",
+      output: "irg 0.1.0",
     });
   });
 
@@ -88,7 +88,7 @@ describe("parseCommand - meta commands", () => {
     const result = parseCommand(["-v"]);
     expect(result).toEqual({
       kind: "meta",
-      output: "claude-code-lite 0.1.0",
+      output: "irg 0.1.0",
     });
   });
 
@@ -487,7 +487,7 @@ describe("resolveSessionIdArg - utility function", () => {
     // Create a mock session file
     const fs = await import("fs/promises");
     const path = await import("path");
-    const sessionsDir = path.join("/tmp/cwd", ".claude-code-lite", "sessions");
+    const sessionsDir = path.join("/tmp/cwd", ".irg", "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
     const sessionInfoPath = path.join(sessionsDir, `${sessionId}.json`);
     await fs.writeFile(
@@ -509,7 +509,7 @@ describe("resolveSessionIdArg - utility function", () => {
     const sessionId = "test-session-failed-" + Date.now();
     const fs = await import("fs/promises");
     const path = await import("path");
-    const sessionsDir = path.join("/tmp/cwd", ".claude-code-lite", "sessions");
+    const sessionsDir = path.join("/tmp/cwd", ".irg", "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
     const sessionInfoPath = path.join(sessionsDir, `${sessionId}.json`);
     await fs.writeFile(
@@ -540,7 +540,7 @@ describe("resolveSessionIdArg - utility function", () => {
     const { resolveSessionIdArg } = await import("../../../app/headless");
     const fs = await import("fs/promises");
     const path = await import("path");
-    const sessionsDir = path.join("/tmp/cwd", ".claude-code-lite", "sessions");
+    const sessionsDir = path.join("/tmp/cwd", ".irg", "sessions");
     try {
       const result = await resolveSessionIdArg("/tmp/cwd", "latest");
       expect(result).toBeUndefined();
@@ -571,7 +571,7 @@ describe("resolveSessionIdForChat - wrapper function", () => {
     const fs = await import("fs/promises");
     const path = await import("path");
     const sessionId = "test-chat-latest-" + Date.now();
-    const sessionsDir = path.join("/tmp/cwd", ".claude-code-lite", "sessions");
+    const sessionsDir = path.join("/tmp/cwd", ".irg", "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
     const sessionInfoPath = path.join(sessionsDir, `${sessionId}.json`);
     await fs.writeFile(
@@ -1274,7 +1274,7 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a minimal session for resolveSessionIdArg to not fail
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1307,7 +1307,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1335,7 +1335,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1367,7 +1367,7 @@ describe("runHeadless - main entry point", () => {
       const testFilePath = path.join(tmpDir, "test.txt");
       await fs.writeFile(testFilePath, "hello world");
 
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1395,7 +1395,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1424,7 +1424,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1457,7 +1457,7 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a test session
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1489,7 +1489,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1521,7 +1521,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1555,7 +1555,7 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a session first
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1588,7 +1588,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1622,8 +1622,8 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a session with transcript
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
-      const transcriptsDir = path.join(tmpDir, ".claude-code-lite", "transcripts");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
+      const transcriptsDir = path.join(tmpDir, ".irg", "transcripts");
       await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(transcriptsDir, { recursive: true });
 
@@ -1664,8 +1664,8 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a session with transcript - use fixed name for lookup
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
-      const transcriptsDir = path.join(tmpDir, ".claude-code-lite", "transcripts");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
+      const transcriptsDir = path.join(tmpDir, ".irg", "transcripts");
       await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(transcriptsDir, { recursive: true });
 
@@ -1702,7 +1702,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1735,7 +1735,7 @@ describe("runHeadless - main entry point", () => {
       const testFilePath = path.join(tmpDir, "to-edit.txt");
       await fs.writeFile(testFilePath, "hello world\nthis is a test");
 
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1763,7 +1763,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1798,7 +1798,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1831,7 +1831,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -1867,8 +1867,8 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a session for chat to resume from - use fixed name
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
-      const transcriptsDir = path.join(tmpDir, ".claude-code-lite", "transcripts");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
+      const transcriptsDir = path.join(tmpDir, ".irg", "transcripts");
       await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(transcriptsDir, { recursive: true });
 
@@ -1918,8 +1918,8 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a failed session with fixed name
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
-      const transcriptsDir = path.join(tmpDir, ".claude-code-lite", "transcripts");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
+      const transcriptsDir = path.join(tmpDir, ".irg", "transcripts");
       await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(transcriptsDir, { recursive: true });
 
@@ -1969,7 +1969,7 @@ describe("runHeadless - main entry point", () => {
 
     try {
       // Create a session to delete
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2002,7 +2002,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2041,7 +2041,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2074,7 +2074,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2107,7 +2107,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2140,7 +2140,7 @@ describe("runHeadless - main entry point", () => {
     await fs.mkdir(tmpDir, { recursive: true });
 
     try {
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,
@@ -2182,7 +2182,7 @@ describe("runHeadless - main entry point", () => {
       const testFilePath = path.join(tmpDir, "multiline.txt");
       await fs.writeFile(testFilePath, "line1\nold text\nline3");
 
-      const sessionsDir = path.join(tmpDir, ".claude-code-lite", "sessions");
+      const sessionsDir = path.join(tmpDir, ".irg", "sessions");
       await fs.mkdir(sessionsDir, { recursive: true });
       const sessionInfoPath = path.join(
         sessionsDir,

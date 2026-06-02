@@ -90,9 +90,9 @@ describe('Query Integration', () => {
         text: [
           "我现在支持一组本地 agent 动作，但当前没有可用的远程 LLM 配置。",
           "你可以设置这些环境变量来接入兼容 OpenAI Chat Completions 的模型：",
-          "- `CCL_LLM_API_KEY`",
-          "- `CCL_LLM_MODEL`",
-          "- `CCL_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
+          "- `IRG_LLM_API_KEY`",
+          "- `IRG_LLM_MODEL`",
+          "- `IRG_LLM_BASE_URL` 可选，默认 `https://api.openai.com/v1`",
           "在未配置 LLM 时，也可以直接给我这些格式的提示：",
           "- `read README.md`",
           "- `run pwd`",
@@ -401,7 +401,7 @@ describe('Query Integration', () => {
         const result = planPrompt('unknown command xyz');
         expect(result.kind).toBe('text');
         if (result.kind === 'text') {
-          expect(result.text).toContain('CCL_LLM_API_KEY');
+          expect(result.text).toContain('IRG_LLM_API_KEY');
           expect(result.text).toContain('read README.md');
         }
       });

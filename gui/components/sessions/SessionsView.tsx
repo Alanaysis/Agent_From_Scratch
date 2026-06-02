@@ -9,12 +9,12 @@ import { Trash2, Search, MessageSquare, Clock, X, ChevronRight } from 'lucide-re
 import { formatDistanceToNow } from 'date-fns'
 import type { Session } from '@/types'
 
-const defaultStatus = { color: '#666', bgColor: 'rgba(102, 102, 102, 0.1)', label: 'Unknown' }
+const defaultStatus = { color: 'var(--text-muted)', bgColor: 'var(--surface-2)', label: 'Unknown' }
 const statusConfig: Record<string, { color: string; bgColor: string; label: string }> = {
-  active: { color: '#22c55e', bgColor: 'rgba(34, 197, 94, 0.1)', label: 'Active' },
-  paused: { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', label: 'Paused' },
-  completed: { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', label: 'Completed' },
-  failed: { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', label: 'Failed' },
+  active: { color: '#5cb85c', bgColor: 'rgba(92,184,92,0.1)', label: 'Active' },
+  paused: { color: 'var(--amber)', bgColor: 'rgba(245,158,11,0.08)', label: 'Paused' },
+  completed: { color: '#3b82f6', bgColor: 'rgba(59,130,246,0.1)', label: 'Completed' },
+  failed: { color: 'var(--warm-red)', bgColor: 'rgba(239,68,68,0.1)', label: 'Failed' },
 }
 
 export function SessionsView() {
@@ -32,27 +32,30 @@ export function SessionsView() {
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     await deleteSession(id)
+    if (currentSession?.id === id) {
+      setCurrentSession(null)
+    }
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', backgroundColor: '#0a0a0a', color: '#fff' }}>
+    <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif' }}>
       {/* Session List */}
       <div style={{
         width: 340,
-        borderRight: '1px solid #1a1a1a',
+        borderRight: '1px solid var(--border-subtle)',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#111'
+        backgroundColor: 'var(--surface-1)'
       }}>
-        {/* Search */}
-        <div style={{ padding: 12, borderBottom: '1px solid #1a1a1a' }}>
+        {/* Search + Clear */}
+        <div style={{ padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{
               position: 'absolute',
               left: 10,
               top: '50%',
               transform: 'translateY(-50%)',
-              color: '#666'
+              color: 'var(--text-muted)'
             }} />
             <Input
               placeholder="Search sessions..."
@@ -60,24 +63,62 @@ export function SessionsView() {
               onChange={(e) => setSearch(e.target.value)}
               style={{
                 paddingLeft: 32,
-                height: 36,
-                fontSize: 13,
-                backgroundColor: '#0a0a0a',
-                border: '1px solid #222'
+                height: 34,
+                fontSize: 12,
+                backgroundColor: 'var(--surface-0)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 0,
+                fontFamily: 'IBM Plex Mono, monospace',
+                color: 'var(--text-primary)',
               }}
             />
           </div>
+          {sessions.length > 0 && (
+            <button
+              onClick={async () => {
+                if (confirm(`Delete all ${sessions.length} sessions?`)) {
+                  for (const s of sessions) {
+                    await deleteSession(s.id).catch(() => {})
+                  }
+                  setCurrentSession(null)
+                  // Also clear localStorage
+                  try {
+                    const stored = localStorage.getItem('irg-store')
+                    if (stored) {
+                      const parsed = JSON.parse(stored)
+                      if (parsed?.state) parsed.state.sessions = []
+                      localStorage.setItem('irg-store', JSON.stringify(parsed))
+                    }
+                  } catch {}
+                  await loadSessions()
+                }
+              }}
+              style={{
+                width: '100%', marginTop: 8, height: 28, fontSize: 10,
+                fontFamily: 'IBM Plex Mono, monospace',
+                color: 'var(--warm-red)', backgroundColor: 'transparent',
+                border: '1px solid rgba(192,80,80,0.15)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(192,80,80,0.08)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <Trash2 size={11} />
+              CLEAR ALL ({sessions.length})
+            </button>
+          )}
         </div>
 
         {/* Session List */}
         <ScrollArea style={{ flex: 1 }}>
-          <div style={{ padding: 8 }}>
+          <div style={{ padding: 4 }}>
             {filteredSessions.length === 0 ? (
               <div style={{
                 padding: 24,
                 textAlign: 'center',
-                color: '#666',
-                fontSize: 13
+                color: 'var(--text-muted)',
+                fontSize: 12
               }}>
                 No sessions found
               </div>
@@ -91,28 +132,28 @@ export function SessionsView() {
                     onClick={() => setCurrentSession(session)}
                     style={{
                       padding: '10px 12px',
-                      marginBottom: 4,
-                      borderRadius: 8,
-                      backgroundColor: isSelected ? '#1e3a5f' : 'transparent',
+                      marginBottom: 2,
+                      borderRadius: 0,
+                      backgroundColor: isSelected ? 'var(--surface-2)' : 'transparent',
                       cursor: 'pointer',
-                      transition: 'background-color 0.15s',
-                      border: isSelected ? '1px solid #3b82f6' : '1px solid transparent'
+                      transition: 'border-color 0.15s',
+                      border: isSelected ? `1px solid ${status.color}` : '1px solid transparent'
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.backgroundColor = '#1a1a1a'
+                      if (!isSelected) e.currentTarget.style.borderColor = 'var(--border-medium)'
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'
+                      if (!isSelected) e.currentTarget.style.borderColor = 'transparent'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                       {/* Status indicator */}
                       <div style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
+                        width: 6,
+                        height: 6,
+                        borderRadius: 0,
                         backgroundColor: status.color,
-                        marginTop: 6,
+                        marginTop: 7,
                         flexShrink: 0
                       }} />
 
@@ -121,7 +162,7 @@ export function SessionsView() {
                         <div style={{
                           fontSize: 13,
                           fontWeight: 500,
-                          color: '#fff',
+                          color: 'var(--text-primary)',
                           marginBottom: 4,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -133,8 +174,9 @@ export function SessionsView() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
-                          fontSize: 11,
-                          color: '#888'
+                          fontSize: 10,
+                          color: 'var(--text-faint)',
+                          fontFamily: 'IBM Plex Mono, monospace',
                         }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             <MessageSquare size={10} />
@@ -148,33 +190,43 @@ export function SessionsView() {
                       </div>
 
                       {/* Delete button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      <button
                         onClick={(e) => handleDelete(e, session.id)}
                         style={{
-                          width: 24,
-                          height: 24,
-                          opacity: 0.5,
-                          transition: 'opacity 0.15s'
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          width: 22,
+                          height: 22,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--text-faint)',
+                          transition: 'color 0.15s',
+                          flexShrink: 0,
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--warm-red)'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-faint)'}
+                        title="Delete session"
                       >
                         <Trash2 size={12} />
-                      </Button>
+                      </button>
                     </div>
 
                     {/* Status badge */}
                     <div style={{
                       display: 'inline-block',
                       marginTop: 6,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      backgroundColor: status.bgColor,
+                      padding: '1px 6px',
+                      borderRadius: 0,
+                      backgroundColor: 'var(--surface-0)',
                       color: status.color,
-                      fontSize: 10,
-                      fontWeight: 500
+                      fontSize: 9,
+                      fontWeight: 600,
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      border: '1px solid var(--border-subtle)',
                     }}>
                       {status.label}
                     </div>
@@ -192,32 +244,34 @@ export function SessionsView() {
           <>
             {/* Header */}
             <div style={{
-              padding: 20,
-              borderBottom: '1px solid #1a1a1a',
+              padding: 16,
+              borderBottom: '1px solid var(--border-subtle)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 8,
-                  backgroundColor: '#1a1a1a',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 0,
+                  backgroundColor: 'var(--surface-2)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: 600,
-                  color: '#fff'
+                  color: 'var(--text-primary)',
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  border: '1px solid var(--border-subtle)',
                 }}>
                   {currentSession.title?.slice(0, 2).toUpperCase() || 'UN'}
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {currentSession.title || 'Untitled Session'}
                   </div>
-                  <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'IBM Plex Mono, monospace' }}>
                     Created {formatDistanceToNow(currentSession.createdAt, { addSuffix: true })}
                   </div>
                 </div>
@@ -230,15 +284,15 @@ export function SessionsView() {
                     await deleteSession(currentSession.id)
                     setCurrentSession(null)
                   }}
-                  style={{ width: 28, height: 28 }}
+                  style={{ width: 26, height: 26, borderRadius: 0 }}
                 >
-                  <Trash2 size={14} color="#888" />
+                  <Trash2 size={14} color="var(--text-muted)" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setCurrentSession(null)}
-                  style={{ width: 28, height: 28 }}
+                  style={{ width: 26, height: 26, borderRadius: 0 }}
                 >
                   <X size={14} />
                 </Button>
@@ -246,11 +300,11 @@ export function SessionsView() {
             </div>
 
             {/* Info Grid */}
-            <div style={{ padding: 20, flex: 1, overflow: 'auto' }}>
+            <div style={{ padding: 16, flex: 1, overflow: 'auto' }}>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 16,
+                gap: 8,
                 maxWidth: 500
               }}>
                 <InfoCard label="Status" value={
@@ -264,24 +318,26 @@ export function SessionsView() {
               </div>
 
               {currentSession.lastPrompt && (
-                <div style={{ marginTop: 24 }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, color: '#666', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace' }}>
                     Last Prompt
                   </div>
                   <div style={{
                     padding: 12,
-                    backgroundColor: '#111',
-                    borderRadius: 8,
+                    backgroundColor: 'var(--surface-0)',
+                    borderRadius: 0,
+                    border: '1px solid var(--border-subtle)',
                     fontSize: 13,
-                    color: '#ccc',
-                    lineHeight: 1.5
+                    color: 'var(--text-secondary)',
+                    lineHeight: 1.5,
+                    fontFamily: 'IBM Plex Mono, monospace',
                   }}>
                     {currentSession.lastPrompt}
                   </div>
                 </div>
               )}
 
-              <div style={{ marginTop: 24 }}>
+              <div style={{ marginTop: 20 }}>
                 <Button
                   variant="outline"
                   onClick={async () => {
@@ -290,8 +346,10 @@ export function SessionsView() {
                   }}
                   style={{
                     gap: 6,
-                    borderColor: '#333',
-                    color: '#fff'
+                    borderColor: 'var(--amber)',
+                    color: 'var(--amber)',
+                    borderRadius: 0,
+                    fontFamily: 'IBM Plex Sans, sans-serif',
                   }}
                 >
                   <ChevronRight size={14} />
@@ -306,7 +364,7 @@ export function SessionsView() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#666',
+            color: 'var(--text-muted)',
             fontSize: 13
           }}>
             Select a session to view details
@@ -320,14 +378,15 @@ export function SessionsView() {
 function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{
-      padding: 12,
-      backgroundColor: '#111',
-      borderRadius: 8
+      padding: 10,
+      backgroundColor: 'var(--surface-0)',
+      borderRadius: 0,
+      border: '1px solid var(--border-subtle)',
     }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: '#666', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace' }}>
         {label}
       </div>
-      <div style={{ fontSize: 14, color: '#fff' }}>
+      <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
         {value}
       </div>
     </div>

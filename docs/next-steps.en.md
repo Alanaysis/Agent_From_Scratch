@@ -1,8 +1,8 @@
-# Claude Code-lite Next Steps
+# IRG Next Steps
 
 [中文](./next-steps.md)
 
-This document is for maintainers who want to publish `claude-code-lite` on GitHub as a learning-oriented AI coding agent reference project.
+This document is for maintainers who want to publish `irg` on GitHub as a learning-oriented AI coding agent reference project.
 
 ## Current Baseline
 
@@ -109,10 +109,10 @@ Better positioning:
 - `bun run build`
 - `bun run typecheck`
 - `npm pack --dry-run`
-- `node ./bin/claude-code-lite.js --help`
-- `node ./bin/claude-code-lite.js sessions`
-- `node ./bin/claude-code-lite.js inspect latest`
-- `node ./bin/claude-code-lite.js export-session latest --format markdown --output /tmp/session.md`
+- `node ./bin/irg.js --help`
+- `node ./bin/irg.js sessions`
+- `node ./bin/irg.js inspect latest`
+- `node ./bin/irg.js export-session latest --format markdown --output /tmp/session.md`
 
 ## Standalone Binary Note
 

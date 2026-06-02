@@ -1,4 +1,4 @@
-# Claude Code-lite Core Interfaces
+# IRG Core Interfaces
 
 [中文](./core-interfaces.md)
 

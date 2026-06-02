@@ -32,6 +32,9 @@ export type TaskInfo = {
   sessionId?: string;
   acceptanceCriteria?: AcceptanceCriterion[];
   relatedDocumentIds?: string[];
+  autoVerify?: boolean;
+  requiresApproval?: boolean;
+  approvalMessage?: string;
   activities: TaskActivity[];
   statusHistory: Array<{ status: string; timestamp: string; actor?: string }>;
 };

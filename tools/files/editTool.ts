@@ -87,7 +87,7 @@ export const EditTool: Tool<EditInput, EditOutput> = {
     const diff = generateUnifiedDiff(oldLines, newLines, args.path);
 
     // Create backup before writing
-    const backupDir = join(context.cwd, ".claude-code-lite", "backups");
+    const backupDir = join(context.cwd, ".irg", "backups");
     const backupPath = join(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
     await mkdir(backupDir, { recursive: true });
     await writeFile(backupPath, content, "utf8");

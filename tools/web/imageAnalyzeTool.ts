@@ -2,7 +2,7 @@ import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
 import { readdir, readFile, stat } from "fs/promises";
 import { join, relative } from "path";
-import { getLlmConfigFromEnv } from "../../runtime/llm";
+import { getLlmConfig } from "../../runtime/llm";
 
 export type ImageAnalyzeInput = {
   imagePath?: string;
@@ -66,7 +66,7 @@ async function analyzeWithOpenAI(
   imageData: string,
   mimeType: string,
   prompt: string,
-  config: ReturnType<typeof getLlmConfigFromEnv>,
+  config: ReturnType<typeof getLlmConfig>,
 ): Promise<string> {
   // Convert base64 to data URL
   const dataUrl = `data:${mimeType};base64,${imageData}`;
@@ -97,11 +97,11 @@ async function analyzeWithOpenAI(
   });
 
   if (!response.ok) {
-    const payload = await response.json();
+    const payload = await response.json() as { error?: { message?: string } };
     throw new Error(payload.error?.message || `OpenAI API error: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content || "No analysis returned.";
 }
 
@@ -118,11 +118,11 @@ export const ImageAnalyzeTool: Tool<ImageAnalyzeInput, ImageAnalyzeOutput> = {
     _canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<ImageAnalyzeOutput>> {
-    const llmConfig = getLlmConfigFromEnv();
-    if (!llmConfig) {
+    const llmConfig = getLlmConfig();
+    if (!llmConfig?.apiKey) {
       return {
         data: {
-          analysis: "Cannot analyze image: no LLM configured. Set CCL_LLM_API_KEY and CCL_LLM_MODEL.",
+          analysis: "Cannot analyze image: no LLM configured. Set IRG_LLM_API_KEY and IRG_LLM_MODEL.",
           imageUrl: "",
           provider: "none",
           model: "none",
@@ -154,7 +154,7 @@ export const ImageAnalyzeTool: Tool<ImageAnalyzeInput, ImageAnalyzeOutput> = {
       mimeType = fileStat.mode & 0o77777 ? "image/png" : "image/png";
       imageUrl = filePath;
     } else if (args.imageId) {
-      const imageDir = join(context.cwd, ".claude-code-lite", "images");
+      const imageDir = join(context.cwd, ".irg", "images");
       const files = await readdir(imageDir).catch(() => []);
       const matchingFile = files.find((f) => f.startsWith(args.imageId!));
       if (!matchingFile) {
