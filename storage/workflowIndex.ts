@@ -163,8 +163,8 @@ export function parseWorkflowYaml(yamlContent: string): WorkflowDefinition {
     name: parsed.name,
     description: parsed.description,
     steps,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: "",
+    updatedAt: "",
   };
 }
 
@@ -237,6 +237,15 @@ export async function importWorkflowAsProposal(
       acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
       requiresApproval: step.requiresApproval || false,
       approvalMessage: step.approvalMessage,
+      grpcConfig: step.grpc ? {
+        protoFile: step.grpc.protoFile || "protos/AlgoService.proto",
+        service: step.grpc.service,
+        method: step.grpc.method,
+        address: step.grpc.address || "",
+        payload: step.grpc.payload || {},
+        metadata: step.grpc.metadata,
+        deadline: step.grpc.deadline,
+      } : undefined,
     });
   }
 

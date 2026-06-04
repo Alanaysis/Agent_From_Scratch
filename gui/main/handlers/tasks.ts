@@ -217,7 +217,7 @@ export function registerTaskHandlers() {
             setAppState: () => {},
             getAppState: () => emptyState,
           }, { agentType: input.assignee })
-          executor = startExecutor(mockContext as any, { agentType: input.assignee })
+          executor = await startExecutor(mockContext as any, { agentType: input.assignee })
 
           // Forward executor events to eventBus so IPC push can send them to frontend
           executor.on('taskClaimed', (taskId: string, title: string) => {
@@ -281,7 +281,8 @@ export function registerTaskHandlers() {
         return { ok: true, action: "later" }
       }
       // action === 'execute' — trigger execution via forceExecuteTask
-      const { forceExecuteTask, initLlmConfig } = await import("../../../runtime/executor/ExecutorAgent");
+      const { forceExecuteTask } = await import("../../../runtime/executor/ExecutorAgent");
+      const { initLlmConfig } = await import("../../../runtime/llm");
       await initLlmConfig()
       let executor = getExecutor()
       if (!executor || !executor.isRunning()) {
@@ -293,7 +294,7 @@ export function registerTaskHandlers() {
           cwd: cwd(), messages: [], agentId: 'general-purpose', agentType: 'general-purpose',
           abortController: new AbortController(), setAppState: () => {}, getAppState: () => emptyState,
         }, { agentType: 'general-purpose' })
-        executor = startExecutor(mockContext as any, {})
+        executor = await startExecutor(mockContext as any, {})
       }
       setTimeout(async () => {
         try {

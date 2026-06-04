@@ -626,16 +626,8 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                 onClick={async () => {
                   setIsLoading(true)
                   try {
-                    // Trigger task execution via SSE
-                    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3002/api/tasks/${task.id}/execute`, { method: 'POST' })
-                    if (response.body) {
-                      const reader = response.body.getReader()
-                      const decoder = new TextDecoder()
-                      while (true) {
-                        const { done } = await reader.read()
-                        if (done) break
-                      }
-                    }
+                    // Trigger task execution via IPC
+                    await useAppStore.getState().sendToBackend('tasks:execute', { taskId: task.id })
                     // Refresh tasks after execution
                     await useAppStore.getState().loadTasks()
                   } catch (e) {

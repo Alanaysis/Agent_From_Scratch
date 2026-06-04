@@ -61,14 +61,12 @@ export const CheckpointTool: Tool<CheckpointInput, CheckpointOutput> = {
       }
     }
 
-    // Fallback: return a default based on the checkpoint type
-    if (args.type === "approval") {
-      return { data: { approved: true } };
-    }
-    if (args.type === "error_choice") {
-      return { data: { approved: true, choice: args.options?.[0] || "skip" } };
-    }
-    return { data: { approved: true, data: {} } };
+    // No stored response and no checkpointId — this means the permission flow
+    // failed to inject the checkpoint ID. Throw instead of silently auto-approving.
+    throw new Error(
+      `Checkpoint "${args.type}" has no response and no checkpointId was injected. ` +
+      `The permission flow may have failed. Message: ${args.message}`
+    );
   },
 
   async validateInput(input) {

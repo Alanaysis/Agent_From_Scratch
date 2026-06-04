@@ -145,7 +145,7 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<GrpcClientOutput>> {
     const startTime = Date.now();
-    const deadline = args.deadline || 30000;
+    const deadline = args.deadline || 300000;
     const metadata = args.metadata || {};
 
     try {

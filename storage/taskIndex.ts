@@ -1,6 +1,23 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 
+// Per-task write lock to prevent race conditions in read-modify-write
+const taskLocks = new Map<string, Promise<void>>();
+
+async function withTaskLock<T>(taskId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = taskLocks.get(taskId) ?? Promise.resolve();
+  const current = prev.then(fn, fn); // chain regardless of previous result
+  taskLocks.set(taskId, current.then(() => {}, () => {}));
+  try {
+    return await current;
+  } finally {
+    // Clean up if this is the last in the chain
+    if (taskLocks.get(taskId) === current.then(() => {}, () => {})) {
+      taskLocks.delete(taskId);
+    }
+  }
+}
+
 export type TaskActivity = {
   id: string;
   action: "created" | "assigned" | "released" | "status_changed" | "updated" | "comment_added";
@@ -35,6 +52,15 @@ export type TaskInfo = {
   autoVerify?: boolean;
   requiresApproval?: boolean;
   approvalMessage?: string;
+  grpcConfig?: {
+    protoFile: string;
+    service: string;
+    method: string;
+    address: string;
+    payload: Record<string, unknown>;
+    metadata?: Record<string, string>;
+    deadline?: number;
+  };
   activities: TaskActivity[];
   statusHistory: Array<{ status: string; timestamp: string; actor?: string }>;
 };
@@ -113,6 +139,7 @@ export async function updateTaskInfo(
   updates: Partial<Omit<TaskInfo, "id" | "createdAt" | "activities" | "statusHistory">>,
   actor?: string,
 ): Promise<TaskInfo | null> {
+  return withTaskLock(taskId, async () => {
   const previous = await readTaskInfo(cwd, taskId);
   if (!previous) {
     return null;
@@ -173,6 +200,7 @@ export async function updateTaskInfo(
     "utf8",
   );
   return updated;
+  }); // end withTaskLock
 }
 
 export async function deleteTaskInfo(
@@ -188,34 +216,36 @@ export async function addTaskComment(
   comment: string,
   actor?: string,
 ): Promise<TaskInfo | null> {
-  const previous = await readTaskInfo(cwd, taskId);
-  if (!previous) {
-    return null;
-  }
+  return withTaskLock(taskId, async () => {
+    const previous = await readTaskInfo(cwd, taskId);
+    if (!previous) {
+      return null;
+    }
 
-  const now = new Date().toISOString();
-  const updated: TaskInfo = {
-    ...previous,
-    updatedAt: now,
-    activities: [
-      ...previous.activities,
-      {
-        id: `activity-${Date.now()}-${previous.activities.length}`,
-        action: "comment_added",
-        actor,
-        details: comment,
-        timestamp: now,
-      },
-    ],
-  };
+    const now = new Date().toISOString();
+    const updated: TaskInfo = {
+      ...previous,
+      updatedAt: now,
+      activities: [
+        ...previous.activities,
+        {
+          id: `activity-${Date.now()}-${previous.activities.length}`,
+          action: "comment_added",
+          actor,
+          details: comment,
+          timestamp: now,
+        },
+      ],
+    };
 
-  await mkdir(getTasksDir(cwd), { recursive: true });
-  await writeFile(
-    getTaskInfoPath(cwd, taskId),
-    `${JSON.stringify(updated, null, 2)}\n`,
-    "utf8",
-  );
-  return updated;
+    await mkdir(getTasksDir(cwd), { recursive: true });
+    await writeFile(
+      getTaskInfoPath(cwd, taskId),
+      `${JSON.stringify(updated, null, 2)}\n`,
+      "utf8",
+    );
+    return updated;
+  });
 }
 
 export async function listTasks(cwd: string): Promise<TaskInfo[]> {
@@ -309,37 +339,39 @@ export async function updateAcceptanceCriterion(
   updates: { status: "passed" | "failed"; evidence?: string },
   actor?: string,
 ): Promise<TaskInfo | null> {
-  const task = await readTaskInfo(cwd, taskId);
-  if (!task || !task.acceptanceCriteria) return null;
+  return withTaskLock(taskId, async () => {
+    const task = await readTaskInfo(cwd, taskId);
+    if (!task || !task.acceptanceCriteria) return null;
 
-  const criterion = task.acceptanceCriteria.find((c) => c.id === criterionId);
-  const criteria = task.acceptanceCriteria.map((c) =>
-    c.id === criterionId ? { ...c, ...updates } : c
-  );
+    const criterion = task.acceptanceCriteria.find((c) => c.id === criterionId);
+    const criteria = task.acceptanceCriteria.map((c) =>
+      c.id === criterionId ? { ...c, ...updates } : c
+    );
 
-  const now = new Date().toISOString();
-  const activities = [...task.activities, {
-    id: `activity-${Date.now()}-${task.activities.length}`,
-    action: "updated" as const,
-    actor,
-    details: `Criterion "${criterion?.text || criterionId}" marked as ${updates.status}${updates.evidence ? `: ${updates.evidence}` : ''}`,
-    timestamp: now,
-  }];
+    const now = new Date().toISOString();
+    const activities = [...task.activities, {
+      id: `activity-${Date.now()}-${task.activities.length}`,
+      action: "updated" as const,
+      actor,
+      details: `Criterion "${criterion?.text || criterionId}" marked as ${updates.status}${updates.evidence ? `: ${updates.evidence}` : ''}`,
+      timestamp: now,
+    }];
 
-  const updated: TaskInfo = {
-    ...task,
-    acceptanceCriteria: criteria,
-    activities,
-    updatedAt: now,
-  };
+    const updated: TaskInfo = {
+      ...task,
+      acceptanceCriteria: criteria,
+      activities,
+      updatedAt: now,
+    };
 
-  await mkdir(getTasksDir(cwd), { recursive: true });
-  await writeFile(
-    getTaskInfoPath(cwd, taskId),
-    `${JSON.stringify(updated, null, 2)}\n`,
-    "utf8",
-  );
-  return updated;
+    await mkdir(getTasksDir(cwd), { recursive: true });
+    await writeFile(
+      getTaskInfoPath(cwd, taskId),
+      `${JSON.stringify(updated, null, 2)}\n`,
+      "utf8",
+    );
+    return updated;
+  });
 }
 
 export function allCriteriaPassed(task: TaskInfo): boolean {

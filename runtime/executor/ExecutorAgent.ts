@@ -1,6 +1,6 @@
 import { EventEmitter } from "events"
 import { cwd } from "process"
-import { listTasks, updateTaskInfo, readTaskInfo } from "../../storage/taskIndex"
+import { listTasks, updateTaskInfo, readTaskInfo, getUnblockedTasks } from "../../storage/taskIndex"
 import { createSession, updateSessionInfo } from "../../storage/sessionIndex"
 import { appendTranscript } from "../../storage/transcript"
 import { runAgent } from "../../tools/agent/runAgent"
@@ -106,17 +106,17 @@ export class ExecutorAgent extends EventEmitter {
     if (!this.running) return
 
     try {
-      const tasks = await listTasks(cwd())
-      // Only execute tasks that have an assignee and are in todo status
-      const todoTasks = tasks.filter((t) => t.status === "todo" && t.assignee && !this.activeTasks.has(t.id))
+      // Get tasks whose dependencies are all satisfied
+      const unblocked = await getUnblockedTasks(cwd())
+      const executable = unblocked.filter((t) => t.assignee && !this.activeTasks.has(t.id))
 
-      this.emit("cycle", todoTasks.length)
+      this.emit("cycle", executable.length)
 
-      if (todoTasks.length === 0) {
+      if (executable.length === 0) {
         return
       }
 
-      const task = todoTasks[0]!
+      const task = executable[0]!
       await this.executeTask(task.id)
     } catch (e) {
       console.error("[Executor] Error in poll cycle:", e)
@@ -239,7 +239,7 @@ export class ExecutorAgent extends EventEmitter {
     }
   }
 
-  private buildTaskPrompt(task: { title?: string; description?: string; id?: string }): string {
+  private buildTaskPrompt(task: { title?: string; description?: string; id?: string; grpcConfig?: any }): string {
     const title = task.title || task.id || "Untitled Task"
     if (!task.title && task.id) {
       console.warn(`[Executor] Task ${task.id} has no title, using ID as fallback`)
@@ -250,7 +250,20 @@ export class ExecutorAgent extends EventEmitter {
       prompt += `Description: ${task.description}\n\n`
     }
 
-    prompt += `Please complete this task. Work in the current directory.`
+    // Include structured gRPC config if available
+    if (task.grpcConfig) {
+      prompt += `gRPC Call Configuration:\n`;
+      prompt += `- Proto File: ${task.grpcConfig.protoFile}\n`;
+      prompt += `- Service: ${task.grpcConfig.service}\n`;
+      prompt += `- Method: ${task.grpcConfig.method}\n`;
+      prompt += `- Address: ${task.grpcConfig.address}\n`;
+      prompt += `- Payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
+      if (task.grpcConfig.metadata) prompt += `- Metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
+      if (task.grpcConfig.deadline) prompt += `- Deadline: ${task.grpcConfig.deadline}ms\n`;
+      prompt += `\nUse the GrpcClient tool to execute this call.\n`;
+    }
+
+    prompt += `\nPlease complete this task. Work in the current directory.`
 
     return prompt
   }
@@ -410,14 +423,14 @@ export function getExecutor(): ExecutorAgent | null {
   return globalExecutor
 }
 
-export function startExecutor(parentContext: ToolUseContext, config?: Partial<ExecutorConfig>): ExecutorAgent {
+export async function startExecutor(parentContext: ToolUseContext, config?: Partial<ExecutorConfig>): Promise<ExecutorAgent> {
   if (globalExecutor && globalExecutor.isRunning()) {
     console.log("[Executor] Already running, returning existing instance")
     return globalExecutor
   }
 
   globalExecutor = new ExecutorAgent(parentContext, config)
-  globalExecutor.start()
+  await globalExecutor.start()
   return globalExecutor
 }
 

@@ -95,7 +95,7 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'plans:delete':           { method: 'DELETE', path: '/api/plans/{0}' },
   'plans:confirm':          { method: 'POST', path: '/api/plans/{0}/confirm' },
 
-  // Config (read-only via HTTP, API key masked)
+  // Config
   'config:get':             { method: 'GET',  path: '/api/config' },
   'config:set':             { method: 'PATCH', path: '/api/config' },
 
@@ -127,12 +127,10 @@ async function sendViaHttp(channel: string, data?: unknown): Promise<any> {
   // Replace path params from body object
   if (typeof body === 'object' && body !== null && !Array.isArray(body)) {
     const bodyObj = body as Record<string, unknown>
-    // Collect all body keys in order for positional param mapping
     const bodyKeys = Object.keys(bodyObj)
-    // Find all {N} placeholders and replace them
-    let match: RegExpExecArray | null
     const paramRegex = /\{(\d+)\}/g
     const usedKeys = new Set<string>()
+    let match: RegExpExecArray | null
     while ((match = paramRegex.exec(path)) !== null) {
       const idx = parseInt(match[1])
       const key = bodyKeys[idx]
@@ -141,16 +139,13 @@ async function sendViaHttp(channel: string, data?: unknown): Promise<any> {
         usedKeys.add(key)
       }
     }
-    // Remove used keys from body so they don't get sent as request body
     for (const key of usedKeys) {
       delete bodyObj[key]
     }
   } else if (typeof data === 'string') {
-    // Direct ID passed (e.g., proposals:delete with just an ID string)
     path = path.replace('{0}', data)
   }
 
-  // Replace remaining {0}, {1} from data array
   if (Array.isArray(data)) {
     data.forEach((v, i) => { path = path.replace(`{${i}}`, String(v)) })
   }
@@ -238,7 +233,7 @@ type Actions = {
   createProposal: (input: { title: string; description?: string }) => Promise<Proposal | null>
   updateProposal: (id: string, updates: { title?: string; description?: string }) => Promise<void>
   deleteProposal: (id: string) => Promise<void>
-  addTaskDraft: (proposalId: string, draft: Omit<TaskDraft, 'tempId'>) => Promise<void>
+  addTaskDraft: (proposalId: string, draft: Partial<TaskDraft> & { title: string }) => Promise<void>
   removeTaskDraft: (proposalId: string, tempId: string) => Promise<void>
   updateTaskDraft: (proposalId: string, tempId: string, updates: Partial<TaskDraft>) => Promise<void>
   addDocumentDraft: (proposalId: string, draft: { type: string; title: string; content: string }) => Promise<void>
@@ -697,6 +692,29 @@ export const useAppStore = create<AppStoreState & Actions>()(
           await get().loadProposals()
           await get().loadTasks()
           await get().loadDocuments()
+
+          // Only assign tasks whose dependencies are all satisfied
+          if (result?.tasks) {
+            const allTasks = get().tasks
+            for (const task of result.tasks) {
+              const fullTask = allTasks.find(t => t.id === task.id)
+              if (!fullTask) continue
+              const deps = fullTask.dependsOn || []
+              const allDepsDone = deps.length === 0 || deps.every(depId => {
+                const dep = allTasks.find(t => t.id === depId)
+                return dep && (dep.status === 'done' || dep.status === 'failed')
+              })
+              if (allDepsDone) {
+                try {
+                  await get().sendToBackend('tasks:assign', { taskId: task.id, assignee: fullTask.assignee || 'general-purpose' })
+                } catch (e) {
+                  console.error(`[Store] Failed to assign task ${task.id}:`, e)
+                }
+              }
+            }
+            await get().loadTasks()
+          }
+
           return result
         } catch (e) {
           console.error('[Store] approveProposal error:', e)
@@ -1017,40 +1035,42 @@ export const useAppStore = create<AppStoreState & Actions>()(
               if (line.startsWith('event: ')) {
                 currentEvent = line.slice(7)
               } else if (line.startsWith('data: ')) {
-                const data = JSON.parse(line.slice(6))
+                try {
+                  const data = JSON.parse(line.slice(6))
 
-                if (currentEvent === 'delta') {
-                  set({ streamingText: (get().streamingText || '') + data.text })
-                } else if (currentEvent === 'message') {
-                  collectedMessages.push(data)
-                  set({ streamingText: '' })
-                } else if (currentEvent === 'permission') {
-                  // Show permission modal
-                  const permPromise = new Promise<boolean>((resolve) => {
-                    get().setPermissionRequest({
-                      id: data.id,
-                      toolName: data.toolName || 'Unknown',
-                      input: data.input,
-                      message: data.message || 'Permission required',
-                      requestType: (data.requestType as any) || 'permission',
-                      options: data.options,
-                      schema: data.schema,
-                      resolve: (resp: any) => resolve(typeof resp === 'boolean' ? resp : resp.approved !== false),
+                  if (currentEvent === 'delta') {
+                    set({ streamingText: (get().streamingText || '') + data.text })
+                  } else if (currentEvent === 'message') {
+                    collectedMessages.push(data)
+                    set({ streamingText: '' })
+                  } else if (currentEvent === 'permission') {
+                    const permPromise = new Promise<boolean>((resolve) => {
+                      get().setPermissionRequest({
+                        id: data.id,
+                        toolName: data.toolName || 'Unknown',
+                        input: data.input,
+                        message: data.message || 'Permission required',
+                        requestType: (data.requestType as any) || 'permission',
+                        options: data.options,
+                        schema: data.schema,
+                        resolve: (resp: any) => resolve(typeof resp === 'boolean' ? resp : resp.approved !== false),
+                      })
                     })
-                  })
 
-                  const approved = await permPromise
-                  // Send response back
-                  await fetch(`${API_BASE}/api/chat/permission-response`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: data.id, approved }),
-                  })
-                  get().setPermissionRequest(null)
-                } else if (currentEvent === 'done') {
-                  resultSessionId = data.sessionId
-                } else if (currentEvent === 'error') {
-                  console.error('[SSE] Error:', data.message)
+                    const approved = await permPromise
+                    await fetch(`${API_BASE}/api/chat/permission-response`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: data.id, approved }),
+                    })
+                    get().setPermissionRequest(null)
+                  } else if (currentEvent === 'done') {
+                    resultSessionId = data.sessionId
+                  } else if (currentEvent === 'error') {
+                    console.error('[SSE] Error:', data.message)
+                  }
+                } catch (parseErr) {
+                  console.warn('[SSE] Failed to parse data line:', line, parseErr)
                 }
               }
             }
@@ -1383,7 +1403,6 @@ export const useAppStore = create<AppStoreState & Actions>()(
               get().loadTasks()
               get().loadProposals()
               get().loadSessions()
-              // Check for pending approvals
               get().sendToBackend('approvals:pending').then((result: any) => {
                 if (result?.approvals?.length > 0 && !get().approvalRequest) {
                   get().setApprovalRequest(result.approvals[0])

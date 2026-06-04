@@ -123,14 +123,6 @@ function getDefaultBaseUrl(provider: LlmProviderName): string {
     : "https://api.openai.com/v1";
 }
 
-const DEFAULT_LLM_CONFIG_FALLBACK: LlmConfig = {
-  provider: "openai",
-  apiKey: "",
-  model: "gpt-4o-mini",
-  baseUrl: "https://api.openai.com/v1",
-  anthropicVersion: "2023-06-01",
-};
-
 let cachedConfig: LlmConfig | null = null;
 let configInitialized = false;
 
@@ -145,11 +137,8 @@ export async function initLlmConfig(): Promise<LlmConfig> {
   return cachedConfig;
 }
 
-export function getLlmConfig(): LlmConfig {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
-  return DEFAULT_LLM_CONFIG_FALLBACK;
+export function getLlmConfig(): LlmConfig | null {
+  return cachedConfig;
 }
 
 export async function setLlmConfig(updates: Partial<LlmConfig>): Promise<LlmConfig> {

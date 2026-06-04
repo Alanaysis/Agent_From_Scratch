@@ -66,7 +66,7 @@ async function analyzeWithOpenAI(
   imageData: string,
   mimeType: string,
   prompt: string,
-  config: ReturnType<typeof getLlmConfig>,
+  config: NonNullable<ReturnType<typeof getLlmConfig>>,
 ): Promise<string> {
   // Convert base64 to data URL
   const dataUrl = `data:${mimeType};base64,${imageData}`;

@@ -1,7 +1,7 @@
 import http from "http";
 import { cwd } from "process";
 import { readFile, stat } from "fs/promises";
-import { join, extname } from "path";
+import { join, extname, resolve, relative } from "path";
 import { log } from "./logger";
 
 // Import the same storage functions used by IPC handlers
@@ -22,16 +22,27 @@ const routes = new Map<string, RouteHandler>();
 // ====== Helper ======
 
 function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (chunk) => (data += chunk));
     req.on("end", () => resolve(data));
+    req.on("error", (err) => reject(err));
   });
 }
 
 function json(res: http.ServerResponse, data: unknown, status = 200) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+// Validate that a file path is within the working directory (prevent path traversal)
+function validateFilePath(filePath: string, baseDir: string): string {
+  const resolved = resolve(baseDir, filePath);
+  const rel = relative(baseDir, resolved);
+  if (rel.startsWith("..") || resolve(rel) !== resolved) {
+    throw new Error(`Path traversal detected: ${filePath}`);
+  }
+  return resolved;
 }
 
 // ====== Sessions ======
@@ -113,7 +124,16 @@ routes.set("POST /api/tasks/:id/comment", async (_req, body, params?: Record<str
 
 routes.set("POST /api/tasks/:id/assign", async (_req, body, params?: Record<string, string>) => {
   const input = JSON.parse(body);
-  const task = await updateTaskInfo(cwd(), params!.id!, { assignee: input.assignee, status: "in_progress" }, input.actor);
+  const taskId = params!.id!;
+  const assignee = input.assignee || "general-purpose";
+  const task = await updateTaskInfo(cwd(), taskId, { assignee, status: "in_progress" }, input.actor);
+
+  // Trigger execution in background (mirrors IPC handler behavior)
+  executingTasks.add(taskId);
+  executeTaskViaHttp(taskId).finally(() => {
+    executingTasks.delete(taskId);
+  });
+
   return { task };
 });
 
@@ -161,6 +181,10 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   const input = JSON.parse(body);
   const taskId = params!.id!;
   const action = input.action as 'execute' | 'later' | 'abort';
+
+  if (!action || !['execute', 'later', 'abort'].includes(action)) {
+    return { error: "action must be 'execute', 'later', or 'abort'" };
+  }
 
   pendingApprovalTasks.delete(taskId);
 
@@ -269,7 +293,9 @@ routes.set("POST /api/proposals/:id/task-drafts", async (_req, body, params?: Re
   const input = JSON.parse(body);
   const proposal = await readProposal(cwd(), params!.id!);
   if (!proposal) return { error: "Not found" };
-  const newDraft = { tempId: createId("draft"), ...input };
+  const draftData = input.draft || input;
+  // Preserve the original tempId from the editor (needed for dependency resolution)
+  const newDraft = { ...draftData, tempId: draftData.tempId || createId("draft") };
   const updated = await updateProposal(cwd(), params!.id!, { taskDrafts: [...proposal.taskDrafts, newDraft] });
   return { proposal: updated };
 });
@@ -298,7 +324,8 @@ routes.set("POST /api/proposals/:id/document-drafts", async (_req, body, params?
   const input = JSON.parse(body);
   const proposal = await readProposal(cwd(), params!.id!);
   if (!proposal) return { error: "Not found" };
-  const newDraft = { tempId: createId("doc"), ...input };
+  const draftData = input.draft || input;
+  const newDraft = { tempId: createId("doc"), ...draftData };
   const updated = await updateProposal(cwd(), params!.id!, { documentDrafts: [...proposal.documentDrafts, newDraft] });
   return { proposal: updated };
 });
@@ -382,7 +409,8 @@ routes.set("GET /api/workflows/files", async () => {
 routes.set("POST /api/workflows/import-remote", async (_req, body) => {
   const input = JSON.parse(body);
   const { readFile: readFileFs } = await import("fs/promises");
-  const yaml = await readFileFs(input.filePath, "utf8");
+  const safePath = validateFilePath(input.filePath, cwd());
+  const yaml = await readFileFs(safePath, "utf8");
   const workflow = parseWorkflowYaml(yaml);
   workflow.sourceFile = input.filePath;
   const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
@@ -418,7 +446,8 @@ routes.set("POST /api/agents", async (_req, body) => {
 
 routes.set("PATCH /api/agents/:id", async (_req, body, params?: Record<string, string>) => {
   const input = JSON.parse(body);
-  const agent = await updateAgentInfo(cwd(), params!.id!, input);
+  const updates = input.updates || input;
+  const agent = await updateAgentInfo(cwd(), params!.id!, updates);
   return { agent };
 });
 
@@ -458,7 +487,8 @@ routes.set("DELETE /api/workflows/:id", async (_req, _body, params?: Record<stri
 routes.set("POST /api/workflows/import-file", async (_req, body) => {
   const input = JSON.parse(body);
   const { readFile: readFileFs } = await import("fs/promises");
-  const content = await readFileFs(input.filePath, "utf8");
+  const safePath = validateFilePath(input.filePath, cwd());
+  const content = await readFileFs(safePath, "utf8");
   const workflow = parseWorkflowYaml(content);
   workflow.sourceFile = input.filePath;
   const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
@@ -471,7 +501,8 @@ routes.set("POST /api/workflows/import-and-execute", async (_req, body) => {
   const { readFile: readFileFs } = await import("fs/promises");
   let yaml = input.yaml;
   if (input.filePath) {
-    yaml = await readFileFs(input.filePath, "utf8");
+    const safePath = validateFilePath(input.filePath, cwd());
+    yaml = await readFileFs(safePath, "utf8");
   }
   if (!yaml) return { error: "No YAML content provided" };
 
@@ -721,7 +752,7 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
           send("delta", { text });
         },
         onPermissionRequest: async (request) => {
-          const permId = `perm-${Date.now()}`;
+          const permId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           send("permission", { id: permId, ...request });
 
           // Wait for response from frontend
@@ -956,6 +987,48 @@ async function pollAndExecuteTasks() {
   }
 }
 
+/** Assign downstream tasks whose dependencies are now satisfied */
+async function assignDependentTasks(completedTaskId: string) {
+  const tasks = await listTasks(cwd());
+  const completed = tasks.find(t => t.id === completedTaskId);
+  if (!completed) return;
+
+  // Find tasks that depend on the completed task
+  const dependents = tasks.filter(t =>
+    t.dependsOn?.includes(completedTaskId) &&
+    t.status === "todo" &&
+    !executingTasks.has(t.id)
+  );
+
+  for (const dep of dependents) {
+    // Check if ALL dependencies are now met
+    const allDepsMet = dep.dependsOn!.every(depId => {
+      const d = tasks.find(t => t.id === depId);
+      return d && (d.status === "done" || d.status === "failed");
+    });
+    if (!allDepsMet) continue;
+
+    // Assign the task (set assignee) but keep in todo for the poll to pick up
+    const assignee = dep.assignee || "general-purpose";
+    if (!dep.assignee) {
+      await updateTaskInfo(cwd(), dep.id, { assignee }, "auto-exec");
+    }
+
+    if (dep.requiresApproval) {
+      // Let the auto-execution poll handle approval tasks (stays in todo)
+      log("INFO", "AutoExec", `Dependency met, task ${dep.id} needs approval: ${dep.title}`);
+    } else {
+      // Auto-execute non-approval tasks
+      log("INFO", "AutoExec", `Dependency met, executing downstream task ${dep.id}: ${dep.title}`);
+      await updateTaskInfo(cwd(), dep.id, { status: "in_progress" }, "auto-exec");
+      executingTasks.add(dep.id);
+      executeTaskViaHttp(dep.id).finally(() => {
+        executingTasks.delete(dep.id);
+      });
+    }
+  }
+}
+
 async function executeTaskViaHttp(taskId: string) {
   const task = await readTaskInfo(cwd(), taskId);
   if (!task) {
@@ -992,7 +1065,21 @@ async function executeTaskViaHttp(taskId: string) {
   const title = task.title || taskId;
   let prompt = `Task: ${title}\n\n`;
   if (task.description) prompt += `Description: ${task.description}\n\n`;
-  prompt += `Please complete this task. Work in the current directory.`;
+
+  // Include structured gRPC config if available
+  if (task.grpcConfig) {
+    prompt += `gRPC Call Configuration:\n`;
+    prompt += `- Proto File: ${task.grpcConfig.protoFile}\n`;
+    prompt += `- Service: ${task.grpcConfig.service}\n`;
+    prompt += `- Method: ${task.grpcConfig.method}\n`;
+    prompt += `- Address: ${task.grpcConfig.address}\n`;
+    prompt += `- Payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
+    if (task.grpcConfig.metadata) prompt += `- Metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
+    if (task.grpcConfig.deadline) prompt += `- Deadline: ${task.grpcConfig.deadline}ms\n`;
+    prompt += `\nUse the GrpcClient tool to execute this call.\n`;
+  }
+
+  prompt += `\nPlease complete this task. Work in the current directory.`;
 
   const appState = createInitialAppState();
   const abortController = new AbortController();
@@ -1049,6 +1136,8 @@ async function executeTaskViaHttp(taskId: string) {
     if (!hasCriteria) {
       await updateTaskInfo(cwd(), taskId, { status: "done" });
       log("INFO", "AutoExec", `Task ${taskId} auto-approved → done (${messageCount} messages)`);
+      // Assign downstream tasks whose dependencies are now met
+      await assignDependentTasks(taskId);
     } else {
       log("INFO", "AutoExec", `Task ${taskId} → verify, waiting for manual review (${messageCount} messages)`);
     }
@@ -1057,6 +1146,8 @@ async function executeTaskViaHttp(taskId: string) {
   } catch (error) {
     if (abortController.signal.aborted) {
       log("INFO", "AutoExec", `Task ${taskId} was aborted`);
+      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Aborted by user" });
+      eventBus.emit("executor:task-completed", { taskId, success: false, result: "Aborted" });
       return;
     }
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -1087,7 +1178,7 @@ routes.set("POST /api/chat/permission-response", async (_req, body) => {
   const pending = httpPermissions.get(input.id);
   if (pending) {
     httpPermissions.delete(input.id);
-    pending.resolve(input.approved !== false);
+    pending.resolve(input.approved === true);
     return { ok: true };
   }
   return { error: "No pending permission request with that ID" };

@@ -98,18 +98,20 @@ export function ProposalEditor() {
     if (agents.length === 0) loadAgents()
   }, [agents.length])
 
-  // Load existing proposal if editing
+  // Load existing proposal if editing (only once on mount)
+  const [loaded, setLoaded] = React.useState(false)
   React.useEffect(() => {
-    if (editingProposalId) {
+    if (editingProposalId && !loaded) {
       const existing = proposals.find(p => p.id === editingProposalId)
       if (existing) {
         setTitle(existing.title)
         setDescription(existing.description || '')
         setTaskDrafts(existing.taskDrafts)
         setDocumentDrafts(existing.documentDrafts)
+        setLoaded(true)
       }
     }
-  }, [editingProposalId, proposals])
+  }, [editingProposalId, proposals, loaded])
 
   // Apply template
   const applyTemplate = (templateId: string) => {
@@ -193,6 +195,7 @@ export function ProposalEditor() {
         // Add all task drafts
         for (const draft of taskDrafts) {
           await useAppStore.getState().addTaskDraft(proposal.id, {
+            tempId: draft.tempId,
             title: draft.title,
             description: draft.description,
             agent: draft.agent,
@@ -430,7 +433,7 @@ export function ProposalEditor() {
                           <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>Depends on</label>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {taskDrafts.filter(d => d.tempId !== draft.tempId).map(d => {
-                              const isDep = draft.dependsOnTempIds?.includes(d.tempId)
+                              const isDep = draft.dependsOnTempIds?.includes(d.tempId) ?? false
                               return (
                                 <label key={d.tempId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: isDep ? 'var(--text-primary)' : 'var(--text-faint)', cursor: 'pointer' }}>
                                   <input
@@ -447,6 +450,59 @@ export function ProposalEditor() {
                                 </label>
                               )
                             })}
+                          </div>
+                        </div>
+                      )}
+                      {/* gRPC Config */}
+                      {draft.grpcConfig && (
+                        <div style={{ marginTop: 8, padding: 8, backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}>
+                          <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace', display: 'block', marginBottom: 6 }}>
+                            gRPC Config
+                          </label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Address</label>
+                              <Input
+                                value={draft.grpcConfig.address}
+                                onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, address: e.target.value } })}
+                                placeholder="host:port"
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Service.Method</label>
+                              <Input
+                                value={`${draft.grpcConfig.service}.${draft.grpcConfig.method}`}
+                                disabled
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-muted)' }}
+                              />
+                            </div>
+                            {/* Editable payload fields */}
+                            {Object.entries(draft.grpcConfig.payload).map(([key, value]) => (
+                              <div key={key}>
+                                <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>{key}</label>
+                                {Array.isArray(value) ? (
+                                  <Input
+                                    value={JSON.stringify(value)}
+                                    onChange={(e) => {
+                                      try {
+                                        const parsed = JSON.parse(e.target.value)
+                                        updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: parsed } } })
+                                      } catch { /* ignore invalid JSON */ }
+                                    }}
+                                    placeholder="JSON array"
+                                    style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace' }}
+                                  />
+                                ) : (
+                                  <Input
+                                    value={String(value ?? '')}
+                                    onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: e.target.value } } })}
+                                    placeholder={key}
+                                    style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
+                                  />
+                                )}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}

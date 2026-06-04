@@ -156,15 +156,17 @@ function createToolResultMessage(
 function planPrompt(prompt: string): PlannedAction {
   const trimmed = prompt.trim();
 
-  const readMatch = trimmed.match(/^read\s+(.+)$/i);
+  const readMatch =
+    trimmed.match(/^(?:read|open|show|cat)\s+(.+)$/i) ??
+    trimmed.match(/^(?:读取|查看|打开)\s+(.+)$/);
   if (readMatch) {
-    const path = readMatch[1].trim();
+    const path = readMatch[1].trim().replace(/^["']|["']$/g, "");
     return {
       kind: "tool",
       toolName: "Read",
       input: { path },
-      intro: `我来读取 ${path} 的内容。`,
-      summarizeResult: () => `读取完成：\`${path}\``,
+      intro: `我会先读取 \`${path}\`。`,
+      summarizeResult: summarizeReadResult,
       summarizeError: (message) => `读取 \`${path}\` 失败：${message}`,
     };
   }
@@ -198,15 +200,17 @@ function planPrompt(prompt: string): PlannedAction {
     };
   }
 
-  const runMatch = trimmed.match(/^run\s+(.+)$/i);
+  const runMatch =
+    trimmed.match(/^(?:run|exec|execute|shell|bash)\s+(.+)$/i) ??
+    trimmed.match(/^(?:执行|运行命令)\s+(.+)$/);
   if (runMatch) {
     const command = runMatch[1].trim();
     return {
       kind: "tool",
       toolName: "Shell",
       input: { command },
-      intro: `我来执行 \`${command}\`。`,
-      summarizeResult: () => `执行完成：\`${command}\``,
+      intro: `我会执行命令：\`${command}\`。`,
+      summarizeResult: summarizeShellResult,
       summarizeError: (message) => `执行 \`${command}\` 失败：${message}`,
     };
   }

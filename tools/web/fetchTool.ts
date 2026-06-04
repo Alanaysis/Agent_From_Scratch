@@ -62,9 +62,10 @@ async function web_fetch(url: string) {
     `);
 
     const html = await page.content();
-    
+
     console.log(`[WebFetch] Successfully fetched ${html.length} bytes from ${url}`);
-    
+
+    await browser.close();
     return html;
   } catch (error) {
     if (browser) {

@@ -28,7 +28,7 @@ export function registerExecutorHandlers() {
         getAppState: () => emptyState,
       }, { agentType: "executor" })
 
-      startExecutor(mockContext as any, config)
+      await startExecutor(mockContext as any, config)
       log('INFO', 'Executor', 'executor:start success')
       return { started: true, message: "Executor started" }
     } catch (e) {

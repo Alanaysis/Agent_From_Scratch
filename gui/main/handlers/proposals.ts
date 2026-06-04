@@ -125,7 +125,8 @@ export function registerProposalHandlers() {
       if (proposal.status !== "draft") throw new Error("Can only edit drafts");
 
       const newDraft: TaskDraft = {
-        tempId: createId("draft"),
+        // Preserve the original tempId from the editor (needed for dependency resolution)
+        tempId: input.draft.tempId || createId("draft"),
         title: input.draft.title,
         description: input.draft.description,
         agent: input.draft.agent,

@@ -162,7 +162,7 @@ function buildAllToolDefinitions(): LlmToolDefinition[] {
           address: { type: "string", description: "Target address in host:port format." },
           payload: { type: "object", description: "Request payload as key-value pairs." },
           metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
-          deadline: { type: "number", description: "Optional timeout in milliseconds (default 30000)." },
+          deadline: { type: "number", description: "Optional timeout in milliseconds (default 300000, i.e. 5 minutes)." },
         },
         required: ["service", "method", "address", "payload"],
         additionalProperties: false,

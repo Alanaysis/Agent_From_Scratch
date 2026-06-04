@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, FileText, CheckCircle, XCircle, Clock, Loader2, Trash2, ChevronRight, Eye, Upload, X } from 'lucide-react'
+import { Plus, FileText, CheckCircle, XCircle, Clock, Loader2, Trash2, ChevronRight, Eye, Upload, X, Pencil } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -292,6 +292,28 @@ export function ProposalView() {
                         <span style={{ fontSize: 9, color: 'var(--text-faint)', fontFamily: 'IBM Plex Mono, monospace' }}>
                           {formatDistanceToNow(proposal.updatedAt, { addSuffix: false })}
                         </span>
+                        {proposal.status === 'draft' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              useAppStore.getState().editingProposalId = proposal.id
+                              setViewMode('proposal-editor')
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 2,
+                              opacity: 0.3,
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
+                          >
+                            <Pencil size={10} color="var(--amber)" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDelete(e, proposal.id)}
                           style={{

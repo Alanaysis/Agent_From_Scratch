@@ -15,6 +15,15 @@ export type TaskDraft = {
   relatedDocumentTempIds?: string[];
   requiresApproval?: boolean;
   approvalMessage?: string;
+  grpcConfig?: {
+    protoFile: string;
+    service: string;
+    method: string;
+    address: string;
+    payload: Record<string, unknown>;
+    metadata?: Record<string, string>;
+    deadline?: number;
+  };
 };
 
 export type DocumentDraft = {
@@ -207,11 +216,12 @@ export async function approveProposal(
         description: draft.description,
         priority: draft.priority || "medium",
         status: "todo",
-        assignee: draft.agent,
+        assignee: draft.agent || "general-purpose",
         createdBy: proposal.createdBy,
         acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
         requiresApproval: draft.requiresApproval || false,
         approvalMessage: draft.approvalMessage,
+        grpcConfig: draft.grpcConfig,
       });
 
       createdTasks.push({ id: taskId, title: draft.title });
@@ -284,8 +294,12 @@ export async function approveProposal(
       approvedAt: new Date().toISOString(),
     });
 
+    if (!approved) {
+      throw new Error(`Failed to update proposal ${proposalId} — it may have been deleted`);
+    }
+
     return {
-      proposal: approved!,
+      proposal: approved,
       tasks: createdTasks,
       documents: createdDocuments,
     };

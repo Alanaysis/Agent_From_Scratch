@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { X, Plus, Trash2, FileText, CheckCircle, XCircle, Clock, ArrowRight, Link2, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Plus, Trash2, FileText, CheckCircle, XCircle, Clock, ArrowRight, Link2, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -527,6 +527,17 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
 
         {/* Actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {isDraft && (
+            <ActionButton
+              onClick={() => {
+                useAppStore.getState().editingProposalId = proposal.id
+                useAppStore.getState().setViewMode('proposal-editor')
+              }}
+              color="var(--amber)"
+              icon={<Pencil size={13} />}
+              label="Edit"
+            />
+          )}
           {isDraft && proposal.taskDrafts.length > 0 && (
             <ActionButton
               onClick={handleSubmit}
