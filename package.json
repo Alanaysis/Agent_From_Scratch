@@ -25,7 +25,7 @@
     "build:electron-main": "mkdir -p gui/dist/main && esbuild gui/main/index.ts --bundle --platform=node --format=esm --outfile=gui/dist/main/index.mjs --external:electron --external:playwright --external:chromium-bidi && esbuild gui/main/preload.ts --bundle --platform=node --format=cjs --outfile=gui/dist/main/preload.cjs --external:electron",
     "build:electron": "npm run build:gui && npm run build:electron-main",
     "dev:electron": "npm run build:electron-main && electron . --no-sandbox",
-    "dev:electron:gui": "npm run build:electron-main && concurrently \"npm run dev:gui\" \"wait-on http://localhost:3001 && electron . --no-sandbox\"",
+    "dev:electron:gui": "npm run build:electron-main && concurrently \"npm run dev:gui\" \"wait-on http://localhost:3001 && NODE_ENV=development electron . --no-sandbox\"",
     "typecheck": "tsc -p tsconfig.json",
   "typecheck:gui": "cd gui && tsc -p tsconfig.json --noEmit",
     "check": "bun run build && node ./bin/irg.js --help",

@@ -22,7 +22,10 @@ function createWindow() {
     },
   });
 
-  if (process.env.NODE_ENV === 'development') {
+  // 开发模式判断：检查是否有相关环境变量或直接使用开发模式
+  const isDev = process.env.NODE_ENV === 'development' || process.env.DEV === 'true' || !app.isPackaged;
+  
+  if (isDev) {
     mainWindow.loadURL('http://localhost:3001');
     mainWindow.webContents.openDevTools();
   } else {
