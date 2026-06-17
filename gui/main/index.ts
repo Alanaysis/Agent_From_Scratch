@@ -27,7 +27,8 @@ function createWindow() {
   
   if (isDev) {
     mainWindow.loadURL('http://localhost:3001');
-    mainWindow.webContents.openDevTools();
+    // 不自动打开开发者工具，需要时按 Ctrl+Shift+I 打开
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../out/index.html'));
   }
