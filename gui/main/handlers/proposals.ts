@@ -33,6 +33,7 @@ interface ProposalUpdateInput {
 }
 
 interface TaskDraftInput {
+  tempId?: string;
   title: string;
   description?: string;
   agent?: string;

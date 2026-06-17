@@ -27,7 +27,7 @@
     "dev:electron": "npm run build:electron-main && electron . --no-sandbox",
     "dev:electron:gui": "npm run build:electron-main && concurrently \"npm run dev:gui\" \"wait-on http://localhost:3001 && electron . --no-sandbox\"",
     "typecheck": "tsc -p tsconfig.json",
-    "typecheck:gui": "tsc -p gui/tsconfig.renderer.json --noEmit",
+  "typecheck:gui": "cd gui && tsc -p tsconfig.json --noEmit",
     "check": "bun run build && node ./bin/irg.js --help",
     "prepack": "bun run build"
   },

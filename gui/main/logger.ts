@@ -26,7 +26,7 @@ function getLogFile(): string {
   return _logFile
 }
 
-export function log(level: 'INFO' | 'ERROR' | 'DEBUG', category: string, message: string, data?: unknown) {
+export function log(level: 'INFO' | 'ERROR' | 'DEBUG' | 'WARN', category: string, message: string, data?: unknown) {
   const timestamp = new Date().toISOString()
   const dataStr = data ? ` ${typeof data === 'object' ? JSON.stringify(data) : data}` : ''
   const logLine = `[${timestamp}] [${level}] [${category}] ${message}${dataStr}\n`
@@ -41,6 +41,8 @@ export function log(level: 'INFO' | 'ERROR' | 'DEBUG', category: string, message
     console.error(`[${category}] ${message}`, data || '')
   } else if (level === 'DEBUG') {
     console.debug(`[${category}] ${message}`, data || '')
+  } else if (level === 'WARN') {
+    console.warn(`[${category}] ${message}`, data || '')
   } else {
     console.log(`[${category}] ${message}`, data || '')
   }

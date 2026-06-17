@@ -25,6 +25,8 @@ export type LlmConfig = {
   model: string;
   systemPrompt?: string;
   anthropicVersion?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
 };
 
 type LlmTurnParams = {
@@ -45,7 +47,7 @@ type OpenAiToolCall = {
 
 type OpenAiMessage = {
   role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
+  content?: string | null | Array<{ type?: string; text?: string; image_url?: { url: string } }>;
   tool_calls?: OpenAiToolCall[];
   tool_call_id?: string;
 };
@@ -66,6 +68,7 @@ type OpenAiResponse = {
 
 type AnthropicUserBlock =
   | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
   | {
       type: "tool_result";
       tool_use_id: string;
@@ -226,7 +229,20 @@ export function toOpenAiMessages(
 
   for (const message of messages) {
     if (message.type === "user") {
-      apiMessages.push({ role: "user", content: message.content });
+      if (typeof message.content === "string") {
+        apiMessages.push({ role: "user", content: message.content });
+      } else {
+        // Convert to OpenAI format content blocks
+        const openAiContent = message.content.map((block) => {
+          if (block.type === "text") {
+            return { type: "text", text: block.text };
+          } else if (block.type === "image") {
+            return { type: "image_url", image_url: { url: `data:${block.mimeType};base64,${block.data}` } };
+          }
+          return { type: "text", text: "" };
+        });
+        apiMessages.push({ role: "user", content: openAiContent });
+      }
       continue;
     }
 
@@ -270,10 +286,26 @@ function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
 
   for (const message of messages) {
     if (message.type === "user") {
-      apiMessages.push({
-        role: "user",
-        content: [{ type: "text", text: message.content }],
-      });
+      if (typeof message.content === "string") {
+        apiMessages.push({
+          role: "user",
+          content: [{ type: "text", text: message.content }] as AnthropicUserBlock[],
+        });
+      } else {
+        // Convert to Anthropic format content blocks
+        const anthropicContent: AnthropicUserBlock[] = message.content.map((block) => {
+          if (block.type === "text") {
+            return { type: "text", text: block.text };
+          } else if (block.type === "image") {
+            return { type: "image", source: { type: "base64", media_type: block.mimeType, data: block.data } };
+          }
+          return { type: "text", text: "" };
+        });
+        apiMessages.push({
+          role: "user",
+          content: anthropicContent,
+        });
+      }
       continue;
     }
 

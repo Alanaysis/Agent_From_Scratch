@@ -39,6 +39,7 @@ export type QueryParams = {
     params: ParamConfig[];
   }) => Promise<Record<string, any>>;
   onWorkMapUpdate?: (workMap: WorkMap | null) => void;
+  sessionId?: string;
 };
 
 export { executeToolCall, executeWorkMap };
