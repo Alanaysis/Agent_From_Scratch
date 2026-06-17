@@ -120,7 +120,7 @@ export function ApprovalModal() {
               {/* Task failure actions: Stop, Continue, Retry */}
               <button
                 data-testid="approval-stop"
-                onClick={() => resolveApproval(taskId, 'stop')}
+                onClick={() => resolveApproval(taskId, 'abort')}
                 style={{
                   padding: '6px 12px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace',
                   color: S.textMuted, backgroundColor: 'transparent',
@@ -132,7 +132,7 @@ export function ApprovalModal() {
               </button>
               <button
                 data-testid="approval-continue"
-                onClick={() => resolveApproval(taskId, 'continue')}
+                onClick={() => resolveApproval(taskId, 'execute')}
                 style={{
                   padding: '6px 12px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace',
                   color: S.amber, backgroundColor: 'transparent',

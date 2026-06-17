@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, FileText, CheckCircle, XCircle, Clock, Loader2, Trash2, ChevronRight, Eye, Upload, X, Pencil } from 'lucide-react'
+import { Plus, FileText, CheckCircle, XCircle, Clock, Loader2, Trash2, ChevronRight, ChevronDown, Eye, Upload, X, Pencil } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -9,17 +9,30 @@ import { Input } from '@/components/ui/input'
 import { ProposalDetailPanel } from './ProposalDetailPanel'
 import type { Proposal } from '@/types'
 
-const columns: { id: Proposal['status']; label: string; color: string; icon: React.ReactNode }[] = [
-  { id: 'draft', label: 'Draft', color: 'var(--status-blue)', icon: <FileText size={12} /> },
-  { id: 'pending', label: 'Pending Review', color: 'var(--amber)', icon: <Clock size={12} /> },
-  { id: 'approved', label: 'Approved', color: 'var(--status-green)', icon: <CheckCircle size={12} /> },
-  { id: 'rejected', label: 'Rejected', color: 'var(--warm-red)', icon: <XCircle size={12} /> },
+const statusGroups = [
+  { id: 'draft', label: 'Draft', color: 'var(--status-blue)', icon: <FileText size={10} />, statuses: ['draft'] as Proposal['status'][] },
+  { id: 'review', label: 'Review', color: 'var(--amber)', icon: <Clock size={10} />, statuses: ['pending'] as Proposal['status'][] },
+  { id: 'resolved', label: 'Resolved', color: 'var(--status-green)', icon: <CheckCircle size={10} />, statuses: ['approved', 'rejected'] as Proposal['status'][] },
 ]
+
+const statusBadge: Record<string, { label: string; color: string; bgColor: string }> = {
+  draft: { label: 'DRAFT', color: 'var(--status-blue)', bgColor: 'rgba(59,130,246,0.1)' },
+  pending: { label: 'PENDING', color: 'var(--amber)', bgColor: 'rgba(245,158,11,0.08)' },
+  approved: { label: 'APPROVED', color: 'var(--status-green)', bgColor: 'rgba(92,184,92,0.1)' },
+  rejected: { label: 'REJECTED', color: 'var(--warm-red)', bgColor: 'rgba(239,68,68,0.1)' },
+}
 
 export function ProposalView() {
   const { proposals, loadProposals, createProposal, deleteProposal, setViewMode } = useAppStore()
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedProposal, setSelectedProposal] = React.useState<Proposal | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set())
+  const [showAddInput, setShowAddInput] = React.useState(false)
+  const [newTitle, setNewTitle] = React.useState('')
+
+  const [showFilePicker, setShowFilePicker] = React.useState(false)
+  const [remoteFiles, setRemoteFiles] = React.useState<Array<{ name: string; path: string; type: string }>>([])
+  const [isLoadingFiles, setIsLoadingFiles] = React.useState(false)
 
   React.useEffect(() => {
     loadProposals().finally(() => setIsLoading(false))
@@ -28,25 +41,22 @@ export function ProposalView() {
   React.useEffect(() => {
     if (selectedProposal) {
       const updated = proposals.find(p => p.id === selectedProposal.id)
-      if (updated) {
-        setSelectedProposal(updated)
-      }
+      if (updated) setSelectedProposal(updated)
     }
   }, [proposals])
 
   const handleCreate = async () => {
-    // Open the proposal editor
-    useAppStore.getState().editingProposalId = null
-    setViewMode('proposal-editor')
+    if (newTitle.trim()) {
+      await createProposal({ title: newTitle.trim() })
+      setNewTitle('')
+      setShowAddInput(false)
+    } else {
+      useAppStore.getState().editingProposalId = null
+      setViewMode('proposal-editor')
+    }
   }
 
-  const [showFilePicker, setShowFilePicker] = React.useState(false)
-  const [remoteFiles, setRemoteFiles] = React.useState<Array<{ name: string; path: string; type: string }>>([])
-  const [isLoadingFiles, setIsLoadingFiles] = React.useState(false)
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-
   const handleImportWorkflow = async () => {
-    // Browser mode — list remote files
     if (!window.electronAPI?.invoke) {
       setIsLoadingFiles(true)
       setShowFilePicker(true)
@@ -60,7 +70,6 @@ export function ProposalView() {
       setIsLoadingFiles(false)
       return
     }
-    // Electron mode — use native file dialog
     try {
       const dialogResult = await useAppStore.getState().sendToBackend('workflows:open_file_dialog') as { filePath: string | null }
       if (!dialogResult?.filePath) return
@@ -83,7 +92,6 @@ export function ProposalView() {
         createdBy: 'user',
       }) as { workflow: any; proposalId: string }
       await loadProposals()
-      // Select the newly created proposal
       const updated = useAppStore.getState().proposals.find(p => p.id === result.proposalId)
       if (updated) setSelectedProposal(updated)
     } catch (e) {
@@ -112,13 +120,20 @@ export function ProposalView() {
     const proposal = proposals.find(p => p.id === id)
     if (!confirm(`Delete proposal "${proposal?.title || id}"? This will also delete all associated tasks and sessions.`)) return
     await deleteProposal(id)
-    if (selectedProposal?.id === id) {
-      setSelectedProposal(null)
-    }
+    if (selectedProposal?.id === id) setSelectedProposal(null)
   }
 
-  const getProposalsByStatus = (status: Proposal['status']) =>
-    proposals.filter((p) => p.status === status)
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const getProposalsByStatuses = (statuses: Proposal['status'][]) =>
+    proposals.filter(p => statuses.includes(p.status))
 
   if (isLoading) {
     return (
@@ -146,248 +161,253 @@ export function ProposalView() {
       backgroundColor: 'var(--surface-0)',
       overflow: 'hidden',
       fontFamily: 'IBM Plex Sans, sans-serif',
+      position: 'relative',
     }}>
+      {/* Proposal list */}
       <div style={{
         flex: 1,
         display: 'flex',
-        gap: 2,
-        padding: 6,
-        overflow: 'hidden'
+        flexDirection: 'column',
+        overflow: 'hidden',
+        minWidth: 0,
       }}>
-        {columns.map((col) => {
-          const colProposals = getProposalsByStatus(col.id)
-          return (
-            <div key={col.id} data-testid={`proposal-column-${col.id}`} style={{
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1,
-              minWidth: 0,
-              backgroundColor: 'var(--surface-1)',
-              borderRadius: 0,
-              border: '1px solid var(--border-subtle)',
-              overflow: 'hidden'
-            }}>
-              {/* Column header */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 10px',
-                borderBottom: '1px solid var(--border-subtle)',
-                flexShrink: 0,
-                borderTop: `2px solid ${col.color}`,
-                backgroundColor: 'var(--surface-1)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 0,
-                    backgroundColor: 'transparent',
+        {/* Header */}
+        <div style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          backgroundColor: 'var(--surface-1)',
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
+            Proposals ({proposals.length})
+          </span>
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleImportWorkflow}
+              title="Import Workflow YAML"
+              style={{ width: 24, height: 24, borderRadius: 0 }}
+            >
+              <Upload size={12} />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowAddInput(!showAddInput)}
+              style={{ width: 24, height: 24, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}
+            >
+              <Plus size={12} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Add proposal input */}
+        {showAddInput && (
+          <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 4, flexShrink: 0 }}>
+            <Input
+              placeholder="Proposal title..."
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              style={{ flex: 1, height: 26, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
+            />
+            <Button size="icon" variant="ghost" onClick={handleCreate} style={{ width: 26, height: 26, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}>
+              <Plus size={10} />
+            </Button>
+          </div>
+        )}
+
+        {/* Grouped proposal list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+          {statusGroups.map(group => {
+            const groupProposals = getProposalsByStatuses(group.statuses)
+            if (groupProposals.length === 0) return null
+            const isCollapsed = collapsedGroups.has(group.id)
+
+            return (
+              <div key={group.id} style={{ marginBottom: 2 }}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  style={{
+                    width: '100%',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: col.color,
-                  }}>
-                    {col.icon}
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{col.label}</span>
+                    gap: 6,
+                    padding: '6px 12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-primary)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                  <span style={{ color: group.color }}>{group.icon}</span>
+                  <span>{group.label}</span>
                   <span style={{
                     fontSize: 9,
-                    color: col.color,
-                    backgroundColor: 'var(--surface-0)',
+                    color: 'var(--text-muted)',
+                    backgroundColor: 'var(--surface-2)',
                     padding: '1px 5px',
                     borderRadius: 0,
                     fontWeight: 600,
-                    fontFamily: 'IBM Plex Mono, monospace',
                   }}>
-                    {colProposals.length}
+                    {groupProposals.length}
                   </span>
-                </div>
-              </div>
+                </button>
 
-              {/* Proposal cards */}
-              <div style={{
-                flex: 1,
-                minHeight: 0,
-                overflowY: 'auto',
-                padding: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2
-              }}>
-                {colProposals.map((proposal) => (
-                  <div key={proposal.id} data-testid={`proposal-${proposal.id}`} style={{
-                    padding: '8px 10px',
-                    backgroundColor: selectedProposal?.id === proposal.id ? 'var(--surface-2)' : 'var(--surface-0)',
-                    borderRadius: 0,
-                    border: `1px solid ${selectedProposal?.id === proposal.id ? col.color : 'var(--border-subtle)'}`,
-                    cursor: 'pointer',
-                    transition: 'border-color 0.15s',
-                  }}
-                    onClick={() => setSelectedProposal(proposal)}
-                    onMouseEnter={(e) => {
-                      if (selectedProposal?.id !== proposal.id) e.currentTarget.style.borderColor = 'var(--border-medium)'
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedProposal?.id !== proposal.id) e.currentTarget.style.borderColor = 'var(--border-subtle)'
-                    }}
-                  >
-                    <h4 style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: 'var(--text-primary)',
-                      marginBottom: 4,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontFamily: 'IBM Plex Sans, sans-serif',
-                    }}>
-                      {proposal.title}
-                    </h4>
+                {/* Proposal rows */}
+                {!isCollapsed && groupProposals.map(proposal => {
+                  const badge = statusBadge[proposal.status]
+                  const isSelected = selectedProposal?.id === proposal.id
 
-                    {proposal.description && (
-                      <p style={{
-                        fontSize: 10,
-                        color: 'var(--text-faint)',
-                        marginBottom: 6,
-                        lineHeight: 1.3,
+                  return (
+                    <div
+                      key={proposal.id}
+                      data-testid={`proposal-${proposal.id}`}
+                      onClick={() => setSelectedProposal(proposal)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '4px 8px 4px 24px',
+                        cursor: 'pointer',
+                        backgroundColor: isSelected ? 'var(--surface-2)' : 'transparent',
+                        borderLeft: isSelected ? `2px solid ${group.color}` : '2px solid transparent',
+                        transition: 'background-color 0.1s',
+                        minWidth: 0,
+                      }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-1)' }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent' }}
+                    >
+                      {/* Status badge */}
+                      <span style={{
+                        fontSize: 8,
+                        fontWeight: 700,
+                        color: badge.color,
+                        backgroundColor: badge.bgColor,
+                        padding: '1px 4px',
+                        borderRadius: 0,
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        flexShrink: 0,
+                        letterSpacing: '0.03em',
+                      }}>
+                        {badge.label}
+                      </span>
+
+                      {/* Task/doc counts */}
+                      {proposal.taskDrafts.length > 0 && (
+                        <span style={{
+                          fontSize: 8,
+                          color: 'var(--status-blue)',
+                          backgroundColor: 'rgba(59,130,246,0.1)',
+                          padding: '1px 3px',
+                          borderRadius: 0,
+                          fontFamily: 'IBM Plex Mono, monospace',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}>
+                          {proposal.taskDrafts.length}T
+                        </span>
+                      )}
+                      {proposal.documentDrafts.length > 0 && (
+                        <span style={{
+                          fontSize: 8,
+                          color: 'var(--status-purple)',
+                          backgroundColor: 'rgba(123,104,192,0.1)',
+                          padding: '1px 3px',
+                          borderRadius: 0,
+                          fontFamily: 'IBM Plex Mono, monospace',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}>
+                          {proposal.documentDrafts.length}D
+                        </span>
+                      )}
+
+                      {/* Title */}
+                      <span style={{
+                        flex: 1,
+                        fontSize: 11,
+                        color: 'var(--text-primary)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical'
+                        whiteSpace: 'nowrap',
                       }}>
-                        {proposal.description}
-                      </p>
-                    )}
+                        {proposal.title}
+                      </span>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {proposal.taskDrafts.length > 0 && (
-                          <span style={{
-                            fontSize: 9,
-                            color: 'var(--status-blue)',
-                            backgroundColor: 'rgba(59,130,246,0.1)',
-                            padding: '1px 5px',
-                            borderRadius: 0,
-                            fontFamily: 'IBM Plex Mono, monospace',
-                            fontWeight: 600,
-                          }}>
-                            {proposal.taskDrafts.length} tasks
-                          </span>
-                        )}
-                        {proposal.documentDrafts.length > 0 && (
-                          <span style={{
-                            fontSize: 9,
-                            color: 'var(--status-purple)',
-                            backgroundColor: 'rgba(123,104,192,0.1)',
-                            padding: '1px 5px',
-                            borderRadius: 0,
-                            fontFamily: 'IBM Plex Mono, monospace',
-                            fontWeight: 600,
-                          }}>
-                            {proposal.documentDrafts.length} docs
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontSize: 9, color: 'var(--text-faint)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                          {formatDistanceToNow(proposal.updatedAt, { addSuffix: false })}
-                        </span>
-                        {proposal.status === 'draft' && (
-                          <button
-                            data-testid={`edit-proposal-${proposal.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              useAppStore.getState().editingProposalId = proposal.id
-                              setViewMode('proposal-editor')
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: 'pointer',
-                              padding: 2,
-                              opacity: 0.3,
-                              display: 'flex',
-                              alignItems: 'center',
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
-                          >
-                            <Pencil size={10} color="var(--amber)" />
-                          </button>
-                        )}
+                      {/* Time */}
+                      <span style={{
+                        fontSize: 9,
+                        color: 'var(--text-faint)',
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        flexShrink: 0,
+                      }}>
+                        {formatDistanceToNow(proposal.updatedAt, { addSuffix: false })}
+                      </span>
+
+                      {/* Edit button (draft only) */}
+                      {proposal.status === 'draft' && (
                         <button
-                          data-testid={`delete-proposal-${proposal.id}`}
-                          onClick={(e) => handleDelete(e, proposal.id)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            useAppStore.getState().editingProposalId = proposal.id
+                            setViewMode('proposal-editor')
+                          }}
+                          className="proposal-action-btn"
                           style={{
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
                             padding: 2,
-                            opacity: 0.3,
+                            opacity: 0,
                             display: 'flex',
-                            alignItems: 'center',
+                            flexShrink: 0,
+                            transition: 'opacity 0.15s',
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
                         >
-                          <Trash2 size={10} color="var(--text-muted)" />
+                          <Pencil size={10} color="var(--amber)" />
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      )}
 
-                {/* New proposal + import (only in draft column) */}
-                {col.id === 'draft' && (
-                  <div style={{ marginTop: 'auto', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <button
-                      data-testid="new-proposal"
-                      onClick={handleCreate}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        height: 32, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace',
-                        color: '#0c0c0c', backgroundColor: 'var(--amber)',
-                        border: 'none', borderRadius: 0, cursor: 'pointer', fontWeight: 600,
-                      }}
-                    >
-                      <Plus size={12} />
-                      New Proposal
-                    </button>
-                    <button
-                      data-testid="import-yaml"
-                      onClick={handleImportWorkflow}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        height: 26,
-                        fontSize: 10,
-                        color: 'var(--copper)',
-                        backgroundColor: 'transparent',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: 0,
-                        cursor: 'pointer',
-                        fontFamily: 'IBM Plex Mono, monospace',
-                        transition: 'border-color 0.15s',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--copper)'}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
-                    >
-                      <Upload size={11} />
-                      Import Workflow YAML
-                    </button>
-                  </div>
-                )}
+                      {/* Delete */}
+                      <button
+                        onClick={(e) => handleDelete(e, proposal.id)}
+                        style={{
+                          background: 'rgba(239,68,68,0.1)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          cursor: 'pointer',
+                          padding: '3px 6px',
+                          display: 'flex',
+                          flexShrink: 0,
+                          borderRadius: 2,
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.5)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)' }}
+                      >
+                        <Trash2 size={10} color="var(--warm-red)" />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
+      {/* Detail panel */}
       {selectedProposal && (
         <ProposalDetailPanel
           proposal={selectedProposal}
@@ -399,18 +419,21 @@ export function ProposalView() {
       {showFilePicker && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 2147483647,
+          padding: 16,
         }}>
           <div style={{
-            backgroundColor: 'var(--surface-1)', padding: 20, width: 420, maxHeight: '70vh',
+            backgroundColor: 'var(--surface-1)', padding: 24,
+            width: '100%', maxWidth: 700, maxHeight: '85vh',
             border: '1px solid var(--border-medium)', display: 'flex', flexDirection: 'column',
+            boxSizing: 'border-box',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                Import Workflow
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, minWidth: 0, gap: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                Import Workflow YAML
               </span>
-              <button onClick={() => setShowFilePicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <button onClick={() => setShowFilePicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0 }}>
                 <X size={16} />
               </button>
             </div>
@@ -440,6 +463,7 @@ export function ProposalView() {
                       padding: '8px 10px', backgroundColor: 'var(--surface-0)',
                       border: '1px solid var(--border-subtle)', cursor: 'pointer',
                       textAlign: 'left', transition: 'border-color 0.15s',
+                      minWidth: 0,
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--amber)'}
                     onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
@@ -448,34 +472,44 @@ export function ProposalView() {
                       fontSize: 8, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700,
                       color: file.type === 'proto' ? 'var(--status-purple)' : 'var(--amber)',
                       backgroundColor: file.type === 'proto' ? 'rgba(123,104,192,0.1)' : 'rgba(212,165,116,0.1)',
-                      padding: '1px 4px', borderRadius: 0,
+                      padding: '1px 4px', borderRadius: 0, flexShrink: 0,
                     }}>
                       {file.type === 'proto' ? 'PROTO' : 'YAML'}
                     </span>
-                    <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace' }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {file.name}
                     </span>
-                    <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>{file.path}</span>
                   </button>
                 ))}
               </div>
             )}
 
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
               <button
                 onClick={handlePasteYaml}
                 style={{
-                  flex: 1, height: 32, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace',
-                  color: 'var(--text-secondary)', backgroundColor: 'transparent',
-                  border: '1px solid var(--border-subtle)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  width: '100%', height: 28, fontSize: 10,
+                  color: 'var(--copper)', backgroundColor: 'transparent',
+                  border: '1px solid var(--border-subtle)', borderRadius: 0,
+                  cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace',
+                  transition: 'border-color 0.15s',
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--copper)'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
               >
-                Paste YAML instead
+                Paste YAML Content
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .proposal-row:hover .proposal-action-btn { opacity: 0.5 !important; }
+        .proposal-row:hover .proposal-action-btn:hover { opacity: 1 !important; }
+      `}</style>
     </div>
   )
 }

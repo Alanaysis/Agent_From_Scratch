@@ -95,6 +95,7 @@ export function KanbanView() {
       backgroundColor: 'var(--surface-0)',
       overflow: 'hidden',
       fontFamily: 'IBM Plex Sans, sans-serif',
+      position: 'relative',
     }}>
       {/* Task list */}
       <div style={{
@@ -112,15 +113,16 @@ export function KanbanView() {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
+          backgroundColor: 'var(--surface-1)',
         }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
             Tasks ({tasks.length})
           </span>
           <Button
             size="icon"
             variant="ghost"
             onClick={() => setShowAddTask(!showAddTask)}
-            style={{ width: 24, height: 24, borderRadius: 0 }}
+            style={{ width: 24, height: 24, borderRadius: 0, flexShrink: 0 }}
           >
             <Plus size={12} />
           </Button>
@@ -304,12 +306,12 @@ export function KanbanView() {
       </div>
 
       {/* Task detail panel */}
-      {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask as any}
-          onClose={() => setSelectedTask(null)}
-        />
-      )}
+        {selectedTask && (
+          <TaskDetailPanel
+            task={selectedTask as any}
+            onClose={() => setSelectedTask(null)}
+          />
+        )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

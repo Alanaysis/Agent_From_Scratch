@@ -66,9 +66,11 @@ export function SettingsView() {
   const renderLLMTab = () => (
     <div style={{
       maxWidth: 520,
+      width: '100%',
       margin: '0 auto',
-      padding: 24,
+      padding: 16,
       fontFamily: 'IBM Plex Sans, sans-serif',
+      boxSizing: 'border-box',
     }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{
@@ -374,9 +376,11 @@ export function SettingsView() {
     }}>
       <div style={{
         borderBottom: '1px solid var(--border-subtle)',
-        padding: '0 24px',
+        padding: '0 16px',
         display: 'flex',
-        gap: 24,
+        gap: 16,
+        overflow: 'auto',
+        flexShrink: 0,
       }}>
         <button
           data-testid="llm-tab"

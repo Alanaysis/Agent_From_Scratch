@@ -158,7 +158,7 @@ export function WorkflowProgressView({ steps, title, onViewChat, onEditDraft, on
   const editingDraftData = editingStep ? steps.find(s => s.id === editingStep)?.draft : null
   const editPanel = editingDraftData ? (
     <div style={{
-      position: 'absolute', top: 10, right: 10, width: 240,
+      position: 'absolute', top: 10, right: 10, width: '100%', maxWidth: 240,
       backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-medium)',
       padding: 10, zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
     }}>

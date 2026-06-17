@@ -41,7 +41,7 @@ export function Sidebar() {
       borderRight: '1px solid var(--border-subtle)',
       backgroundColor: 'var(--surface-1)',
       position: 'relative',
-      zIndex: 2,
+      zIndex: 1,
       transition: 'width 0.2s ease, min-width 0.2s ease',
     }}>
       {/* Logo + Collapse Toggle */}

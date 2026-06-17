@@ -11,7 +11,7 @@ export function AppLayout() {
   const viewMode = useAppStore((s) => s.viewMode)
 
   return (
-    <div data-testid="app-layout" className="noise-bg" style={{ display: 'flex', height: '100vh', width: '100%', minWidth: 500, overflow: 'hidden', backgroundColor: 'var(--surface-0)' }}>
+    <div data-testid="app-layout" className="noise-bg" style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--surface-0)' }}>
       <Sidebar />
       <ApprovalModal />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 1, minWidth: 0 }}>

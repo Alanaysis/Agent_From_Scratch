@@ -197,9 +197,9 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
           }}>
             {status.icon}
           </div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Proposal</span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'IBM Plex Mono, monospace' }}>—</span>
-          <span style={{ fontSize: 12, color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif' }}>{proposal.title}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>Proposal</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0 }}>—</span>
+          <span style={{ fontSize: 12, color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{proposal.title}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
@@ -230,20 +230,20 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
             padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)',
             backgroundColor: 'var(--surface-1)', flexShrink: 0,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
                 Progress
               </span>
-              <div style={{ flex: 1, height: 6, backgroundColor: 'var(--surface-2)', borderRadius: 0, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ flex: 1, height: 6, backgroundColor: 'var(--surface-2)', borderRadius: 0, overflow: 'hidden', border: '1px solid var(--border-subtle)', minWidth: 60 }}>
                 <div style={{
                   width: `${progressPct}%`, height: '100%',
                   backgroundColor: failedCount > 0 ? 'var(--warm-red)' : 'var(--status-green)',
                   borderRadius: 0, transition: 'width 0.3s',
                 }} />
               </div>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 36, fontFamily: 'IBM Plex Mono, monospace' }}>{progressPct}%</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 36, fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0 }}>{progressPct}%</span>
             </div>
-            <div style={{ display: 'flex', gap: 12, fontSize: 10, fontFamily: 'IBM Plex Mono, monospace' }}>
+            <div style={{ display: 'flex', gap: 8, fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', flexWrap: 'wrap' }}>
               {runningCount > 0 && <span style={{ color: 'var(--amber)' }}>{runningCount} running</span>}
               {doneCount > 0 && <span style={{ color: 'var(--status-green)' }}>{doneCount} done</span>}
               {failedCount > 0 && <span style={{ color: 'var(--warm-red)' }}>{failedCount} failed</span>}
@@ -256,7 +256,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
       {/* Body: Left/Right split */}
       <div ref={containerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         {/* Left: DAG only */}
-        <div style={{ width: `${splitRatio}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 10, flexShrink: 0 }}>
+        <div style={{ width: `${splitRatio}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 10, flexShrink: 0, minWidth: 160 }}>
           {/* DAG Visualization - fills available space */}
           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <WorkflowProgressView

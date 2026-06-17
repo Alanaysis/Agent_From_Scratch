@@ -11,8 +11,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1920,
     height: 1080,
-    minWidth: 1280,
-    minHeight: 720,
+    minWidth: 500,
+    minHeight: 480,
     backgroundColor: '#0a0e14',
     title: 'IRG',
     webPreferences: {

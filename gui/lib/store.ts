@@ -205,7 +205,7 @@ type Actions = {
   setStreamingText: (text: string) => void
   setPermissionRequest: (request: PermissionRequest | null) => void
   setApprovalRequest: (request: ApprovalRequest | null) => void
-  resolveApproval: (taskId: string, action: 'execute' | 'later' | 'abort') => Promise<void>
+  resolveApproval: (taskId: string, action: string) => Promise<void>
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void
   updateTask: (id: string, updates: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -463,7 +463,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
           if (result?.messages) {
             set({
               currentSession: result.session,
-              messages: result.messages.map(rawMessageToMessage),
+              messages: result.messages.map((m: any) => rawMessageToMessage(m, get().activeToolCalls)),
               isLoading: false,
               streamingText: '',
             })

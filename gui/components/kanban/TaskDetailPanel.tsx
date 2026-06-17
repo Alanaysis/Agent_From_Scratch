@@ -12,6 +12,7 @@ import type { Task, TaskDetail } from '@/types'
 interface TaskDetailPanelProps {
   task: TaskDetail
   onClose: () => void
+  overlay?: boolean
 }
 
 const statusConfig: Record<string, { color: string; bgColor: string; label: string; icon: React.ReactNode }> = {
@@ -31,7 +32,7 @@ const actionLabels: Record<string, { label: string; color: string }> = {
   comment_added: { label: 'Comment', color: 'var(--status-green)' },
 }
 
-export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task, onClose, overlay }: TaskDetailPanelProps) {
   const { tasks, updateTaskStatus, deleteTaskBackend, agents, loadAgents, setViewMode, jumpToSession } = useAppStore()
   const [assigneeInput, setAssigneeInput] = React.useState(task.assignee || '')
   const [commentInput, setCommentInput] = React.useState('')
@@ -144,9 +145,16 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
   return (
     <div data-testid="task-detail-panel" style={{
-      width: '40%',
-      minWidth: 280,
-      maxWidth: 380,
+      ...(overlay ? {
+        position: 'absolute' as const,
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 100,
+      } : {
+        width: '40%',
+        minWidth: 200,
+        maxWidth: 380,
+        flexShrink: 0,
+      }),
       height: '100%',
       backgroundColor: 'var(--surface-0)',
       borderLeft: '1px solid var(--border-subtle)',
@@ -154,7 +162,6 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       flexDirection: 'column',
       overflow: 'hidden',
       fontFamily: 'IBM Plex Sans, sans-serif',
-      flexShrink: 0,
     }}>
       {/* Header */}
       <div style={{
@@ -699,15 +706,44 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               />
             )}
             <div style={{ height: 1, backgroundColor: 'var(--border-subtle)', margin: '4px 0' }} />
-            <ActionButton
-              testId="task-delete"
+            <button
+              data-testid="task-delete"
               onClick={handleDelete}
               disabled={isLoading}
-              color="var(--warm-red)"
-              icon={<XCircle size={13} />}
-              label="Delete Task"
-              variant="ghost"
-            />
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '8px 12px',
+                fontSize: 11,
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontWeight: 600,
+                backgroundColor: 'rgba(239,68,68,0.15)',
+                color: '#ef4444',
+                border: '1px solid rgba(239,68,68,0.5)',
+                borderRadius: 2,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.5 : 1,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.25)'
+                  e.currentTarget.style.borderColor = '#ef4444'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.15)'
+                  e.currentTarget.style.borderColor = 'rgba(239,68,68,0.5)'
+                }
+              }}
+            >
+              <XCircle size={13} color="#ef4444" />
+              Delete Task
+            </button>
           </div>
         </div>
 

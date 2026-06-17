@@ -126,6 +126,7 @@ export interface Agent {
   permission?: {
     allowed?: string[]
     denied?: string[]
+    [key: string]: string | string[] | undefined
   }
 }
 

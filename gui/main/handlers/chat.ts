@@ -9,7 +9,7 @@ import { getTools } from "../../../tools/registry";
 import { query } from "../../../runtime/query";
 import { readTranscriptMessages, getTranscriptPath } from "../../../storage/transcript";
 import { getAgentDefinition } from "../../../tools/agent/agentRegistry";
-import { getLoadedSkills } from "../../../skills/loader";
+import { getLoadedSkills, loadSkillInstruction } from "../../../skills/loader";
 import { setCheckpointResponse } from "../../../tools/workflow/checkpointTool";
 import type { Message } from "../../../runtime/messages";
 import { log } from "../logger";
@@ -155,7 +155,8 @@ export function registerChatHandlers() {
         const skills = getLoadedSkills();
         const skill = skills.find((s: any) => s.metadata?.name?.toLowerCase() === skillName || s.name?.toLowerCase() === skillName);
         if (skill) {
-          skillInstruction = typeof skill.instruction === 'function' ? await skill.instruction({}) : skill.instruction;
+          const instr = await loadSkillInstruction(skill);
+          skillInstruction = instr.content;
           messageText = messageText.slice(skillMatch[0].length);
           log('INFO', 'Chat', `Invoking skill: ${skillName}`);
         }

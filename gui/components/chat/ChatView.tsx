@@ -44,7 +44,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
     if (headingMatch) {
       const level = headingMatch[1]!.length
-      const Tag = `h${level}` as keyof JSX.IntrinsicElements
+      const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
       const sizes: Record<number, number> = { 1: 18, 2: 16, 3: 14, 4: 13, 5: 12, 6: 11 }
       elements.push(
         <Tag key={`h-${elements.length}`} style={{
@@ -513,41 +513,39 @@ export function ChatView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: S.bg, color: S.text, fontFamily: sans }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: S.bg, color: S.text, fontFamily: sans, minWidth: 0, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', gap: 10, backgroundColor: S.surface }}>
-        {/* Back button — only when navigated from another page */}
+      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', gap: 10, backgroundColor: S.surface, flexShrink: 0, overflow: 'hidden' }}>
         {store.previousViewMode && (
           <Button
             variant="ghost" size="icon"
             onClick={() => store.goBack()}
             title={`Back to ${store.previousViewMode}`}
-            style={{ width: 26, height: 26 }}
+            style={{ width: 26, height: 26, flexShrink: 0 }}
           >
             <ArrowLeft size={14} color={S.textSec} />
           </Button>
         )}
-        {/* New chat button */}
         <Button
           variant="ghost" size="icon"
           onClick={() => store.newChat()}
           title="New chat"
-          style={{ width: 26, height: 26 }}
+          style={{ width: 26, height: 26, flexShrink: 0 }}
         >
           <Plus size={14} color={S.textSec} />
         </Button>
-        <div style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: S.amber }}>
+        <div style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: S.amber, flexShrink: 0 }}>
           <Cpu size={18} strokeWidth={1.5} />
         </div>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>{store.currentSession ? store.currentSession.title : 'IRG'}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{store.currentSession ? store.currentSession.title : 'IRG'}</div>
           <div style={{ fontSize: 10, color: store.backendConnected ? S.green : S.copper, display: 'flex', alignItems: 'center', gap: 4, fontFamily: mono }}>
             <div style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: 'currentColor' }} />
             {store.backendConnected ? 'CONNECTED' : 'CONNECTING'}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 10, color: S.textFaint, fontFamily: mono }}>{store.messages.length} MSG</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, minWidth: 0 }}>
+          <span style={{ fontSize: 10, color: S.textFaint, fontFamily: mono, whiteSpace: 'nowrap' }}>{store.messages.length} MSG</span>
           {store.currentSession && (
             <button
               data-testid="delete-session"
