@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'bun:test';
 import { WriteTool } from '../../../../tools/files/writeTool.js';
-import { writeTextFile, resolvePathFromCwd } from '../../../../shared/fs';
+import { writeTextFile, resolvePathSafe } from '../../../../shared/fs';
 
 vi.mock('../../../../shared/fs', () => ({
   writeTextFile: vi.fn(),
-  resolvePathFromCwd: vi.fn((cwd, path) => `${cwd}/${path}`),
+  resolvePathSafe: vi.fn((path, cwd) => `${cwd}/${path}`),
 }));
 
 describe('WriteTool', () => {
@@ -228,7 +228,7 @@ describe('WriteTool', () => {
     it('writes file and returns bytes written on success', async () => {
       const content = 'Hello, World!';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       const input = { path: 'test.txt', content };
       const result = await WriteTool.call(input, mockContext, null as any, null as any);
@@ -246,12 +246,12 @@ describe('WriteTool', () => {
         null as any
       );
 
-      expect(resolvePathFromCwd).toHaveBeenCalledWith('/tmp/test-dir', 'subdir/file.txt');
+      expect(resolvePathSafe).toHaveBeenCalledWith('subdir/file.txt', '/tmp/test-dir');
     });
 
     it('writes to resolved path', async () => {
       (writeTextFile as any).mockResolvedValue(13);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/output.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/output.txt');
 
       await WriteTool.call(
         { path: 'output.txt', content: 'Hello World' },
@@ -266,7 +266,7 @@ describe('WriteTool', () => {
     it('returns correct byte count for ASCII content', async () => {
       const content = 'Hello';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       const result = await WriteTool.call(
         { path: 'test.txt', content },
@@ -280,7 +280,7 @@ describe('WriteTool', () => {
 
     it('returns correct byte count for empty file', async () => {
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/empty.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/empty.txt');
 
       const result = await WriteTool.call(
         { path: 'empty.txt', content: '' },
@@ -294,7 +294,7 @@ describe('WriteTool', () => {
 
     it('returns correct byte count for single character', async () => {
       (writeTextFile as any).mockResolvedValue(1);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/single.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/single.txt');
 
       const result = await WriteTool.call(
         { path: 'single.txt', content: 'X' },
@@ -309,7 +309,7 @@ describe('WriteTool', () => {
     it('returns correct byte count for multi-line file', async () => {
       const content = 'line1\nline2\nline3'; // 15 bytes including newlines
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/multiline.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/multiline.txt');
 
       const result = await WriteTool.call(
         { path: 'multiline.txt', content },
@@ -324,7 +324,7 @@ describe('WriteTool', () => {
     it('returns correct byte count for unicode content', async () => {
       const content = 'Hello 世界！'; // Unicode characters - JS counts code units
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/unicode.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/unicode.txt');
 
       const result = await WriteTool.call(
         { path: 'unicode.txt', content },
@@ -339,7 +339,7 @@ describe('WriteTool', () => {
     it('writes JSON content correctly', async () => {
       const content = '{"key": "value", "number": 123}';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.json');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.json');
 
       await WriteTool.call(
         { path: 'data.json', content },
@@ -354,7 +354,7 @@ describe('WriteTool', () => {
     it('writes JavaScript code correctly', async () => {
       const content = `function hello() {\n  console.log("Hello");\n}`;
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/code.js');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/code.js');
 
       await WriteTool.call(
         { path: 'code.js', content },
@@ -369,7 +369,7 @@ describe('WriteTool', () => {
     it('writes TypeScript code correctly', async () => {
       const content = `interface User {\n  name: string;\n}`;
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/typescript.ts');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/typescript.ts');
 
       await WriteTool.call(
         { path: 'typescript.ts', content },
@@ -384,7 +384,7 @@ describe('WriteTool', () => {
     it('writes HTML content correctly', async () => {
       const content = '<!DOCTYPE html><html><body>Hello</body></html>';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/index.html');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/index.html');
 
       await WriteTool.call(
         { path: 'index.html', content },
@@ -399,7 +399,7 @@ describe('WriteTool', () => {
     it('writes CSS content correctly', async () => {
       const content = `.container {\n  display: flex;\n}`;
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/styles.css');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/styles.css');
 
       await WriteTool.call(
         { path: 'styles.css', content },
@@ -414,7 +414,7 @@ describe('WriteTool', () => {
     it('writes YAML content correctly', async () => {
       const content = `name: myapp\nversion: 1.0.0`;
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/config.yaml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/config.yaml');
 
       await WriteTool.call(
         { path: 'config.yaml', content },
@@ -429,7 +429,7 @@ describe('WriteTool', () => {
     it('writes TOML content correctly', async () => {
       const content = `[package]\nname = "myapp"`;
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
 
       await WriteTool.call(
         { path: 'Cargo.toml', content },
@@ -444,7 +444,7 @@ describe('WriteTool', () => {
     it('writes XML content correctly', async () => {
       const content = '<?xml version="1.0"?><root></root>';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.xml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.xml');
 
       await WriteTool.call(
         { path: 'data.xml', content },
@@ -459,7 +459,7 @@ describe('WriteTool', () => {
     it('writes markdown content correctly', async () => {
       const content = '# Header\n\nContent';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/readme.md');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/readme.md');
 
       await WriteTool.call(
         { path: 'readme.md', content },
@@ -474,7 +474,7 @@ describe('WriteTool', () => {
     it('writes shell script correctly', async () => {
       const content = '#!/bin/bash\necho "Hello"';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/script.sh');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/script.sh');
 
       await WriteTool.call(
         { path: 'script.sh', content },
@@ -489,7 +489,7 @@ describe('WriteTool', () => {
     it('handles very large file write', async () => {
       const content = 'a'.repeat(1000000); // 1MB
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/large.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/large.txt');
 
       const result = await WriteTool.call(
         { path: 'large.txt', content },
@@ -504,7 +504,7 @@ describe('WriteTool', () => {
     it('handles content with tabs', async () => {
       const content = '\tindentation\twith\ttabs';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/tabs.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/tabs.txt');
 
       await WriteTool.call(
         { path: 'tabs.txt', content },
@@ -519,7 +519,7 @@ describe('WriteTool', () => {
     it('handles content with carriage returns (Windows line endings)', async () => {
       const content = 'line1\r\nline2\r\n';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/crlf.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/crlf.txt');
 
       await WriteTool.call(
         { path: 'crlf.txt', content },
@@ -534,7 +534,7 @@ describe('WriteTool', () => {
     it('handles content with old Mac line endings (CR only)', async () => {
       const content = 'line1\rline2\r';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/cr.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/cr.txt');
 
       await WriteTool.call(
         { path: 'cr.txt', content },
@@ -549,7 +549,7 @@ describe('WriteTool', () => {
     it('preserves exact content including special characters', async () => {
       const content = 'Special chars: @#$%^&*()_+-=[]{}|;:\'",.<>?/\\`~';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/special.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/special.txt');
 
       await WriteTool.call(
         { path: 'special.txt', content },
@@ -564,7 +564,7 @@ describe('WriteTool', () => {
     it('handles binary-like content (as text)', async () => {
       const content = '\x00\x01\x02\x03binary data';
       (writeTextFile as any).mockResolvedValue(content.length);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/binary.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/binary.txt');
 
       await WriteTool.call(
         { path: 'binary.txt', content },
@@ -655,7 +655,7 @@ describe('WriteTool', () => {
   describe('tool call signature', () => {
     it('accepts ToolUseContext with abortController', async () => {
       (writeTextFile as any).mockResolvedValue(7);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const controller = new AbortController();
       const context = {
@@ -673,7 +673,7 @@ describe('WriteTool', () => {
 
     it('accepts canUseTool callback parameter', async () => {
       (writeTextFile as any).mockResolvedValue(7);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const mockCanUseTool = vi.fn().mockResolvedValue({ behavior: 'allow' } as any);
 
@@ -689,7 +689,7 @@ describe('WriteTool', () => {
 
     it('accepts parentMessage parameter', async () => {
       (writeTextFile as any).mockResolvedValue(7);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const mockParentMessage = { id: 'msg-123', type: 'assistant', content: [] };
 

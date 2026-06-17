@@ -93,6 +93,9 @@ export function ProposalEditor() {
   const [documentDrafts, setDocumentDrafts] = React.useState<DocumentDraft[]>([])
   const [expandedTask, setExpandedTask] = React.useState<string | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
+  const [showSaveDialog, setShowSaveDialog] = React.useState(false)
+  const [saveFileName, setSaveFileName] = React.useState('')
+  const [isDirty, setIsDirty] = React.useState(false)
 
   React.useEffect(() => {
     if (agents.length === 0) loadAgents()
@@ -146,25 +149,65 @@ export function ProposalEditor() {
   }
 
   // Task draft operations
+  const markDirty = () => setIsDirty(true)
+
   const addTaskDraft = () => {
     setTaskDrafts([...taskDrafts, {
       tempId: `draft-${Date.now()}-${taskDrafts.length}`,
       title: '',
       priority: 'medium',
     }])
+    markDirty()
+  }
+
+  // Build description text from gRPC config
+  const buildDescriptionFromGrpc = (grpcConfig: TaskDraft['grpcConfig'], existingDescription?: string): string => {
+    if (!grpcConfig) return existingDescription || ''
+
+    // Extract non-gRPC description (user-written text before the gRPC block)
+    let userDesc = existingDescription || ''
+    const grpcBlockStart = userDesc.indexOf('gRPC Call:')
+    if (grpcBlockStart >= 0) {
+      userDesc = userDesc.substring(0, grpcBlockStart).trim()
+    }
+
+    // Build gRPC instruction block
+    const parts = [`gRPC Call: ${grpcConfig.service}.${grpcConfig.method}`]
+    if (grpcConfig.address) parts.push(`Address: ${grpcConfig.address}`)
+    if (grpcConfig.protoFile) parts.push(`Proto: ${grpcConfig.protoFile}`)
+    parts.push(`Payload: ${JSON.stringify(grpcConfig.payload)}`)
+    if (grpcConfig.metadata) parts.push(`Metadata: ${JSON.stringify(grpcConfig.metadata)}`)
+    if (grpcConfig.deadline) parts.push(`Deadline: ${grpcConfig.deadline}ms`)
+
+    const grpcBlock = parts.join('\n')
+    return userDesc ? `${userDesc}\n\n${grpcBlock}` : grpcBlock
   }
 
   const updateTaskDraft = (tempId: string, updates: Partial<TaskDraft>) => {
-    setTaskDrafts(taskDrafts.map(d => d.tempId === tempId ? { ...d, ...updates } : d))
+    setTaskDrafts(prev => prev.map(d => {
+      if (d.tempId !== tempId) return d
+
+      const newDraft = { ...d, ...updates }
+
+      // If gRPC config changed, sync description
+      if (updates.grpcConfig && d.grpcConfig) {
+        newDraft.description = buildDescriptionFromGrpc(updates.grpcConfig, d.description)
+      }
+
+      return newDraft
+    }))
+    markDirty()
   }
 
   const removeTaskDraft = (tempId: string) => {
-    setTaskDrafts(taskDrafts.filter(d => d.tempId !== tempId))
-    // Also remove from dependencies
-    setTaskDrafts(prev => prev.map(d => ({
-      ...d,
-      dependsOnTempIds: d.dependsOnTempIds?.filter(id => id !== tempId),
-    })))
+    setTaskDrafts(prev => prev
+      .filter(d => d.tempId !== tempId)
+      .map(d => ({
+        ...d,
+        dependsOnTempIds: d.dependsOnTempIds?.filter(id => id !== tempId),
+      }))
+    )
+    markDirty()
   }
 
   // Document draft operations
@@ -175,14 +218,17 @@ export function ProposalEditor() {
       title: '',
       content: '',
     }])
+    markDirty()
   }
 
   const updateDocumentDraft = (tempId: string, updates: Partial<DocumentDraft>) => {
     setDocumentDrafts(documentDrafts.map(d => d.tempId === tempId ? { ...d, ...updates } : d))
+    markDirty()
   }
 
   const removeDocumentDraft = (tempId: string) => {
     setDocumentDrafts(documentDrafts.filter(d => d.tempId !== tempId))
+    markDirty()
   }
 
   // Save proposal
@@ -190,11 +236,34 @@ export function ProposalEditor() {
     if (!title.trim()) return
     setIsSaving(true)
     try {
-      const proposal = await createProposal({ title: title.trim(), description: description.trim() || undefined })
-      if (proposal) {
+      let proposalId = editingProposalId
+
+      if (proposalId) {
+        // Update existing proposal
+        await useAppStore.getState().updateProposal(proposalId, {
+          title: title.trim(),
+          description: description.trim() || undefined,
+        })
+      } else {
+        // Create new proposal
+        const proposal = await createProposal({ title: title.trim(), description: description.trim() || undefined })
+        if (proposal) {
+          proposalId = proposal.id
+          useAppStore.getState().editingProposalId = proposalId
+        }
+      }
+
+      if (proposalId) {
+        // Clear existing task drafts and re-add all
+        const existingProposal = useAppStore.getState().proposals.find(p => p.id === proposalId)
+        if (existingProposal) {
+          for (const draft of existingProposal.taskDrafts) {
+            await useAppStore.getState().removeTaskDraft(proposalId, draft.tempId)
+          }
+        }
         // Add all task drafts
         for (const draft of taskDrafts) {
-          await useAppStore.getState().addTaskDraft(proposal.id, {
+          await useAppStore.getState().addTaskDraft(proposalId, {
             tempId: draft.tempId,
             title: draft.title,
             description: draft.description,
@@ -202,28 +271,77 @@ export function ProposalEditor() {
             priority: draft.priority,
             dependsOnTempIds: draft.dependsOnTempIds,
             acceptanceCriteria: draft.acceptanceCriteria,
+            grpcConfig: draft.grpcConfig,
+            requiresApproval: draft.requiresApproval,
+            approvalMessage: draft.approvalMessage,
+            checkpointAfter: draft.checkpointAfter,
+            checkpointMessage: draft.checkpointMessage,
           })
         }
         // Add all document drafts
         for (const draft of documentDrafts) {
-          await useAppStore.getState().addDocumentDraft(proposal.id, {
+          await useAppStore.getState().addDocumentDraft(proposalId, {
             type: draft.type,
             title: draft.title,
             content: draft.content,
           })
         }
         if (submitAfterSave) {
-          await useAppStore.getState().submitProposal(proposal.id)
+          await useAppStore.getState().submitProposal(proposalId)
+          await loadProposals()
+          setViewMode('proposals')
+        } else {
+          await loadProposals()
+          setIsDirty(false)
+          // Show success notification
+          useAppStore.getState().addNotification({
+            type: 'success',
+            title: 'Draft Saved',
+            message: `Proposal "${title.trim()}" saved successfully`,
+          })
         }
-        await loadProposals()
-        setViewMode('proposals')
       }
     } finally {
       setIsSaving(false)
     }
   }
 
+  // Save as YAML file
+  const handleSaveYaml = async () => {
+    setIsSaving(true)
+    try {
+      const proposal = {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        taskDrafts,
+      }
+
+      let fileName = saveFileName || `${title.trim()}.yaml`
+
+      // Call API to save YAML
+      const result = await useAppStore.getState().sendToBackend('workflows:save-yaml', {
+        proposal,
+        fileName,
+      }) as { filePath: string; fileName: string }
+
+      if (result?.filePath) {
+        // Also save as proposal draft
+        await handleSave(false)
+        alert(`YAML saved to: workflows/${result.fileName}`)
+      }
+    } catch (e) {
+      console.error('[ProposalEditor] Save YAML error:', e)
+      alert('Failed to save YAML')
+    } finally {
+      setIsSaving(false)
+      setShowSaveDialog(false)
+    }
+  }
+
   const handleBack = () => {
+    if (isDirty) {
+      if (!confirm('You have unsaved changes. Are you sure you want to leave?')) return
+    }
     useAppStore.getState().editingProposalId = null
     setViewMode('proposals')
   }
@@ -240,6 +358,7 @@ export function ProposalEditor() {
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button
+            data-testid="save-draft"
             variant="ghost"
             onClick={() => handleSave(false)}
             disabled={!title.trim() || isSaving}
@@ -249,6 +368,20 @@ export function ProposalEditor() {
             Save Draft
           </Button>
           <Button
+            variant="ghost"
+            onClick={() => {
+              const sanitized = title.trim().replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_')
+              setSaveFileName(`${sanitized}.yaml`)
+              setShowSaveDialog(true)
+            }}
+            disabled={!title.trim() || isSaving}
+            style={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--amber)', border: '1px solid var(--amber)', borderRadius: 0 }}
+          >
+            <Save size={12} style={{ marginRight: 4 }} />
+            Save YAML
+          </Button>
+          <Button
+            data-testid="submit-proposal"
             onClick={() => handleSave(true)}
             disabled={!title.trim() || taskDrafts.length === 0 || isSaving}
             style={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', backgroundColor: 'var(--amber)', color: '#0c0c0c', borderRadius: 0 }}
@@ -295,8 +428,9 @@ export function ProposalEditor() {
             Title
           </label>
           <Input
+            data-testid="proposal-title-input"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { setTitle(e.target.value); markDirty() }}
             placeholder="Proposal title..."
             style={{ height: 38, fontSize: 14, fontWeight: 600, backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
           />
@@ -308,7 +442,7 @@ export function ProposalEditor() {
           </label>
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); markDirty() }}
             placeholder="Describe the proposal..."
             style={{
               width: '100%', height: 80, fontSize: 12, backgroundColor: 'var(--surface-1)',
@@ -453,56 +587,259 @@ export function ProposalEditor() {
                           </div>
                         </div>
                       )}
-                      {/* gRPC Config */}
-                      {draft.grpcConfig && (
-                        <div style={{ marginTop: 8, padding: 8, backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}>
-                          <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'IBM Plex Mono, monospace', display: 'block', marginBottom: 6 }}>
-                            gRPC Config
+                      {/* Checkpoint & Approval Settings */}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            <input
+                              type="checkbox"
+                              checked={draft.requiresApproval || false}
+                              onChange={(e) => updateTaskDraft(draft.tempId, { requiresApproval: e.target.checked })}
+                              style={{ width: 12, height: 12 }}
+                            />
+                            Requires approval before
                           </label>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            <input
+                              type="checkbox"
+                              checked={draft.checkpointAfter || false}
+                              onChange={(e) => updateTaskDraft(draft.tempId, { checkpointAfter: e.target.checked })}
+                              style={{ width: 12, height: 12 }}
+                            />
+                            Checkpoint after
+                          </label>
+                        </div>
+                      </div>
+                      {(draft.requiresApproval || draft.checkpointAfter) && (
+                        <Input
+                          value={draft.approvalMessage || draft.checkpointMessage || ''}
+                          onChange={(e) => {
+                            if (draft.requiresApproval) {
+                              updateTaskDraft(draft.tempId, { approvalMessage: e.target.value })
+                            } else {
+                              updateTaskDraft(draft.tempId, { checkpointMessage: e.target.value })
+                            }
+                          }}
+                          placeholder={draft.requiresApproval ? "Approval message..." : "Checkpoint message..."}
+                          style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
+                        />
+                      )}
+                      {/* gRPC Config - Prominent Panel */}
+                      {draft.grpcConfig && (
+                        <div style={{
+                          marginTop: 8,
+                          padding: 12,
+                          backgroundColor: 'rgba(212,165,116,0.06)',
+                          border: '1px solid rgba(212,165,116,0.2)',
+                          borderRadius: 2,
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            marginBottom: 10,
+                          }}>
+                            <div style={{
+                              width: 4,
+                              height: 16,
+                              backgroundColor: 'var(--amber)',
+                              borderRadius: 1,
+                            }} />
+                            <label style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: 'var(--amber)',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.08em',
+                              fontFamily: 'IBM Plex Mono, monospace',
+                            }}>
+                              gRPC Configuration
+                            </label>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {/* Proto File */}
                             <div>
-                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Address</label>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>
+                                Proto File
+                                <button
+                                  onClick={() => {
+                                    if (!confirm('Sync Proto File to all tasks?')) return
+                                    const value = draft.grpcConfig!.protoFile
+                                    taskDrafts.forEach(t => {
+                                      if (t.tempId !== draft.tempId && t.grpcConfig) {
+                                        updateTaskDraft(t.tempId, { grpcConfig: { ...t.grpcConfig, protoFile: value } })
+                                      }
+                                    })
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 8,
+                                    color: 'var(--amber)',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid var(--amber)',
+                                    borderRadius: 0,
+                                    padding: '1px 6px',
+                                    cursor: 'pointer',
+                                    fontFamily: 'IBM Plex Mono, monospace',
+                                  }}
+                                >
+                                  同步全部
+                                </button>
+                              </label>
+                              <Input
+                                value={draft.grpcConfig.protoFile}
+                                onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, protoFile: e.target.value } })}
+                                placeholder="protos/xxx.proto"
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-medium)', borderRadius: 0 }}
+                              />
+                            </div>
+
+                            {/* Address */}
+                            <div>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>
+                                Address
+                                <button
+                                  onClick={() => {
+                                    if (!confirm('Sync Address to all tasks?')) return
+                                    const value = draft.grpcConfig!.address
+                                    taskDrafts.forEach(t => {
+                                      if (t.tempId !== draft.tempId && t.grpcConfig) {
+                                        updateTaskDraft(t.tempId, { grpcConfig: { ...t.grpcConfig, address: value } })
+                                      }
+                                    })
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 8,
+                                    color: 'var(--amber)',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid var(--amber)',
+                                    borderRadius: 0,
+                                    padding: '1px 6px',
+                                    cursor: 'pointer',
+                                    fontFamily: 'IBM Plex Mono, monospace',
+                                  }}
+                                >
+                                  同步全部
+                                </button>
+                              </label>
                               <Input
                                 value={draft.grpcConfig.address}
                                 onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, address: e.target.value } })}
                                 placeholder="host:port"
-                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-medium)', borderRadius: 0 }}
                               />
                             </div>
+
+                            {/* Service */}
                             <div>
-                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Service.Method</label>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>
+                                Service
+                                <button
+                                  onClick={() => {
+                                    if (!confirm('Sync Service to all tasks?')) return
+                                    const value = draft.grpcConfig!.service
+                                    taskDrafts.forEach(t => {
+                                      if (t.tempId !== draft.tempId && t.grpcConfig) {
+                                        updateTaskDraft(t.tempId, { grpcConfig: { ...t.grpcConfig, service: value } })
+                                      }
+                                    })
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 8,
+                                    color: 'var(--amber)',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid var(--amber)',
+                                    borderRadius: 0,
+                                    padding: '1px 6px',
+                                    cursor: 'pointer',
+                                    fontFamily: 'IBM Plex Mono, monospace',
+                                  }}
+                                >
+                                  同步全部
+                                </button>
+                              </label>
                               <Input
-                                value={`${draft.grpcConfig.service}.${draft.grpcConfig.method}`}
-                                disabled
-                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-muted)' }}
+                                value={draft.grpcConfig.service}
+                                onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, service: e.target.value } })}
+                                placeholder="package.ServiceName"
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-medium)', borderRadius: 0 }}
                               />
                             </div>
-                            {/* Editable payload fields */}
-                            {Object.entries(draft.grpcConfig.payload).map(([key, value]) => (
-                              <div key={key}>
-                                <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>{key}</label>
-                                {Array.isArray(value) ? (
-                                  <Input
-                                    value={JSON.stringify(value)}
-                                    onChange={(e) => {
-                                      try {
-                                        const parsed = JSON.parse(e.target.value)
-                                        updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: parsed } } })
-                                      } catch { /* ignore invalid JSON */ }
-                                    }}
-                                    placeholder="JSON array"
-                                    style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace' }}
-                                  />
-                                ) : (
-                                  <Input
-                                    value={String(value ?? '')}
-                                    onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: e.target.value } } })}
-                                    placeholder={key}
-                                    style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
-                                  />
-                                )}
+
+                            {/* Method */}
+                            <div>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>
+                                Method
+                                <button
+                                  onClick={() => {
+                                    if (!confirm('Sync Method to all tasks?')) return
+                                    const value = draft.grpcConfig!.method
+                                    taskDrafts.forEach(t => {
+                                      if (t.tempId !== draft.tempId && t.grpcConfig) {
+                                        updateTaskDraft(t.tempId, { grpcConfig: { ...t.grpcConfig, method: value } })
+                                      }
+                                    })
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 8,
+                                    color: 'var(--amber)',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid var(--amber)',
+                                    borderRadius: 0,
+                                    padding: '1px 6px',
+                                    cursor: 'pointer',
+                                    fontFamily: 'IBM Plex Mono, monospace',
+                                  }}
+                                >
+                                  同步全部
+                                </button>
+                              </label>
+                              <Input
+                                value={draft.grpcConfig.method}
+                                onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, method: e.target.value } })}
+                                placeholder="MethodName"
+                                style={{ height: 28, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-medium)', borderRadius: 0 }}
+                              />
+                            </div>
+
+                            {/* Payload Fields */}
+                            <div>
+                              <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>
+                                Payload
+                              </label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 8px', backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-medium)' }}>
+                                {Object.entries(draft.grpcConfig.payload).map(([key, value]) => (
+                                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <label style={{ fontSize: 9, color: 'var(--text-muted)', width: 80, flexShrink: 0, fontFamily: 'IBM Plex Mono, monospace' }}>{key}</label>
+                                    {Array.isArray(value) ? (
+                                      <Input
+                                        value={JSON.stringify(value)}
+                                        onChange={(e) => {
+                                          try {
+                                            const parsed = JSON.parse(e.target.value)
+                                            updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: parsed } } })
+                                          } catch { /* ignore invalid JSON */ }
+                                        }}
+                                        placeholder="JSON array"
+                                        style={{ flex: 1, height: 24, fontSize: 10, backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace' }}
+                                      />
+                                    ) : (
+                                      <Input
+                                        value={String(value ?? '')}
+                                        onChange={(e) => updateTaskDraft(draft.tempId, { grpcConfig: { ...draft.grpcConfig!, payload: { ...draft.grpcConfig!.payload, [key]: e.target.value } } })}
+                                        placeholder={key}
+                                        style={{ flex: 1, height: 24, fontSize: 10, backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 0 }}
+                                      />
+                                    )}
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -567,6 +904,109 @@ export function ProposalEditor() {
           </div>
         </div>
       </div>
+
+      {/* Save YAML Dialog */}
+      {showSaveDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'var(--surface-1)',
+            border: '1px solid var(--amber)',
+            padding: 20,
+            width: '100%',
+            maxWidth: 400,
+          }}>
+            <div style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--amber)',
+              marginBottom: 16,
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}>
+              Save to YAML
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{
+                fontSize: 9,
+                color: 'var(--text-faint)',
+                display: 'block',
+                marginBottom: 4,
+                fontFamily: 'IBM Plex Mono, monospace',
+              }}>
+                File Name
+              </label>
+              <input
+                value={saveFileName}
+                onChange={(e) => setSaveFileName(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: 32,
+                  fontSize: 12,
+                  backgroundColor: 'var(--surface-0)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 0,
+                  padding: '0 8px',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
+              />
+              <div style={{
+                fontSize: 9,
+                color: 'var(--text-muted)',
+                marginTop: 4,
+                fontFamily: 'IBM Plex Mono, monospace',
+              }}>
+                Will be saved to: workflows/{saveFileName}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 11,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  color: 'var(--text-muted)',
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveYaml()}
+                disabled={!saveFileName.trim() || isSaving}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 11,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  color: 'var(--amber)',
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--amber)',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                }}
+              >
+                Save as New
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

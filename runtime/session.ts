@@ -80,9 +80,10 @@ function extractKnowledgeFromMessages(messages: Message[]): Array<{
 
   const userMessages = messages.filter((m) => m.type === "user");
   if (userMessages.length > 3) {
-    const userContents = userMessages.map((m) =>
-      m.type === "user" ? m.content : "",
-    );
+    const userContents = userMessages.map((m) => {
+      if (m.type !== "user") return "";
+      return typeof m.content === 'string' ? m.content : m.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    });
     const hasCorrection = userContents.some((c, i) => {
       if (i === 0) return false;
       const lower = c.toLowerCase();

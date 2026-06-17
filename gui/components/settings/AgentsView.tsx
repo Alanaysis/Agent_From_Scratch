@@ -171,9 +171,9 @@ export function AgentsView() {
 
     return (
       <div key={agent.id} style={{
-        backgroundColor: '#111',
+        backgroundColor: 'var(--surface-2)',
         borderRadius: 10,
-        border: '1px solid #1a1a1a',
+        border: '1px solid var(--surface-2)',
         marginBottom: 12,
         overflow: 'hidden'
       }}>
@@ -184,19 +184,19 @@ export function AgentsView() {
           gap: 12,
           cursor: 'pointer'
         }} onClick={() => !isEditing && setExpandedAgent(isExpanded ? null : agent.id)}>
-          <button style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 0 }}>
+          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
           <div style={{
             width: 32,
             height: 32,
             borderRadius: 6,
-            backgroundColor: agent.isBuiltIn ? '#1a3a1a' : '#1a1a3a',
+            backgroundColor: agent.isBuiltIn ? 'var(--status-bg-green)' : 'var(--status-bg-blue)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <Bot size={16} style={{ color: agent.isBuiltIn ? '#4ade80' : '#60a5fa' }} />
+            <Bot size={16} style={{ color: agent.isBuiltIn ? 'var(--status-green)' : 'var(--status-blue)' }} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -206,24 +206,24 @@ export function AgentsView() {
                   fontSize: 10,
                   padding: '2px 6px',
                   borderRadius: 4,
-                  backgroundColor: '#1a3a1a',
-                  color: '#4ade80'
+                  backgroundColor: 'var(--status-bg-green)',
+                  color: 'var(--status-green)'
                 }}>Built-in</span>
               )}
             </div>
-            <span style={{ fontSize: 12, color: '#666' }}>{agent.description}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{agent.description}</span>
           </div>
           {!agent.isBuiltIn && !isEditing && (
             <div style={{ display: 'flex', gap: 4 }}>
               <button
                 onClick={(e) => { e.stopPropagation(); startEdit(agent) }}
-                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 4 }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
               >
                 <Edit2 size={14} />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(agent.id) }}
-                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}
+                style={{ background: 'none', border: 'none', color: 'var(--status-red)', cursor: 'pointer', padding: 4 }}
               >
                 <Trash2 size={14} />
               </button>
@@ -234,30 +234,30 @@ export function AgentsView() {
         {isExpanded && (
           <div style={{
             padding: '0 16px 16px 48px',
-            borderTop: '1px solid #1a1a1a',
+            borderTop: '1px solid var(--surface-2)',
             marginTop: 0
           }}>
             <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <span style={{ fontSize: 11, color: '#666', textTransform: 'uppercase' }}>Max Turns</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Max Turns</span>
                 <p style={{ fontSize: 13, marginTop: 2 }}>{agent.maxTurns || 8}</p>
               </div>
               <div>
-                <span style={{ fontSize: 11, color: '#666', textTransform: 'uppercase' }}>Tools</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Tools</span>
                 <p style={{ fontSize: 13, marginTop: 2 }}>
                   {agent.allowedTools === '*' ? 'All tools' : (agent.allowedTools || []).join(', ') || 'None'}
                 </p>
               </div>
               <div>
-                <span style={{ fontSize: 11, color: '#666', textTransform: 'uppercase' }}>System Prompt</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>System Prompt</span>
                 <pre style={{
                   fontSize: 12,
                   marginTop: 4,
                   padding: 8,
-                  backgroundColor: '#0a0a0a',
+                  backgroundColor: 'var(--surface-0)',
                   borderRadius: 6,
                   whiteSpace: 'pre-wrap',
-                  color: '#888',
+                  color: 'var(--text-muted)',
                   fontFamily: 'monospace'
                 }}>
                   {(agent.systemPrompt || []).join('\n') || 'No system prompt'}
@@ -272,37 +272,37 @@ export function AgentsView() {
 
   const renderForm = () => (
     <div style={{
-      backgroundColor: '#111',
+      backgroundColor: 'var(--surface-2)',
       borderRadius: 10,
-      border: '1px solid #3b82f6',
+      border: '1px solid var(--status-blue)',
       padding: 16,
       marginBottom: 12
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Name</Label>
+          <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Name</Label>
           <Input
             value={formData.name}
             onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
             placeholder="e.g., recipe-executor"
             disabled={saving}
-            style={{ height: 38, fontSize: 13, backgroundColor: '#0a0a0a', border: '1px solid #222' }}
+            style={{ height: 38, fontSize: 13, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)' }}
           />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Description</Label>
+          <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Description</Label>
           <Input
             value={formData.description}
             onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
             placeholder="What this agent does"
             disabled={saving}
-            style={{ height: 38, fontSize: 13, backgroundColor: '#0a0a0a', border: '1px solid #222' }}
+            style={{ height: 38, fontSize: 13, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)' }}
           />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>System Prompt (one line per instruction)</Label>
+          <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>System Prompt (one line per instruction)</Label>
           <textarea
             value={formData.systemPrompt}
             onChange={(e) => setFormData(prev => ({ ...prev, systemPrompt: e.target.value }))}
@@ -313,9 +313,9 @@ export function AgentsView() {
               fontSize: 13,
               padding: '8px 12px',
               borderRadius: 8,
-              border: '1px solid #222',
-              backgroundColor: '#0a0a0a',
-              color: '#fff',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--surface-0)',
+              color: 'var(--text-primary)',
               fontFamily: 'monospace',
               resize: 'vertical'
             }}
@@ -323,7 +323,7 @@ export function AgentsView() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Allowed Tools</Label>
+          <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Allowed Tools</Label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <button
               type="button"
@@ -332,9 +332,9 @@ export function AgentsView() {
                 padding: '4px 10px',
                 borderRadius: 6,
                 border: '1px solid',
-                borderColor: formData.allowedTools.length === 0 ? '#3b82f6' : '#333',
-                backgroundColor: formData.allowedTools.length === 0 ? '#1a3a5a' : 'transparent',
-                color: '#fff',
+                borderColor: formData.allowedTools.length === 0 ? 'var(--status-blue)' : 'var(--border-medium)',
+                backgroundColor: formData.allowedTools.length === 0 ? 'var(--status-bg-blue)' : 'transparent',
+                color: 'var(--text-primary)',
                 fontSize: 12,
                 cursor: 'pointer'
               }}
@@ -350,9 +350,9 @@ export function AgentsView() {
                   padding: '4px 10px',
                   borderRadius: 6,
                   border: '1px solid',
-                  borderColor: formData.allowedTools.includes(tool.id) ? '#3b82f6' : '#333',
-                  backgroundColor: formData.allowedTools.includes(tool.id) ? '#1a3a5a' : 'transparent',
-                  color: '#fff',
+                  borderColor: formData.allowedTools.includes(tool.id) ? 'var(--status-blue)' : 'var(--border-medium)',
+                  backgroundColor: formData.allowedTools.includes(tool.id) ? 'var(--status-bg-blue)' : 'transparent',
+                  color: 'var(--text-primary)',
                   fontSize: 12,
                   cursor: 'pointer'
                 }}
@@ -365,17 +365,17 @@ export function AgentsView() {
 
         <div style={{ display: 'flex', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-            <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Max Turns</Label>
+            <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Max Turns</Label>
             <Input
               type="number"
               value={formData.maxTurns}
               onChange={(e) => setFormData(prev => ({ ...prev, maxTurns: parseInt(e.target.value) || 8 }))}
               disabled={saving}
-              style={{ height: 38, fontSize: 13, backgroundColor: '#0a0a0a', border: '1px solid #222' }}
+              style={{ height: 38, fontSize: 13, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)' }}
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-            <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Read Only</Label>
+            <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Read Only</Label>
             <div style={{ height: 38, display: 'flex', alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
@@ -392,19 +392,19 @@ export function AgentsView() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Label style={{ fontSize: 12, fontWeight: 500, color: '#888' }}>Permissions</Label>
+          <Label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Permissions</Label>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(5, 1fr)',
             gap: 8,
             padding: 12,
-            backgroundColor: '#0a0a0a',
+            backgroundColor: 'var(--surface-0)',
             borderRadius: 8,
-            border: '1px solid #222'
+            border: '1px solid var(--border-subtle)'
           }}>
             {PERMISSION_OPTIONS.map(({ key, label }) => (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 11, color: '#666', textAlign: 'center' }}>{label}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>{label}</span>
                 <div style={{ display: 'flex', gap: 2 }}>
                   {(['allow', 'ask', 'deny'] as PermissionValue[]).map((val) => (
                     <button
@@ -422,12 +422,12 @@ export function AgentsView() {
                         fontWeight: 500,
                         border: '1px solid',
                         borderColor: formData.permission[key as keyof typeof formData.permission] === val
-                          ? val === 'allow' ? '#22c55e' : val === 'ask' ? '#eab308' : '#ef4444'
-                          : '#333',
+                          ? val === 'allow' ? 'var(--status-green)' : val === 'ask' ? 'rgba(234,179,8,0.5)' : 'var(--status-red)'
+                          : 'var(--border-medium)',
                         backgroundColor: formData.permission[key as keyof typeof formData.permission] === val
-                          ? val === 'allow' ? '#166534' : val === 'ask' ? '#854d0e' : '#991b1b'
+                          ? val === 'allow' ? 'var(--status-bg-green)' : val === 'ask' ? 'rgba(234,179,8,0.15)' : 'var(--status-bg-red)'
                           : 'transparent',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         cursor: 'pointer',
                         borderRadius: 4,
                         textTransform: 'uppercase'
@@ -448,7 +448,7 @@ export function AgentsView() {
             disabled={!formData.name.trim() || saving}
             style={{
               height: 36,
-              backgroundColor: formData.name.trim() && !saving ? '#3b82f6' : '#1a1a1a',
+              backgroundColor: formData.name.trim() && !saving ? 'var(--status-blue)' : 'var(--surface-2)',
               border: 'none'
             }}
           >
@@ -458,7 +458,7 @@ export function AgentsView() {
           <Button
             onClick={cancelEdit}
             disabled={saving}
-            style={{ height: 36, backgroundColor: '#1a1a1a', border: 'none' }}
+            style={{ height: 36, backgroundColor: 'var(--surface-2)', border: 'none' }}
           >
             <X size={14} />
             Cancel
@@ -472,8 +472,8 @@ export function AgentsView() {
     <div style={{
       height: '100%',
       overflow: 'auto',
-      backgroundColor: '#0a0a0a',
-      color: '#fff'
+      backgroundColor: 'var(--surface-0)',
+      color: 'var(--text-primary)'
     }}>
       <div style={{
         maxWidth: 680,
@@ -494,29 +494,29 @@ export function AgentsView() {
                 width: 36,
                 height: 36,
                 borderRadius: 8,
-                backgroundColor: '#111',
+                backgroundColor: 'var(--surface-2)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: '1px solid #1a1a1a'
+                border: '1px solid var(--surface-2)'
               }}>
                 <Bot size={18} />
               </div>
               Agents
             </h1>
-            <p style={{ fontSize: 13, color: '#666' }}>Configure agents for task execution</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Configure agents for task execution</p>
           </div>
           {!isCreating && (
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 onClick={() => setShowGenerateModal(true)}
                 disabled={generating}
-                style={{ height: 36, backgroundColor: '#7c3aed', border: 'none' }}
+                style={{ height: 36, backgroundColor: 'var(--status-purple)', border: 'none' }}
               >
                 <Wand2 size={14} />
                 AI Generate
               </Button>
-              <Button onClick={startCreate} style={{ height: 36, backgroundColor: '#3b82f6', border: 'none' }}>
+              <Button onClick={startCreate} style={{ height: 36, backgroundColor: 'var(--status-blue)', border: 'none' }}>
                 <Plus size={14} />
                 New Agent
               </Button>
@@ -531,22 +531,22 @@ export function AgentsView() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
+            backgroundColor: 'rgba(0,0,0,0.6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100
           }}>
             <div style={{
-              backgroundColor: '#111',
+              backgroundColor: 'var(--surface-2)',
               borderRadius: 12,
-              border: '1px solid #333',
+              border: '1px solid var(--border-medium)',
               padding: 24,
-              width: 400,
-              maxWidth: '90vw'
+              width: '100%',
+              maxWidth: 400
             }}>
               <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>AI Generate Agent</h2>
-              <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
                 Describe what kind of agent you want to create. The AI will generate an appropriate configuration.
               </p>
               <textarea
@@ -559,9 +559,9 @@ export function AgentsView() {
                   padding: 12,
                   fontSize: 13,
                   borderRadius: 8,
-                  border: '1px solid #333',
-                  backgroundColor: '#0a0a0a',
-                  color: '#fff',
+                  border: '1px solid var(--border-medium)',
+                  backgroundColor: 'var(--surface-0)',
+                  color: 'var(--text-primary)',
                   resize: 'vertical',
                   fontFamily: 'inherit'
                 }}
@@ -570,7 +570,7 @@ export function AgentsView() {
                 <Button
                   onClick={handleGenerate}
                   disabled={!generateDesc.trim() || generating}
-                  style={{ height: 36, backgroundColor: '#7c3aed', border: 'none', flex: 1 }}
+                  style={{ height: 36, backgroundColor: 'var(--status-purple)', border: 'none', flex: 1 }}
                 >
                   {generating ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Wand2 size={14} />}
                   {generating ? 'Generating...' : 'Generate'}
@@ -578,7 +578,7 @@ export function AgentsView() {
                 <Button
                   onClick={() => { setShowGenerateModal(false); setGenerateDesc('') }}
                   disabled={generating}
-                  style={{ height: 36, backgroundColor: '#1a1a1a', border: 'none' }}
+                  style={{ height: 36, backgroundColor: 'var(--surface-2)', border: 'none' }}
                 >
                   Cancel
                 </Button>
@@ -593,13 +593,13 @@ export function AgentsView() {
 
         {store.agents.filter(a => !a.isBuiltIn).length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 500, color: '#666', marginBottom: 8 }}>Custom Agents</h3>
+            <h3 style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 8 }}>Custom Agents</h3>
             {store.agents.filter(a => !a.isBuiltIn).map(renderAgentCard)}
           </div>
         )}
 
         {store.agents.length === 0 && !store.backendConnected && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
             <p>Connect to backend to view agents</p>
           </div>
         )}

@@ -2,7 +2,7 @@ import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
 import {
   readTextFile,
-  resolvePathFromCwd,
+  resolvePathSafe,
   writeTextFile,
 } from "../../shared/fs";
 import { mkdir, writeFile } from "fs/promises";
@@ -74,7 +74,7 @@ export const EditTool: Tool<EditInput, EditOutput> = {
     _canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<EditOutput>> {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const content = await readTextFile(absolutePath);
     if (!content.includes(args.oldString)) {
       throw new Error(`Could not find target string in ${args.path}`);

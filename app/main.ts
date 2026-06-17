@@ -3,8 +3,12 @@ import { pathToFileURL } from "url";
 import { runHeadless } from "./headless";
 import { startRepl } from "./repl";
 import { startTui } from "./tui";
+import { registerKnowledgeHook } from "../tools/knowledgeHook";
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
+  // Register knowledge extraction hook for automatic learning
+  registerKnowledgeHook(cwd());
+
   const autoApprove = argv.includes("--yes");
   const streamOutput = argv.includes("--stream")
     ? true

@@ -10,7 +10,7 @@ import { readTranscriptMessages, deleteTranscript, getTranscriptPath } from "../
 import { listTasks, readTaskInfo, createTask, updateTaskInfo, deleteTaskInfo, getUnblockedTasks, addTaskComment } from "../../storage/taskIndex";
 import { listProposals, readProposal, createProposal, updateProposal, deleteProposal, approveProposal } from "../../storage/proposalIndex";
 import { listDocuments, readDocument, createDocument, updateDocument, deleteDocument } from "../../storage/documentIndex";
-import { listWorkflows, readWorkflow, deleteWorkflow, saveWorkflow, parseWorkflowYaml, importWorkflowAsProposal } from "../../storage/workflowIndex";
+import { listWorkflows, readWorkflow, deleteWorkflow, saveWorkflow, parseWorkflowYaml, importWorkflowAsProposal, proposalToWorkflowYaml } from "../../storage/workflowIndex";
 import { listAgents, readAgentInfo, createAgent, updateAgentInfo, deleteAgentInfo } from "../../storage/agentIndex";
 import { createId } from "../../shared/ids";
 import { eventBus } from "../../shared/eventBus";
@@ -39,7 +39,7 @@ function json(res: http.ServerResponse, data: unknown, status = 200) {
 function validateFilePath(filePath: string, baseDir: string): string {
   const resolved = resolve(baseDir, filePath);
   const rel = relative(baseDir, resolved);
-  if (rel.startsWith("..") || resolve(rel) !== resolved) {
+  if (rel.startsWith("..") || resolve(baseDir, rel) !== resolved) {
     throw new Error(`Path traversal detected: ${filePath}`);
   }
   return resolved;
@@ -71,6 +71,23 @@ routes.set("POST /api/sessions/:id/heartbeat", async (_req, _body, params?: Reco
 
 routes.set("POST /api/sessions/:id/close", async (_req, _body, params?: Record<string, string>) => {
   await closeSession(cwd(), params!.id!);
+  return { ok: true };
+});
+
+routes.set("PATCH /api/sessions/:id", async (_req, body, params?: Record<string, string>) => {
+  const input = JSON.parse(body);
+  const sessionId = params!.id!;
+  const session = await readSessionInfo(cwd(), sessionId);
+  if (!session) return { error: "Session not found" };
+
+  const { writeFile } = await import("fs/promises");
+  const { getSessionInfoFilePath } = await import("../../storage/sessionIndex");
+  const updated = {
+    ...session,
+    ...(input.status && { status: input.status }),
+    updatedAt: new Date().toISOString(),
+  };
+  await writeFile(getSessionInfoFilePath(cwd(), sessionId), JSON.stringify(updated, null, 2), "utf8");
   return { ok: true };
 });
 
@@ -176,18 +193,49 @@ routes.set("POST /api/tasks/:id/execute", async (_req, _body, _params) => {
   return { _sse: true };
 });
 
-// Resolve approval: execute now, later, or abort
+// Resolve approval: execute now, later, or abort (also handles task_failure and checkpoint)
 routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<string, string>) => {
   const input = JSON.parse(body);
   const taskId = params!.id!;
-  const action = input.action as 'execute' | 'later' | 'abort';
+  const action = input.action as string;
 
-  if (!action || !['execute', 'later', 'abort'].includes(action)) {
-    return { error: "action must be 'execute', 'later', or 'abort'" };
+  if (!action || !['execute', 'later', 'abort', 'continue', 'retry', 'stop'].includes(action)) {
+    return { error: "action must be 'execute', 'later', 'abort', 'continue', 'retry', or 'stop'" };
   }
 
+  const pendingReq = pendingApprovalTasks.get(taskId);
   pendingApprovalTasks.delete(taskId);
 
+  // Handle task failure decisions
+  if (pendingReq?.requestType === 'task_failure') {
+    eventBus.emit("approval:resolved", { taskId, action });
+
+    if (action === 'retry') {
+      // Retry: reset task to todo and re-execute
+      log("INFO", "AutoExec", `Retrying failed task ${taskId}`);
+      await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: undefined });
+      executingTasks.add(taskId);
+      executeTaskViaHttp(taskId).finally(() => {
+        executingTasks.delete(taskId);
+      });
+      return { ok: true, action: "retry" };
+    }
+
+    if (action === 'continue') {
+      // Continue: keep as failed, but trigger downstream tasks
+      log("INFO", "AutoExec", `Continuing after failed task ${taskId}`);
+      await assignDependentTasks(taskId);
+      eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
+      return { ok: true, action: "continue" };
+    }
+
+    // stop: keep as failed, don't continue (user will intervene manually)
+    log("INFO", "AutoExec", `Stopped after failed task ${taskId}`);
+    eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
+    return { ok: true, action: "stop" };
+  }
+
+  // Handle normal approval actions
   if (action === 'abort') {
     await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Aborted by user" }, "user");
     eventBus.emit("approval:resolved", { taskId, action });
@@ -199,9 +247,19 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
     return { ok: true, action: "later" };
   }
 
-  // action === 'execute' — trigger execution
+  // action === 'execute'
   eventBus.emit("approval:resolved", { taskId, action });
-  // Execute in background
+
+  // Check if this is a checkpoint_after confirmation (task already completed)
+  const task = await readTaskInfo(cwd(), taskId);
+  if (task?.status === 'done' && task?.checkpointAfter) {
+    // This is a checkpoint confirmation — trigger downstream tasks
+    log("INFO", "AutoExec", `Checkpoint confirmed for task ${taskId}, triggering downstream tasks`);
+    await assignDependentTasks(taskId);
+    return { ok: true, action: "execute" };
+  }
+
+  // Normal approval — execute the task
   executingTasks.add(taskId);
   executeTaskViaHttp(taskId).finally(() => {
     executingTasks.delete(taskId);
@@ -272,6 +330,80 @@ routes.set("PATCH /api/proposals/:id", async (_req, body, params?: Record<string
 routes.set("DELETE /api/proposals/:id", async (_req, _body, params?: Record<string, string>) => {
   await deleteProposal(cwd(), params!.id!);
   return { ok: true };
+});
+
+routes.set("DELETE /api/proposals/:id/with-tasks", async (_req, _body, params?: Record<string, string>) => {
+  const proposalId = params!.id!;
+  const proposal = await readProposal(cwd(), proposalId);
+  if (!proposal) return { error: "Proposal not found" };
+
+  // Find tasks created from this proposal (matched by title)
+  const draftTitles = new Set(proposal.taskDrafts.map(d => d.title));
+  const allTasks = await listTasks(cwd());
+  const relatedTasks = allTasks.filter(t => draftTitles.has(t.title));
+
+  let deletedTasks = 0;
+  let deletedSessions = 0;
+
+  // Delete related tasks and their sessions
+  for (const task of relatedTasks) {
+    if (task.sessionId) {
+      try {
+        await deleteSessionInfo(cwd(), task.sessionId);
+        await deleteTranscript(cwd(), task.sessionId);
+        deletedSessions++;
+      } catch (e) {
+        log("WARN", "HTTP", `Failed to delete session ${task.sessionId}: ${e}`);
+      }
+    }
+    try {
+      await deleteTaskInfo(cwd(), task.id);
+      deletedTasks++;
+    } catch (e) {
+      log("WARN", "HTTP", `Failed to delete task ${task.id}: ${e}`);
+    }
+  }
+
+  // Delete the proposal
+  await deleteProposal(cwd(), proposalId);
+
+  return { ok: true, deletedTasks, deletedSessions };
+});
+
+routes.set("POST /api/proposals/:id/revert", async (_req, _body, params?: Record<string, string>) => {
+  const proposalId = params!.id!;
+  const proposal = await readProposal(cwd(), proposalId);
+  if (!proposal) return { error: "Proposal not found" };
+
+  let deletedTasks = 0;
+
+  // If proposal was approved, delete associated tasks first
+  if (proposal.status === 'approved') {
+    const draftTitles = new Set(proposal.taskDrafts.map(d => d.title));
+    const allTasks = await listTasks(cwd());
+    const relatedTasks = allTasks.filter(t => draftTitles.has(t.title));
+
+    for (const task of relatedTasks) {
+      if (task.sessionId) {
+        try {
+          await deleteSessionInfo(cwd(), task.sessionId);
+          await deleteTranscript(cwd(), task.sessionId);
+        } catch (e) {
+          log("WARN", "HTTP", `Revert: failed to delete session ${task.sessionId}: ${e}`);
+        }
+      }
+      try {
+        await deleteTaskInfo(cwd(), task.id);
+        deletedTasks++;
+      } catch (e) {
+        log("WARN", "HTTP", `Revert: failed to delete task ${task.id}: ${e}`);
+      }
+    }
+  }
+
+  // Revert status to draft
+  const updated = await updateProposal(cwd(), proposalId, { status: 'draft' });
+  return { proposal: updated, deletedTasks };
 });
 
 routes.set("POST /api/proposals/:id/submit", async (_req, _body, params?: Record<string, string>) => {
@@ -383,6 +515,23 @@ routes.set("DELETE /api/documents/:id", async (_req, _body, params?: Record<stri
   return { ok: true };
 });
 
+routes.set("GET /api/documents/:id/is-injected", async (_req, _body, params?: Record<string, string>) => {
+  const { isDocInjected } = await import("../../storage/irgMd");
+  const injected = await isDocInjected(cwd(), params!.id!);
+  return { injected };
+});
+
+routes.set("POST /api/documents/:id/toggle-inject", async (_req, body, params?: Record<string, string>) => {
+  const input = JSON.parse(body);
+  const { addDocRef, removeDocRef } = await import("../../storage/irgMd");
+  if (input.inject) {
+    await addDocRef(cwd(), params!.id!);
+  } else {
+    await removeDocRef(cwd(), params!.id!);
+  }
+  return { ok: true };
+});
+
 // ====== Workflows ======
 
 routes.set("GET /api/workflows", async () => {
@@ -413,7 +562,7 @@ routes.set("POST /api/workflows/import-remote", async (_req, body) => {
   const yaml = await readFileFs(safePath, "utf8");
   const workflow = parseWorkflowYaml(yaml);
   workflow.sourceFile = input.filePath;
-  const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
+  const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy, input.filePath);
   return { workflow, proposalId: proposal.id };
 });
 
@@ -422,6 +571,14 @@ routes.set("POST /api/workflows/import", async (_req, body) => {
   const workflow = parseWorkflowYaml(input.yaml);
   const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
   return { workflow, proposalId: proposal.id };
+});
+
+// ====== Skills ======
+
+routes.set("GET /api/skills", async () => {
+  const { listUserSkills } = await import("../../skills/skillManager");
+  const skills = await listUserSkills(cwd());
+  return { skills };
 });
 
 // ====== Agents ======
@@ -452,8 +609,8 @@ routes.set("PATCH /api/agents/:id", async (_req, body, params?: Record<string, s
 });
 
 routes.set("DELETE /api/agents/:id", async (_req, _body, params?: Record<string, string>) => {
-  await deleteAgentInfo(cwd(), params!.id!);
-  return { ok: true };
+  const success = await deleteAgentInfo(cwd(), params!.id!);
+  return { success };
 });
 
 routes.set("GET /api/agents/:id", async (_req, _body, params?: Record<string, string>) => {
@@ -491,7 +648,7 @@ routes.set("POST /api/workflows/import-file", async (_req, body) => {
   const content = await readFileFs(safePath, "utf8");
   const workflow = parseWorkflowYaml(content);
   workflow.sourceFile = input.filePath;
-  const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
+  const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy, input.filePath);
   return { workflow, proposalId: proposal.id };
 });
 
@@ -569,6 +726,26 @@ routes.set("GET /api/recipes/:id", async (_req, _body, params?: Record<string, s
   return { recipe };
 });
 
+// Save proposal as YAML file
+routes.set("POST /api/workflows/save-yaml", async (_req, body) => {
+  const input = JSON.parse(body);
+  const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("fs/promises");
+
+  if (!input.proposal || !input.proposal.title) {
+    return { error: "proposal with title is required" };
+  }
+
+  const yamlContent = proposalToWorkflowYaml(input.proposal);
+  const fileName = (input.fileName || `${input.proposal.title}.yaml`).replace(/[^a-zA-Z0-9._\-\(\)\s]/g, '_');
+  const workflowsDir = join(cwd(), "workflows");
+  const filePath = validateFilePath(fileName, workflowsDir);
+
+  await mkdirFs(workflowsDir, { recursive: true });
+  await writeFileFs(filePath, yamlContent, "utf8");
+
+  return { filePath, fileName };
+});
+
 routes.set("POST /api/recipes", async (_req, body) => {
   const input = JSON.parse(body);
   const recipe = await createRecipe(cwd(), { id: createId("recipe"), name: input.name, description: input.description, triggers: input.triggers || [], tasks: input.tasks || [] });
@@ -640,7 +817,69 @@ routes.set("POST /api/executor/stop", async () => {
 // ====== PM ======
 
 routes.set("POST /api/pm/create-plan", async (_req, body) => {
-  return { error: "PM create-plan via HTTP not yet implemented" };
+  const input = JSON.parse(body);
+  const { findRecipesByTrigger } = await import("../../storage/recipeIndex");
+
+  const goal = input.goal || "Untitled goal";
+  const keywords = goal.toLowerCase().replace(/[^a-z0-9\s-]/g, "").split(/\s+/).filter((w: string) => w.length > 1);
+
+  // Search recipes by keywords
+  const matchedRecipes = new Map<string, any>();
+  for (const keyword of keywords) {
+    const recipes = await findRecipesByTrigger(cwd(), keyword);
+    for (const recipe of recipes) {
+      matchedRecipes.set(recipe.id, recipe);
+    }
+  }
+
+  let taskDrafts: any[] = [];
+  let title = `Plan: ${goal}`;
+  let description = `Proposal for goal: ${goal}`;
+
+  if (matchedRecipes.size > 0) {
+    const sortedRecipes = [...matchedRecipes.values()].sort((a, b) => {
+      const aMatches = a.triggers.filter((t: string) => keywords.some((k: string) => t.toLowerCase().includes(k))).length;
+      const bMatches = b.triggers.filter((t: string) => keywords.some((k: string) => t.toLowerCase().includes(k))).length;
+      return bMatches - aMatches;
+    });
+    const recipe = sortedRecipes[0];
+    title = `Plan: ${goal}`;
+    description = `Auto-generated proposal from recipe "${recipe.name}" for goal: ${goal}`;
+
+    const tempIdMap = new Map<number, string>();
+    taskDrafts = recipe.tasks.map((template: any, index: number) => {
+      const tempId = `draft-${index}`;
+      tempIdMap.set(index, tempId);
+      return {
+        tempId,
+        title: template.title,
+        description: template.description,
+        agent: template.agent,
+        priority: template.priority,
+        dependsOnTempIds: template.dependsOnIndex?.map((depIndex: number) => tempIdMap.get(depIndex)).filter(Boolean),
+      };
+    });
+  } else {
+    taskDrafts = [{
+      tempId: "draft-0",
+      title: goal,
+      description: `Complete the following goal: ${goal}`,
+      priority: "medium",
+    }];
+  }
+
+  const proposal = await createProposal(cwd(), {
+    id: createId("proposal"),
+    title,
+    description,
+    inputType: "manual",
+    status: "draft",
+    taskDrafts,
+    documentDrafts: [],
+    createdBy: input.createdBy,
+  });
+
+  return { proposal };
 });
 
 // ====== Config (read-only, API key masked) ======
@@ -670,6 +909,8 @@ routes.set("PATCH /api/config", async (_req, body) => {
   if (input.model) allowed.model = input.model;
   if (input.baseUrl) allowed.baseUrl = input.baseUrl;
   if (input.provider) allowed.provider = input.provider;
+  if (input.contextWindow !== undefined && input.contextWindow > 0) allowed.contextWindow = input.contextWindow;
+  if (input.maxOutputTokens !== undefined && input.maxOutputTokens > 0) allowed.maxOutputTokens = input.maxOutputTokens;
   // Never allow apiKey to be set via HTTP
   const config = await saveConfig(cwd(), allowed);
   return { llm: { ...config.llm, apiKey: config.llm.apiKey ? "[SET]" : "" }, source: "file" };
@@ -684,6 +925,7 @@ import { createInitialAppState } from "../../runtime/state";
 import { readTranscriptMessages } from "../../storage/transcript";
 import { initLlmConfig } from "../../runtime/llm";
 import type { Message } from "../../runtime/messages";
+import { eventBus } from "../../shared/eventBus";
 
 // Pending permission requests for HTTP mode
 const httpPermissions = new Map<string, { resolve: (approved: boolean) => void; request: unknown }>();
@@ -692,10 +934,14 @@ let httpAbortController: AbortController | null = null;
 // SSE chat endpoint
 function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body: string) {
   const input = JSON.parse(body);
-  const message = input.message as string;
+  const rawMessage = input.message;
   const sessionId = input.sessionId as string | undefined;
 
-  if (!message) {
+  // Support both string and structured { text, images } format
+  const messageText = typeof rawMessage === 'string' ? rawMessage : rawMessage?.text || '';
+  const messageImages = typeof rawMessage === 'object' ? rawMessage?.images || [] : [];
+
+  if (!messageText && messageImages.length === 0) {
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "message is required" }));
     return;
@@ -715,6 +961,27 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
 
   send("connected", { status: "ok" });
 
+  // Forward eventBus tool events as SSE events (like ipcPush.ts does for Electron)
+  const onToolStart = (data: any) => send("tool:start", data);
+  const onToolResult = (data: any) => send("tool:result", data);
+  const onToolError = (data: any) => send("tool:error", data);
+  const onToolProgress = (data: any) => send("tool:progress", data);
+  const onSessionMessageAppended = (data: any) => send("session:message-appended", data);
+  eventBus.on("tool:start", onToolStart);
+  eventBus.on("tool:result", onToolResult);
+  eventBus.on("tool:error", onToolError);
+  eventBus.on("tool:progress", onToolProgress);
+  eventBus.on("session:message-appended", onSessionMessageAppended);
+
+  // Clean up listeners when connection closes
+  res.on("close", () => {
+    eventBus.off("tool:start", onToolStart);
+    eventBus.off("tool:result", onToolResult);
+    eventBus.off("tool:error", onToolError);
+    eventBus.off("tool:progress", onToolProgress);
+    eventBus.off("session:message-appended", onSessionMessageAppended);
+  });
+
   (async () => {
     await initLlmConfig();
 
@@ -726,9 +993,22 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
       session = new SessionEngine({ id: createId("session"), cwd: cwd() });
     }
 
-    const userMsg: Message = { id: createId("user"), type: "user", content: message };
+    // Build multimodal content if images are present
+    const userContent = messageImages.length > 0
+      ? [
+          ...(messageText ? [{ type: "text" as const, text: messageText }] : []),
+          ...messageImages.map((img: { data: string; mimeType: string }) => ({
+            type: "image" as const,
+            data: img.data,
+            mimeType: img.mimeType,
+          })),
+        ]
+      : messageText;
+
+    const userMsg: Message = { id: createId("user"), type: "user", content: userContent };
     await session.recordMessages([userMsg]);
-    send("message", { id: userMsg.id, role: "user", content: message, type: "user" });
+    // Send full content (including images) so frontend can render them
+    send("message", { id: userMsg.id, role: "user", content: userContent, type: "user" });
 
     const appState = createInitialAppState();
     const abortController = new AbortController();
@@ -736,7 +1016,7 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
 
     try {
       for await (const msg of query({
-        prompt: message,
+        prompt: messageText,
         messages: session.getMessages(),
         systemPrompt: [],
         sessionId: session.sessionId,
@@ -772,20 +1052,39 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
       })) {
         await session.recordMessages([msg]).catch(() => {});
 
-        // Send message event
+        // Send message event with full content (including tool_use blocks)
         if (msg.type === "user") {
           // Already sent above
         } else {
-          const content = typeof msg.content === "string"
-            ? msg.content
-            : Array.isArray(msg.content)
-              ? msg.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")
-              : "";
-          send("message", { id: msg.id, role: "assistant", content, type: msg.type });
+          // Build blocks array for frontend rendering
+          const blocks: any[] = [];
+          const textParts: string[] = [];
+          if (Array.isArray(msg.content)) {
+            for (const b of msg.content) {
+              if (b.type === "text") {
+                textParts.push(b.text || "");
+                blocks.push({ type: "text", text: b.text || "" });
+              } else if (b.type === "tool_use") {
+                blocks.push({ type: "tool_use", id: b.id, name: b.name, input: b.input });
+              }
+            }
+          }
+          const textContent = typeof msg.content === "string" ? msg.content : textParts.join("");
+          send("message", {
+            id: msg.id,
+            role: msg.type === "tool_result" ? (msg.isError ? "tool_error" : "tool_result") : "assistant",
+            content: textContent,
+            blocks: blocks.length > 0 ? blocks : undefined,
+            toolUseId: msg.type === "tool_result" ? msg.toolUseId : undefined,
+            type: msg.type,
+          });
         }
       }
 
       send("done", { sessionId: session.sessionId });
+
+      // Close session after conversation ends (sets status to completed/error)
+      await closeSession(cwd(), session.sessionId).catch(() => {});
     } catch (error) {
       send("error", { message: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -800,6 +1099,55 @@ routes.set("POST /api/chat/sse", async (req, body) => {
   // This is handled specially in the server — return a sentinel
   return { _sse: true, req, body };
 });
+
+// Live session events SSE — subscribe to real-time events from executor
+function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerResponse) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "Access-Control-Allow-Origin": "*",
+  });
+
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  send("connected", { status: "ok" });
+
+  // Forward all relevant executor events
+  const onSessionMessageAppended = (data: any) => send("session:message-appended", data);
+  const onTaskClaimed = (data: any) => send("executor:task-claimed", data);
+  const onTaskProgress = (data: any) => send("executor:task-progress", data);
+  const onTaskCompleted = (data: any) => send("executor:task-completed", data);
+  const onExecutorCycle = (data: any) => send("executor:cycle", data);
+  const onToolStart = (data: any) => send("tool:start", data);
+  const onToolResult = (data: any) => send("tool:result", data);
+  const onToolError = (data: any) => send("tool:error", data);
+  const onToolProgress = (data: any) => send("tool:progress", data);
+
+  eventBus.on("session:message-appended", onSessionMessageAppended);
+  eventBus.on("executor:task-claimed", onTaskClaimed);
+  eventBus.on("executor:task-progress", onTaskProgress);
+  eventBus.on("executor:task-completed", onTaskCompleted);
+  eventBus.on("executor:cycle", onExecutorCycle);
+  eventBus.on("tool:start", onToolStart);
+  eventBus.on("tool:result", onToolResult);
+  eventBus.on("tool:error", onToolError);
+  eventBus.on("tool:progress", onToolProgress);
+
+  req.on("close", () => {
+    eventBus.off("session:message-appended", onSessionMessageAppended);
+    eventBus.off("executor:task-claimed", onTaskClaimed);
+    eventBus.off("executor:task-progress", onTaskProgress);
+    eventBus.off("executor:task-completed", onTaskCompleted);
+    eventBus.off("executor:cycle", onExecutorCycle);
+    eventBus.off("tool:start", onToolStart);
+    eventBus.off("tool:result", onToolResult);
+    eventBus.off("tool:error", onToolError);
+    eventBus.off("tool:progress", onToolProgress);
+  });
+}
 
 // Task execution via SSE
 function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerResponse, taskId: string) {
@@ -844,7 +1192,23 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
     const title = task.title || taskId;
     let prompt = `Task: ${title}\n\n`;
     if (task.description) prompt += `Description: ${task.description}\n\n`;
-    prompt += `Please complete this task. Work in the current directory.`;
+
+    // Include structured gRPC config if available
+    if (task.grpcConfig) {
+      prompt += `## gRPC Task\n\n`;
+      prompt += `You MUST use the **GrpcClient** tool to execute this gRPC call. Do NOT use Shell or any other tool.\n\n`;
+      prompt += `Call the GrpcClient tool with these exact parameters:\n`;
+      prompt += `- protoFile: "${task.grpcConfig.protoFile || 'protos/AlgoService.proto'}"\n`;
+      prompt += `- service: "${task.grpcConfig.service}"\n`;
+      prompt += `- method: "${task.grpcConfig.method}"\n`;
+      prompt += `- address: "${task.grpcConfig.address}"\n`;
+      prompt += `- payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
+      if (task.grpcConfig.metadata) prompt += `- metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
+      if (task.grpcConfig.deadline) prompt += `- deadline: ${task.grpcConfig.deadline}\n`;
+      prompt += `\nAfter the GrpcClient call completes, report the response. If it fails, use the Checkpoint tool to ask the user.\n`;
+    }
+
+    prompt += `\nPlease complete this task. Work in the current directory.`;
 
     const appState = createInitialAppState();
     const abortController = new AbortController();
@@ -1015,8 +1379,19 @@ async function assignDependentTasks(completedTaskId: string) {
     }
 
     if (dep.requiresApproval) {
-      // Let the auto-execution poll handle approval tasks (stays in todo)
-      log("INFO", "AutoExec", `Dependency met, task ${dep.id} needs approval: ${dep.title}`);
+      // Emit approval request immediately instead of waiting for poll cycle
+      if (!pendingApprovalTasks.has(dep.id)) {
+        const approvalReq: ApprovalRequestEvent = {
+          taskId: dep.id,
+          taskTitle: dep.title || dep.id,
+          approvalMessage: dep.approvalMessage,
+          stepIndex: 0,
+          stepTotal: 1,
+        };
+        pendingApprovalTasks.set(dep.id, approvalReq);
+        log("INFO", "AutoExec", `Dependency met, requesting approval for: ${dep.title}`);
+        eventBus.emit("approval:required", approvalReq);
+      }
     } else {
       // Auto-execute non-approval tasks
       log("INFO", "AutoExec", `Dependency met, executing downstream task ${dep.id}: ${dep.title}`);
@@ -1068,15 +1443,17 @@ async function executeTaskViaHttp(taskId: string) {
 
   // Include structured gRPC config if available
   if (task.grpcConfig) {
-    prompt += `gRPC Call Configuration:\n`;
-    prompt += `- Proto File: ${task.grpcConfig.protoFile}\n`;
-    prompt += `- Service: ${task.grpcConfig.service}\n`;
-    prompt += `- Method: ${task.grpcConfig.method}\n`;
-    prompt += `- Address: ${task.grpcConfig.address}\n`;
-    prompt += `- Payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
-    if (task.grpcConfig.metadata) prompt += `- Metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
-    if (task.grpcConfig.deadline) prompt += `- Deadline: ${task.grpcConfig.deadline}ms\n`;
-    prompt += `\nUse the GrpcClient tool to execute this call.\n`;
+    prompt += `## gRPC Task\n\n`;
+    prompt += `You MUST use the **GrpcClient** tool to execute this gRPC call. Do NOT use Shell or any other tool.\n\n`;
+    prompt += `Call the GrpcClient tool with these exact parameters:\n`;
+    prompt += `- protoFile: "${task.grpcConfig.protoFile || 'protos/AlgoService.proto'}"\n`;
+    prompt += `- service: "${task.grpcConfig.service}"\n`;
+    prompt += `- method: "${task.grpcConfig.method}"\n`;
+    prompt += `- address: "${task.grpcConfig.address}"\n`;
+    prompt += `- payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
+    if (task.grpcConfig.metadata) prompt += `- metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
+    if (task.grpcConfig.deadline) prompt += `- deadline: ${task.grpcConfig.deadline}\n`;
+    prompt += `\nAfter the GrpcClient call completes, report the response. If it fails, use the Checkpoint tool to ask the user.\n`;
   }
 
   prompt += `\nPlease complete this task. Work in the current directory.`;
@@ -1119,12 +1496,22 @@ async function executeTaskViaHttp(taskId: string) {
     log("INFO", "AutoExec", `runAgent returned for task ${taskId}: ${messageCount} messages, result length=${result?.length || 0}`);
 
     // Update session info
+    let allMessagesForCheck: any[] = [];
     try {
       const { readTranscriptMessages } = await import("../../storage/transcript");
-      const allMessages = await readTranscriptMessages(cwd(), sessionId);
-      await updateSessionInfo(cwd(), sessionId, allMessages);
+      allMessagesForCheck = await readTranscriptMessages(cwd(), sessionId);
+      await updateSessionInfo(cwd(), sessionId, allMessagesForCheck);
     } catch (e) {
       log("ERROR", "AutoExec", `Failed to update session info: ${e}`);
+    }
+
+    // Check for tool-level errors (e.g., gRPC failures)
+    const hasToolErrors = allMessagesForCheck.some((m: any) => m.type === 'tool_result' && m.isError);
+    if (hasToolErrors) {
+      log("INFO", "AutoExec", `Task ${taskId} has tool errors, marking as failed`);
+      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Tool execution failed" });
+      eventBus.emit("executor:task-completed", { taskId, success: false, result: "Tool execution failed" });
+      return;
     }
 
     // Always go to verify first (state machine requires in_progress → verify)
@@ -1136,8 +1523,24 @@ async function executeTaskViaHttp(taskId: string) {
     if (!hasCriteria) {
       await updateTaskInfo(cwd(), taskId, { status: "done" });
       log("INFO", "AutoExec", `Task ${taskId} auto-approved → done (${messageCount} messages)`);
-      // Assign downstream tasks whose dependencies are now met
-      await assignDependentTasks(taskId);
+
+      // Check if this task has checkpoint_after — wait for user confirmation before continuing
+      if (updatedTask?.checkpointAfter) {
+        log("INFO", "AutoExec", `Task ${taskId} has checkpoint_after, waiting for user confirmation`);
+        const checkpointReq: ApprovalRequestEvent = {
+          taskId,
+          taskTitle: updatedTask.title || taskId,
+          approvalMessage: updatedTask.checkpointMessage || `Task "${updatedTask.title}" completed. Confirm to continue?`,
+          stepIndex: 0,
+          stepTotal: 1,
+        };
+        pendingApprovalTasks.set(taskId, checkpointReq);
+        eventBus.emit("approval:required", checkpointReq);
+        // assignDependentTasks will be called when user approves via the approval endpoint
+      } else {
+        // Assign downstream tasks whose dependencies are now met
+        await assignDependentTasks(taskId);
+      }
     } else {
       log("INFO", "AutoExec", `Task ${taskId} → verify, waiting for manual review (${messageCount} messages)`);
     }
@@ -1153,7 +1556,21 @@ async function executeTaskViaHttp(taskId: string) {
     const errMsg = error instanceof Error ? error.message : String(error);
     log("ERROR", "AutoExec", `Task ${taskId} failed: ${errMsg}`);
     await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errMsg });
-    eventBus.emit("executor:task-completed", { taskId, success: false, result: errMsg });
+
+    // Emit failure approval request — ask user what to do
+    const task = await readTaskInfo(cwd(), taskId);
+    const failureReq = {
+      taskId,
+      taskTitle: task?.title || taskId,
+      approvalMessage: `Task failed: ${errMsg.slice(0, 200)}`,
+      stepIndex: 0,
+      stepTotal: 1,
+      requestType: 'task_failure' as const,
+      errorMessage: errMsg,
+    };
+    pendingApprovalTasks.set(taskId, failureReq);
+    eventBus.emit("approval:required", failureReq);
+    // Don't emit task-completed yet — wait for user decision
   }
 }
 
@@ -1344,6 +1761,12 @@ export function startHttpServer(port = 3002): http.Server {
       const taskExecuteMatch = url.match(/^\/api\/tasks\/([^/]+)\/execute$/)
       if (method === "POST" && taskExecuteMatch) {
         handleTaskExecuteSse(req, res, taskExecuteMatch[1]!);
+        return;
+      }
+
+      // SSE live session events endpoint
+      if (method === "GET" && url === "/api/events") {
+        handleSessionEventsSse(req, res);
         return;
       }
 

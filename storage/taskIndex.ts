@@ -41,6 +41,7 @@ export type TaskInfo = {
   priority: "low" | "medium" | "high";
   assignee?: string;
   dependsOn?: string[];
+  proposalId?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
@@ -52,6 +53,8 @@ export type TaskInfo = {
   autoVerify?: boolean;
   requiresApproval?: boolean;
   approvalMessage?: string;
+  checkpointAfter?: boolean;
+  checkpointMessage?: string;
   grpcConfig?: {
     protoFile: string;
     service: string;
@@ -155,39 +158,47 @@ export async function updateTaskInfo(
     }
   }
 
+  // Filter out undefined values to prevent overwriting existing fields
+  const cleanUpdates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      cleanUpdates[key] = value;
+    }
+  }
+
   const now = new Date().toISOString();
   const activities: TaskActivity[] = [...previous.activities];
   const statusHistory = [...previous.statusHistory];
   let activityCounter = activities.length;
 
-  if (updates.status && updates.status !== previous.status) {
+  if (cleanUpdates.status && cleanUpdates.status !== previous.status) {
     activities.push({
       id: `activity-${Date.now()}-${activityCounter++}`,
       action: "status_changed",
       actor,
-      details: `Status changed from ${previous.status} to ${updates.status}`,
+      details: `Status changed from ${previous.status} to ${cleanUpdates.status}`,
       timestamp: now,
     });
     statusHistory.push({
-      status: updates.status,
+      status: cleanUpdates.status as TaskInfo["status"],
       timestamp: now,
       actor,
     });
   }
 
-  if (updates.assignee !== undefined && updates.assignee !== previous.assignee) {
+  if (cleanUpdates.assignee !== undefined && cleanUpdates.assignee !== previous.assignee) {
     activities.push({
       id: `activity-${Date.now()}-${activityCounter++}`,
-      action: updates.assignee ? "assigned" : "released",
+      action: cleanUpdates.assignee ? "assigned" : "released",
       actor,
-      details: updates.assignee ? `Assigned to ${updates.assignee}` : "Released",
+      details: cleanUpdates.assignee ? `Assigned to ${cleanUpdates.assignee}` : "Released",
       timestamp: now,
     });
   }
 
   const updated: TaskInfo = {
     ...previous,
-    ...updates,
+    ...cleanUpdates,
     updatedAt: now,
     activities,
     statusHistory,

@@ -135,7 +135,7 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
   outputSchema: null,
 
   async description() {
-    return "Make a gRPC call to an external service. Requires a .proto file, service name, method name, and target address. Use this to communicate with external microservices.";
+    return "Execute a gRPC call to an external microservice. Use this tool (NOT Shell) when a task requires calling a gRPC service. Parameters: protoFile (path to .proto), service (e.g. 'AlgoGRPC.AlgoService'), method (e.g. 'SendMessage'), address (host:port), payload (JSON object). Example: GrpcClient(protoFile='protos/AlgoService.proto', service='AlgoGRPC.AlgoService', method='SendMessage', address='192.168.25.106:9010', payload={Module:'WaferMapTool', Method:'DrawWaferMap', StringParas:['All']})";
   },
 
   async call(
@@ -155,14 +155,7 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
         : join(context.cwd, args.protoFile);
 
       if (!existsSync(protoPath)) {
-        return {
-          data: {
-            success: false,
-            response: null,
-            error: `Proto file not found: ${protoPath}`,
-            durationMs: Date.now() - startTime,
-          },
-        };
+        throw new Error(`Proto file not found: ${protoPath}`);
       }
 
       // Load proto and create client
@@ -185,14 +178,7 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return {
-        data: {
-          success: false,
-          response: null,
-          error: message,
-          durationMs: Date.now() - startTime,
-        },
-      };
+      throw new Error(`gRPC call failed: ${message}`);
     }
   },
 

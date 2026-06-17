@@ -8,12 +8,14 @@ import { findToolByName } from "../../../tools/Tool";
 import { getTools } from "../../../tools/registry";
 import { query } from "../../../runtime/query";
 import { readTranscriptMessages, getTranscriptPath } from "../../../storage/transcript";
+import { getAgentDefinition } from "../../../tools/agent/agentRegistry";
+import { getLoadedSkills } from "../../../skills/loader";
 import { setCheckpointResponse } from "../../../tools/workflow/checkpointTool";
 import type { Message } from "../../../runtime/messages";
 import { log } from "../logger";
 
 interface ChatSendInput {
-  message: string;
+  message: string | { text: string; images?: Array<{ data: string; mimeType: string }> };
   sessionId?: string;
 }
 
@@ -21,6 +23,7 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool_result" | "tool_error";
   content: string;
+  blocks?: Array<{ type: string; text?: string; data?: string; mimeType?: string; name?: string }>;
   timestamp: number;
   toolName?: string;
   toolUseId?: string;
@@ -33,13 +36,30 @@ interface ChatSendResult {
 }
 
 function messageToChatMessage(msg: Message): ChatMessage {
+  const textContent = typeof msg.content === "string" ? msg.content :
+    msg.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+
+  // Build blocks array for multimodal content
+  const blocks: ChatMessage["blocks"] = [];
+  if (Array.isArray(msg.content)) {
+    for (const b of msg.content) {
+      if (b.type === "text") {
+        blocks.push({ type: "text", text: b.text });
+      } else if (b.type === "image") {
+        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
+      } else if (b.type === "tool_use") {
+        blocks.push({ type: "tool_use", name: b.name });
+      }
+    }
+  }
+
   return {
     id: msg.id,
-    role: msg.type === "user" ? "user" : 
-          msg.type === "tool_result" ? (msg.isError ? "tool_error" : "tool_result") : 
+    role: msg.type === "user" ? "user" :
+          msg.type === "tool_result" ? (msg.isError ? "tool_error" : "tool_result") :
           "assistant",
-    content: typeof msg.content === "string" ? msg.content : 
-      msg.content.map(b => b.type === "text" ? b.text : `[${b.name}]`).join("\n"),
+    content: textContent,
+    blocks: blocks.length > 0 ? blocks : undefined,
     timestamp: Date.now(),
     toolName: msg.type === "assistant" && msg.content[0]?.type === "tool_use" ? msg.content[0].name : undefined,
     toolUseId: msg.type === "assistant" && msg.content[0]?.type === "tool_use" ? msg.content[0].id : undefined,
@@ -102,7 +122,49 @@ export function registerChatHandlers() {
   })
 
   ipcMain.handle("chat:send", async (event, input: ChatSendInput): Promise<ChatSendResult> => {
-    log('INFO', 'Chat', `chat:send called with message: "${input.message.substring(0, 50)}..."`)
+    // Support both string and structured { text, images } format
+    const rawMessage = input.message;
+    let messageText = typeof rawMessage === 'string' ? rawMessage : rawMessage?.text || '';
+    const messageImages = typeof rawMessage === 'object' ? rawMessage?.images || [] : [];
+
+    // Parse @agent and /skill commands
+    let agentOverride: string | undefined;
+    let skillInstruction: string | undefined;
+
+    // Check for @agent-name pattern
+    const agentMatch = messageText.match(/^@(\w[\w-]*)\s*/);
+    if (agentMatch) {
+      const agentName = agentMatch[1]!.toLowerCase();
+      try {
+        const agentDef = getAgentDefinition(agentName);
+        if (agentDef && agentDef.name !== 'general-purpose') {
+          agentOverride = agentName;
+          messageText = messageText.slice(agentMatch[0].length);
+          log('INFO', 'Chat', `Routing to agent: ${agentName}`);
+        }
+      } catch {
+        // Not a valid agent name, treat as normal message
+      }
+    }
+
+    // Check for /skill-name pattern
+    const skillMatch = messageText.match(/^\/([\w-]+)\s*/);
+    if (skillMatch && !agentOverride) {
+      const skillName = skillMatch[1]!.toLowerCase();
+      try {
+        const skills = getLoadedSkills();
+        const skill = skills.find((s: any) => s.metadata?.name?.toLowerCase() === skillName || s.name?.toLowerCase() === skillName);
+        if (skill) {
+          skillInstruction = typeof skill.instruction === 'function' ? await skill.instruction({}) : skill.instruction;
+          messageText = messageText.slice(skillMatch[0].length);
+          log('INFO', 'Chat', `Invoking skill: ${skillName}`);
+        }
+      } catch {
+        // Not a valid skill name, treat as normal message
+      }
+    }
+
+    log('INFO', 'Chat', `chat:send called with message: "${messageText.substring(0, 50)}..."${messageImages.length > 0 ? ` + ${messageImages.length} image(s)` : ''}${agentOverride ? ` [agent: ${agentOverride}]` : ''}${skillInstruction ? ' [skill]' : ''}`)
 
     try {
       // Clear any queued permissions from previous requests
@@ -130,10 +192,22 @@ export function registerChatHandlers() {
       const abortController = new AbortController();
       activeAbortController = abortController;
       
+      // Build multimodal content if images are present
+      const userContent = messageImages.length > 0
+        ? [
+            ...(messageText ? [{ type: "text" as const, text: messageText }] : []),
+            ...messageImages.map((img: { data: string; mimeType: string }) => ({
+              type: "image" as const,
+              data: img.data,
+              mimeType: img.mimeType,
+            })),
+          ]
+        : messageText;
+
       const userMessage: Message = {
         id: createId("user"),
         type: "user",
-        content: input.message,
+        content: userContent,
       };
       await session.recordMessages([userMessage]);
 
@@ -141,9 +215,9 @@ export function registerChatHandlers() {
 
       const producedMessages: Message[] = [];
       for await (const message of query({
-        prompt: input.message,
+        prompt: messageText,
         messages: session.getMessages(),
-        systemPrompt: [],
+        systemPrompt: skillInstruction ? [skillInstruction] : [],
         sessionId: session.sessionId,
         toolUseContext: {
           cwd: cwd(),

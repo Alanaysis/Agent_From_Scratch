@@ -9,16 +9,16 @@ import { Input } from '@/components/ui/input'
 import type { StoredDocument } from '@/types'
 
 const typeConfig: Record<string, { label: string; color: string }> = {
-  prd: { label: 'PRD', color: '#3b82f6' },
-  tech_design: { label: 'Tech Design', color: '#7b68c0' },
+  prd: { label: 'PRD', color: 'var(--status-blue)' },
+  tech_design: { label: 'Tech Design', color: 'var(--status-purple)' },
   adr: { label: 'ADR', color: 'var(--amber)' },
-  spec: { label: 'Spec', color: '#5cb85c' },
+  spec: { label: 'Spec', color: 'var(--status-green)' },
   guide: { label: 'Guide', color: 'var(--copper)' },
   report: { label: 'Report', color: 'var(--warm-red)' },
 }
 
 export function DocumentsView() {
-  const { documents, loadDocuments, createDocument, updateDocument, deleteDocument } = useAppStore()
+  const { documents, loadDocuments, createDocument, updateDocument, deleteDocument, toggleDocumentInject, isDocumentInjected } = useAppStore()
   const [search, setSearch] = React.useState('')
   const [selectedDoc, setSelectedDoc] = React.useState<StoredDocument | null>(null)
   const [isEditing, setIsEditing] = React.useState(false)
@@ -28,6 +28,7 @@ export function DocumentsView() {
   const [newTitle, setNewTitle] = React.useState('')
   const [newType, setNewType] = React.useState<string>('spec')
   const [isLoading, setIsLoading] = React.useState(true)
+  const [isInjected, setIsInjected] = React.useState(false)
 
   React.useEffect(() => {
     loadDocuments().finally(() => setIsLoading(false))
@@ -40,9 +41,18 @@ export function DocumentsView() {
     }
   }, [documents])
 
+  // Check injection status when selected document changes
+  React.useEffect(() => {
+    if (selectedDoc) {
+      isDocumentInjected(selectedDoc.id).then(setIsInjected)
+    } else {
+      setIsInjected(false)
+    }
+  }, [selectedDoc?.id])
+
   const filtered = documents.filter(d =>
     d.title.toLowerCase().includes(search.toLowerCase()) ||
-    d.type.toLowerCase().includes(search.toLowerCase())
+    (d.type && d.type.toLowerCase().includes(search.toLowerCase()))
   )
 
   const handleCreate = async () => {
@@ -71,6 +81,13 @@ export function DocumentsView() {
     setIsEditing(false)
   }
 
+  const handleToggleInject = async () => {
+    if (!selectedDoc) return
+    const newState = !isInjected
+    await toggleDocumentInject(selectedDoc.id, newState)
+    setIsInjected(newState)
+  }
+
   if (isLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-muted)', gap: 8, fontFamily: 'IBM Plex Sans, sans-serif' }}>
@@ -83,7 +100,7 @@ export function DocumentsView() {
   return (
     <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif' }}>
       {/* Document List */}
-      <div style={{ width: 300, borderRight: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--surface-1)' }}>
+      <div style={{ width: '35%', minWidth: 180, maxWidth: 300, borderRight: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--surface-1)', flexShrink: 0 }}>
         {/* Search + Create */}
         <div style={{ padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ position: 'relative', marginBottom: 8 }}>
@@ -139,12 +156,12 @@ export function DocumentsView() {
         </div>
 
         {/* List */}
-        <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 4 }}>
           {filtered.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>No documents</div>
           ) : (
             filtered.map(doc => {
-              const cfg = typeConfig[doc.type] || { label: doc.type, color: 'var(--text-muted)' }
+              const cfg = typeConfig[doc.type] || { label: doc.type || 'DOC', color: 'var(--text-muted)' }
               const isSelected = selectedDoc?.id === doc.id
               return (
                 <div
@@ -197,7 +214,7 @@ export function DocumentsView() {
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {(() => {
-                  const cfg = typeConfig[selectedDoc.type] || { label: selectedDoc.type, color: 'var(--text-muted)' }
+                  const cfg = typeConfig[selectedDoc.type] || { label: selectedDoc.type || 'DOC', color: 'var(--text-muted)' }
                   return (
                     <span style={{ fontSize: 9, fontWeight: 700, color: cfg.color, backgroundColor: 'var(--surface-0)', padding: '2px 6px', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', border: '1px solid var(--border-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {cfg.label}
@@ -214,7 +231,25 @@ export function DocumentsView() {
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDoc.title}</span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                {/* Inject into prompt toggle */}
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+                  padding: '4px 8px', borderRadius: 0,
+                  border: `1px solid ${isInjected ? 'var(--amber)' : 'var(--border-subtle)'}`,
+                  backgroundColor: isInjected ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                  fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
+                  color: isInjected ? 'var(--amber)' : 'var(--text-muted)',
+                  transition: 'all 0.15s',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={isInjected}
+                    onChange={handleToggleInject}
+                    style={{ width: 12, height: 12, cursor: 'pointer', accentColor: 'var(--amber)' }}
+                  />
+                  {isInjected ? 'Injected' : 'Inject'}
+                </label>
                 {isEditing ? (
                   <Button onClick={handleSave} style={{ height: 28, fontSize: 11, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000', fontWeight: 600 }}>
                     <Save size={12} style={{ marginRight: 4 }} /> Save
@@ -281,7 +316,7 @@ export function DocumentsView() {
                   </label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {relatedTasks.map(t => {
-                      const statusColor = { todo: '#3b82f6', in_progress: 'var(--amber)', verify: '#7b68c0', done: '#5cb85c', failed: 'var(--warm-red)' }[t.status] || 'var(--text-muted)'
+                      const statusColor = { todo: 'var(--status-blue)', in_progress: 'var(--amber)', verify: 'var(--status-purple)', done: 'var(--status-green)', failed: 'var(--warm-red)' }[t.status] || 'var(--text-muted)'
                       return (
                         <div key={t.id} style={{
                           padding: '6px 8px',

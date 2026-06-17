@@ -1,6 +1,7 @@
 import { ipcMain, dialog, BrowserWindow } from "electron";
 import { cwd } from "process";
-import { readFile } from "fs/promises";
+import { readFile, writeFile, mkdir } from "fs/promises";
+import { join } from "path";
 import {
   readWorkflow,
   saveWorkflow,
@@ -8,6 +9,7 @@ import {
   listWorkflows,
   parseWorkflowYaml,
   importWorkflowAsProposal,
+  proposalToWorkflowYaml,
   type WorkflowDefinition,
 } from "../../../storage/workflowIndex";
 import { log } from "../logger";
@@ -66,7 +68,7 @@ export function registerWorkflowHandlers() {
       const content = await readFile(input.filePath, "utf8");
       const workflow = parseWorkflowYaml(content);
       workflow.sourceFile = input.filePath;
-      const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy);
+      const { proposal } = await importWorkflowAsProposal(cwd(), workflow, input.createdBy, input.filePath);
       log('INFO', 'Workflows', `workflows:import_file created workflow ${workflow.id} and proposal ${proposal.id}`)
       return { workflow, proposalId: proposal.id };
     } catch (e) {
@@ -98,6 +100,25 @@ export function registerWorkflowHandlers() {
     } catch (e) {
       log('ERROR', 'Workflows', 'workflows:open_file_dialog failed', e)
       return { filePath: null };
+    }
+  });
+
+  ipcMain.handle("workflows:save-yaml", async (_event, input: { proposal: any; fileName: string }): Promise<{ filePath: string; fileName: string }> => {
+    log('INFO', 'Workflows', `workflows:save-yaml called with fileName=${input.fileName}`)
+    try {
+      const yamlContent = proposalToWorkflowYaml(input.proposal);
+      const fileName = input.fileName || `${input.proposal.title}.yaml`;
+      const workflowsDir = join(cwd(), "workflows");
+      const filePath = join(workflowsDir, fileName);
+
+      await mkdir(workflowsDir, { recursive: true });
+      await writeFile(filePath, yamlContent, "utf8");
+
+      log('INFO', 'Workflows', `workflows:save-yaml saved to ${filePath}`)
+      return { filePath, fileName };
+    } catch (e) {
+      log('ERROR', 'Workflows', 'workflows:save-yaml failed', e)
+      throw e
     }
   });
 }

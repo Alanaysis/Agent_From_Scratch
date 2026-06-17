@@ -1,6 +1,6 @@
 import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
-import { readTextFile, resolvePathFromCwd } from "../../shared/fs";
+import { readTextFile, resolvePathSafe } from "../../shared/fs";
 
 export type ReadInput = {
   path: string;
@@ -23,7 +23,7 @@ export const ReadTool: Tool<ReadInput, ReadOutput> = {
     _canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<ReadOutput>> {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const content = await readTextFile(absolutePath);
     return {
       data: {

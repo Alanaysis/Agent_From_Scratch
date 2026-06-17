@@ -1,0 +1,20 @@
+name: "Test Workflow"
+description: "A simple test workflow for automated testing"
+
+steps:
+  - id: step_1
+    name: "First Step"
+    agent: general-purpose
+    description: "The first step in the workflow"
+
+  - id: step_2
+    name: "Second Step"
+    agent: general-purpose
+    depends_on: [step_1]
+    description: "The second step, depends on first"
+
+  - id: step_3
+    name: "Third Step"
+    agent: general-purpose
+    depends_on: [step_2]
+    description: "The third step, depends on second"

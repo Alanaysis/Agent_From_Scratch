@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'bun:test';
 import { ReadTool, type ReadInput } from '../../../../tools/files/readTool';
-import { readTextFile, resolvePathFromCwd } from '../../../../shared/fs';
+import { readTextFile, resolvePathSafe } from '../../../../shared/fs';
 
 vi.mock('../../../../shared/fs', () => ({
   readTextFile: vi.fn(),
-  resolvePathFromCwd: vi.fn((cwd, path) => `${cwd}/${path}`),
+  resolvePathSafe: vi.fn((path, cwd) => `${cwd}/${path}`),
 }));
 
 describe('ReadTool', () => {
@@ -172,7 +172,7 @@ describe('ReadTool', () => {
     it('reads file and returns content on success', async () => {
       const mockContent = 'Hello, World!';
       (readTextFile as any).mockResolvedValue(mockContent);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       const input: ReadInput = { path: 'test.txt' };
       const result = await ReadTool.call(input, mockContext, null as any, null as any);
@@ -190,12 +190,12 @@ describe('ReadTool', () => {
         null as any
       );
 
-      expect(resolvePathFromCwd).toHaveBeenCalledWith('/tmp/test-dir', 'subdir/file.txt');
+      expect(resolvePathSafe).toHaveBeenCalledWith('subdir/file.txt', '/tmp/test-dir');
     });
 
     it('reads file at resolved path', async () => {
       (readTextFile as any).mockResolvedValue('Hello World');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/output.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/output.txt');
 
       await ReadTool.call(
         { path: 'output.txt' },
@@ -210,7 +210,7 @@ describe('ReadTool', () => {
     it('returns content from file', async () => {
       const expectedContent = 'This is the file content';
       (readTextFile as any).mockResolvedValue(expectedContent);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       const result = await ReadTool.call(
         { path: 'test.txt' },
@@ -224,7 +224,7 @@ describe('ReadTool', () => {
 
     it('handles empty file', async () => {
       (readTextFile as any).mockResolvedValue('');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/empty.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/empty.txt');
 
       const result = await ReadTool.call(
         { path: 'empty.txt' },
@@ -238,7 +238,7 @@ describe('ReadTool', () => {
 
     it('handles single character file', async () => {
       (readTextFile as any).mockResolvedValue('X');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/single.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/single.txt');
 
       const result = await ReadTool.call(
         { path: 'single.txt' },
@@ -253,7 +253,7 @@ describe('ReadTool', () => {
     it('handles large file', async () => {
       const content = 'a'.repeat(100000); // 100KB file
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/large.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/large.txt');
 
       const result = await ReadTool.call(
         { path: 'large.txt' },
@@ -268,7 +268,7 @@ describe('ReadTool', () => {
     it('handles multi-line file', async () => {
       const content = 'line1\nline2\nline3\nline4\nline5';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/multiline.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/multiline.txt');
 
       const result = await ReadTool.call(
         { path: 'multiline.txt' },
@@ -283,7 +283,7 @@ describe('ReadTool', () => {
     it('handles file with trailing newline', async () => {
       const content = 'content\n';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/trailing.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/trailing.txt');
 
       const result = await ReadTool.call(
         { path: 'trailing.txt' },
@@ -298,7 +298,7 @@ describe('ReadTool', () => {
     it('handles file with leading newline', async () => {
       const content = '\ncontent';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/leading.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/leading.txt');
 
       const result = await ReadTool.call(
         { path: 'leading.txt' },
@@ -313,7 +313,7 @@ describe('ReadTool', () => {
     it('handles file with only newlines', async () => {
       const content = '\n\n\n';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/newlines.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/newlines.txt');
 
       const result = await ReadTool.call(
         { path: 'newlines.txt' },
@@ -328,7 +328,7 @@ describe('ReadTool', () => {
     it('handles unicode content', async () => {
       const content = 'Hello 世界！👋 مرحبا';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/unicode.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/unicode.txt');
 
       const result = await ReadTool.call(
         { path: 'unicode.txt' },
@@ -343,7 +343,7 @@ describe('ReadTool', () => {
     it('handles JSON content', async () => {
       const content = '{"key": "value", "number": 123}';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.json');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.json');
 
       const result = await ReadTool.call(
         { path: 'data.json' },
@@ -358,7 +358,7 @@ describe('ReadTool', () => {
     it('handles JavaScript code', async () => {
       const content = `function hello() {\n  console.log("Hello");\n}`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/code.js');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/code.js');
 
       const result = await ReadTool.call(
         { path: 'code.js' },
@@ -373,7 +373,7 @@ describe('ReadTool', () => {
     it('handles TypeScript code', async () => {
       const content = `interface User {\n  name: string;\n  age: number;\n}\n\nconst user: User = { name: "Alice", age: 30 };`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/typescript.ts');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/typescript.ts');
 
       const result = await ReadTool.call(
         { path: 'typescript.ts' },
@@ -388,7 +388,7 @@ describe('ReadTool', () => {
     it('handles HTML content', async () => {
       const content = `<!DOCTYPE html>\n<html>\n<head><title>Test</title></head>\n<body>Hello</body>\n</html>`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/index.html');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/index.html');
 
       const result = await ReadTool.call(
         { path: 'index.html' },
@@ -403,7 +403,7 @@ describe('ReadTool', () => {
     it('handles CSS content', async () => {
       const content = `.container {\n  display: flex;\n  justify-content: center;\n}\n\n.button {\n  padding: 10px;\n}`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/styles.css');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/styles.css');
 
       const result = await ReadTool.call(
         { path: 'styles.css' },
@@ -418,7 +418,7 @@ describe('ReadTool', () => {
     it('handles YAML content', async () => {
       const content = `name: myapp\nversion: 1.0.0\ndepends:\n  - dep1\n  - dep2`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/config.yaml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/config.yaml');
 
       const result = await ReadTool.call(
         { path: 'config.yaml' },
@@ -433,7 +433,7 @@ describe('ReadTool', () => {
     it('handles TOML content', async () => {
       const content = `[package]\nname = "myapp"\nversion = "1.0.0"\n\n[dependencies]\nrustc = "1.56"`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
 
       const result = await ReadTool.call(
         { path: 'Cargo.toml' },
@@ -448,7 +448,7 @@ describe('ReadTool', () => {
     it('handles XML content', async () => {
       const content = `<?xml version="1.0"?>\n<root>\n  <item id="1">First</item>\n  <item id="2">Second</item>\n</root>`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.xml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.xml');
 
       const result = await ReadTool.call(
         { path: 'data.xml' },
@@ -463,7 +463,7 @@ describe('ReadTool', () => {
     it('handles markdown content', async () => {
       const content = `# Header\n\nThis is **bold** and this is *italic*.\n\n- Item 1\n- Item 2`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/readme.md');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/readme.md');
 
       const result = await ReadTool.call(
         { path: 'readme.md' },
@@ -478,7 +478,7 @@ describe('ReadTool', () => {
     it('handles shell script content', async () => {
       const content = `#!/bin/bash\nset -e\n\necho "Hello"\nls -la`;
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/script.sh');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/script.sh');
 
       const result = await ReadTool.call(
         { path: 'script.sh' },
@@ -493,7 +493,7 @@ describe('ReadTool', () => {
     it('handles binary-like content (as text)', async () => {
       const content = '\x00\x01\x02\x03binary data';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/binary.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/binary.txt');
 
       const result = await ReadTool.call(
         { path: 'binary.txt' },
@@ -508,7 +508,7 @@ describe('ReadTool', () => {
     it('handles content with tabs', async () => {
       const content = '\tindentation\twith\ttabs';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/tabs.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/tabs.txt');
 
       const result = await ReadTool.call(
         { path: 'tabs.txt' },
@@ -523,7 +523,7 @@ describe('ReadTool', () => {
     it('handles content with mixed whitespace', async () => {
       const content = '  spaces\tand\tnewlines\n';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/whitespace.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/whitespace.txt');
 
       const result = await ReadTool.call(
         { path: 'whitespace.txt' },
@@ -538,7 +538,7 @@ describe('ReadTool', () => {
     it('preserves exact file content including special characters', async () => {
       const content = 'Special chars: @#$%^&*()_+-=[]{}|;:\'",.<>?/\\`~';
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/special.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/special.txt');
 
       const result = await ReadTool.call(
         { path: 'special.txt' },
@@ -553,7 +553,7 @@ describe('ReadTool', () => {
     it('handles very long single line', async () => {
       const content = 'a'.repeat(1000000) + '\n'; // 1MB line
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/longline.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/longline.txt');
 
       const result = await ReadTool.call(
         { path: 'longline.txt' },
@@ -568,7 +568,7 @@ describe('ReadTool', () => {
     it('handles content with carriage returns', async () => {
       const content = 'line1\r\nline2\r\nline3'; // Windows line endings
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/crlf.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/crlf.txt');
 
       const result = await ReadTool.call(
         { path: 'crlf.txt' },
@@ -583,7 +583,7 @@ describe('ReadTool', () => {
     it('handles content with old Mac line endings', async () => {
       const content = 'line1\rline2\rline3'; // Old Mac line endings
       (readTextFile as any).mockResolvedValue(content);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/cr.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/cr.txt');
 
       const result = await ReadTool.call(
         { path: 'cr.txt' },
@@ -682,7 +682,7 @@ describe('ReadTool', () => {
   describe('tool call signature', () => {
     it('accepts ToolUseContext with abortController', async () => {
       (readTextFile as any).mockResolvedValue('content');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const controller = new AbortController();
       const context = {
@@ -700,7 +700,7 @@ describe('ReadTool', () => {
 
     it('accepts canUseTool callback parameter', async () => {
       (readTextFile as any).mockResolvedValue('content');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const mockCanUseTool = vi.fn().mockResolvedValue({ behavior: 'allow' } as any);
 
@@ -716,7 +716,7 @@ describe('ReadTool', () => {
 
     it('accepts parentMessage parameter', async () => {
       (readTextFile as any).mockResolvedValue('content');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test.txt');
 
       const mockParentMessage = { id: 'msg-123', type: 'assistant', content: [] };
 

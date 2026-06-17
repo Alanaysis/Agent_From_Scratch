@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Clock, AlertCircle, Trash2, Link2, ChevronRight, Loader2, CheckCircle2, XCircle, Eye } from 'lucide-react'
+import { Plus, Trash2, Link2, ChevronRight, ChevronDown, Loader2, CheckCircle2, XCircle, Eye } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -10,52 +10,44 @@ import { pixelAvatarToDataUrl, getAgentColor } from '@/lib/pixelAvatar'
 import { TaskDetailPanel } from './TaskDetailPanel'
 import type { Task } from '@/types'
 
-const columns: { id: Task['status']; label: string; color: string; icon: React.ReactNode }[] = [
-  { id: 'todo', label: 'To Do', color: '#3b82f6', icon: <ChevronRight size={12} /> },
-  { id: 'in_progress', label: 'In Progress', color: 'var(--amber)', icon: <Loader2 size={12} /> },
-  { id: 'verify', label: 'Verify', color: '#7b68c0', icon: <Eye size={12} /> },
-  { id: 'done', label: 'Done', color: '#5cb85c', icon: <CheckCircle2 size={12} /> },
-  { id: 'failed', label: 'Failed', color: 'var(--warm-red)', icon: <XCircle size={12} /> },
+const statusGroups = [
+  { id: 'active', label: 'Active', color: 'var(--amber)', icon: <Loader2 size={10} />, statuses: ['in_progress'] as Task['status'][] },
+  { id: 'pending', label: 'Pending', color: 'var(--status-blue)', icon: <ChevronRight size={10} />, statuses: ['todo'] as Task['status'][] },
+  { id: 'complete', label: 'Complete', color: 'var(--status-green)', icon: <CheckCircle2 size={10} />, statuses: ['verify', 'done', 'failed'] as Task['status'][] },
 ]
 
-const priorityConfig = {
-  low: { color: 'var(--text-muted)', bg: 'rgba(102,102,102,0.12)', label: 'LOW' },
-  medium: { color: 'var(--amber)', bg: 'rgba(245,158,11,0.12)', label: 'MED' },
-  high: { color: 'var(--warm-red)', bg: 'rgba(239,68,68,0.12)', label: 'HI' },
+const priorityConfig: Record<string, { label: string; color: string; bg: string }> = {
+  low: { label: 'L', color: 'var(--text-muted)', bg: 'var(--surface-2)' },
+  medium: { label: 'M', color: 'var(--amber)', bg: 'rgba(245,158,11,0.08)' },
+  high: { label: 'H', color: 'var(--warm-red)', bg: 'rgba(220,80,80,0.08)' },
+}
+
+const statusBadge: Record<string, { label: string; color: string }> = {
+  todo: { label: 'TODO', color: 'var(--status-blue)' },
+  in_progress: { label: 'RUN', color: 'var(--amber)' },
+  verify: { label: 'VRF', color: 'var(--status-purple)' },
+  done: { label: 'DONE', color: 'var(--status-green)' },
+  failed: { label: 'FAIL', color: 'var(--warm-red)' },
 }
 
 export function KanbanView() {
-  const { tasks, loadTasks, createTask, updateTaskStatus, deleteTaskBackend } = useAppStore()
-  const [newTaskTitle, setNewTaskTitle] = React.useState<Record<string, string>>({})
-  const [isLoading, setIsLoading] = React.useState(true)
-  const [selectedTask, setSelectedTask] = React.useState<(Task & { activities?: any[]; statusHistory?: any[] }) | null>(null)
+  const { tasks, createTask, deleteTaskBackend } = useAppStore()
+  const [selectedTask, setSelectedTask] = React.useState<any>(null)
+  const [newTaskTitle, setNewTaskTitle] = React.useState('')
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set())
+  const [showAddTask, setShowAddTask] = React.useState(false)
 
-  React.useEffect(() => {
-    loadTasks().finally(() => setIsLoading(false))
-  }, [])
-
-  React.useEffect(() => {
-    if (selectedTask) {
-      const updated = tasks.find(t => t.id === selectedTask.id)
-      if (updated) {
-        setSelectedTask({ ...selectedTask, ...updated })
-      }
-    }
-  }, [tasks])
-
-  const handleAddTask = async (status: Task['status']) => {
-    const title = newTaskTitle[status]?.trim()
-    if (!title) return
-    await createTask({ title, status, priority: 'medium' })
-    setNewTaskTitle((prev) => ({ ...prev, [status]: '' }))
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim()) return
+    await createTask({ title: newTaskTitle.trim(), status: 'todo', priority: 'medium' })
+    setNewTaskTitle('')
+    setShowAddTask(false)
   }
 
   const handleDeleteTask = async (e: React.MouseEvent, taskId: string) => {
     e.stopPropagation()
     await deleteTaskBackend(taskId)
-    if (selectedTask?.id === taskId) {
-      setSelectedTask(null)
-    }
+    if (selectedTask?.id === taskId) setSelectedTask(null)
   }
 
   const handleTaskClick = (task: Task) => {
@@ -77,34 +69,23 @@ export function KanbanView() {
     })
   }
 
-  const getTasksByStatus = (status: Task['status']) => tasks.filter((t) => t.status === status)
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const getTasksByStatuses = (statuses: Task['status'][]) => tasks.filter(t => statuses.includes(t.status))
 
   const isBlocked = (task: Task): boolean => {
     if (!task.dependsOn || task.dependsOn.length === 0) return false
     return task.dependsOn.some(depId => {
       const dep = tasks.find(t => t.id === depId)
-      return dep && dep.status !== 'done' && dep.status !== 'failed'
+      return dep && dep.status !== 'done'
     })
-  }
-
-  if (isLoading) {
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        backgroundColor: 'var(--surface-0)',
-        color: 'var(--text-muted)',
-        fontFamily: 'IBM Plex Sans, sans-serif',
-        fontSize: 12,
-        gap: 8,
-      }}>
-        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite', color: 'var(--amber)' }} />
-        Loading tasks...
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      </div>
-    )
   }
 
   return (
@@ -115,303 +96,214 @@ export function KanbanView() {
       overflow: 'hidden',
       fontFamily: 'IBM Plex Sans, sans-serif',
     }}>
+      {/* Task list */}
       <div style={{
         flex: 1,
         display: 'flex',
-        gap: 6,
-        padding: 10,
-        overflow: 'hidden'
+        flexDirection: 'column',
+        overflow: 'hidden',
+        minWidth: 0,
       }}>
-        {columns.map((col) => {
-          const colTasks = getTasksByStatus(col.id)
-          const activeCount = colTasks.filter(t => t.status === 'in_progress').length
-          return (
-            <div key={col.id} style={{
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1,
-              minWidth: 0,
-              backgroundColor: 'var(--surface-1)',
-              borderRadius: 0,
-              border: '1px solid var(--border-subtle)',
-              overflow: 'hidden'
-            }}>
-              {/* Column header */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                borderBottom: '1px solid var(--border-subtle)',
-                borderTop: `2px solid ${col.color}`,
-                flexShrink: 0,
-                backgroundColor: 'var(--surface-1)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 2,
-                    backgroundColor: 'var(--surface-2)',
+        {/* Header */}
+        <div style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'IBM Plex Mono, monospace' }}>
+            Tasks ({tasks.length})
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowAddTask(!showAddTask)}
+            style={{ width: 24, height: 24, borderRadius: 0 }}
+          >
+            <Plus size={12} />
+          </Button>
+        </div>
+
+        {/* Add task input */}
+        {showAddTask && (
+          <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 4, flexShrink: 0 }}>
+            <Input
+              placeholder="Task title..."
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+              style={{ flex: 1, height: 26, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text-primary)' }}
+            />
+            <Button size="icon" variant="ghost" onClick={handleAddTask} style={{ width: 26, height: 26, borderRadius: 0, backgroundColor: 'var(--amber)', color: '#000' }}>
+              <Plus size={10} />
+            </Button>
+          </div>
+        )}
+
+        {/* Grouped task list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+          {statusGroups.map(group => {
+            const groupTasks = getTasksByStatuses(group.statuses)
+            if (groupTasks.length === 0) return null
+            const isCollapsed = collapsedGroups.has(group.id)
+
+            return (
+              <div key={group.id} style={{ marginBottom: 2 }}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  style={{
+                    width: '100%',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: col.color,
-                  }}>
-                    {col.icon}
-                  </div>
-                  <span style={{
+                    gap: 6,
+                    padding: '6px 12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-primary)',
                     fontSize: 11,
                     fontWeight: 600,
-                    color: 'var(--text-primary)',
                     fontFamily: 'IBM Plex Mono, monospace',
-                    letterSpacing: 0.3,
                     textTransform: 'uppercase',
-                  }}>
-                    {col.label}
-                  </span>
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                  <span style={{ color: group.color }}>{group.icon}</span>
+                  <span>{group.label}</span>
                   <span style={{
                     fontSize: 9,
                     color: 'var(--text-muted)',
                     backgroundColor: 'var(--surface-2)',
-                    padding: '1px 6px',
+                    padding: '1px 5px',
                     borderRadius: 0,
                     fontWeight: 600,
-                    fontFamily: 'IBM Plex Mono, monospace',
                   }}>
-                    {colTasks.length}
+                    {groupTasks.length}
                   </span>
-                </div>
-              </div>
+                </button>
 
-              {/* Task cards */}
-              <div style={{
-                flex: 1,
-                overflowY: 'auto',
-                padding: 6,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4
-              }}>
-                {colTasks.map((task) => {
+                {/* Task rows */}
+                {!isCollapsed && groupTasks.map(task => {
                   const blocked = isBlocked(task)
                   const pCfg = priorityConfig[task.priority] || priorityConfig.medium
                   const agentColor = task.assignee ? getAgentColor(task.assignee) : undefined
+                  const isSelected = selectedTask?.id === task.id
+                  const sBadge = statusBadge[task.status]
 
                   return (
-                    <div key={task.id} style={{
-                      padding: 10,
-                      backgroundColor: selectedTask?.id === task.id ? 'var(--surface-2)' : 'var(--surface-0)',
-                      borderRadius: 0,
-                      border: `1px solid ${selectedTask?.id === task.id ? col.color : blocked ? 'var(--amber)' : 'var(--border-subtle)'}`,
-                      cursor: 'pointer',
-                      transition: 'background-color 0.15s',
-                      position: 'relative',
-                      boxShadow: 'none',
-                    }}
+                    <div
+                      key={task.id}
+                      className="task-row"
                       onClick={() => handleTaskClick(task)}
-                      onMouseEnter={(e) => {
-                        if (selectedTask?.id !== task.id) e.currentTarget.style.backgroundColor = 'var(--surface-1)'
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '4px 8px 4px 24px',
+                        cursor: 'pointer',
+                        backgroundColor: isSelected ? 'var(--surface-2)' : 'transparent',
+                        borderLeft: isSelected ? `2px solid ${group.color}` : '2px solid transparent',
+                        transition: 'background-color 0.1s',
+                        minWidth: 0,
                       }}
-                      onMouseLeave={(e) => {
-                        if (selectedTask?.id !== task.id) e.currentTarget.style.backgroundColor = 'var(--surface-0)'
-                      }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-1)' }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent' }}
                     >
+                      {/* Priority indicator */}
+                      <span style={{
+                        fontSize: 8,
+                        fontWeight: 700,
+                        color: pCfg.color,
+                        backgroundColor: pCfg.bg,
+                        padding: '1px 3px',
+                        borderRadius: 0,
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        flexShrink: 0,
+                        width: 14,
+                        textAlign: 'center',
+                      }}>
+                        {pCfg.label}
+                      </span>
+
                       {/* Blocked indicator */}
-                      {blocked && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          marginBottom: 6,
-                          padding: '3px 6px',
-                          borderRadius: 0,
-                          backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                          border: '1px dashed var(--amber)',
+                      {blocked && <Link2 size={9} color="var(--amber)" style={{ flexShrink: 0 }} />}
+
+                      {/* Status badge (only in Complete group) */}
+                      {group.id === 'complete' && sBadge && (
+                        <span style={{
+                          fontSize: 8,
+                          fontWeight: 600,
+                          color: sBadge.color,
+                          fontFamily: 'IBM Plex Mono, monospace',
+                          flexShrink: 0,
                         }}>
-                          <Link2 size={9} color="var(--amber)" />
-                          <span style={{
-                            fontSize: 9,
-                            color: 'var(--amber)',
-                            fontWeight: 500,
-                            fontFamily: 'IBM Plex Mono, monospace',
-                            textTransform: 'uppercase',
-                            letterSpacing: 0.3,
-                          }}>
-                            Blocked by dependency
-                          </span>
-                        </div>
+                          {sBadge.label}
+                        </span>
                       )}
 
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                        {/* Priority indicator */}
-                        <div style={{
-                          width: 3,
-                          height: 32,
-                          borderRadius: 0,
-                          backgroundColor: pCfg.color,
+                      {/* Title */}
+                      <span style={{
+                        flex: 1,
+                        fontSize: 11,
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {task.title}
+                      </span>
+
+                      {/* Assignee */}
+                      {task.assignee && (
+                        <img
+                          src={pixelAvatarToDataUrl(task.assignee, 12)}
+                          alt={task.assignee}
+                          style={{ width: 12, height: 12, borderRadius: 0, flexShrink: 0 }}
+                          title={task.assignee}
+                        />
+                      )}
+
+                      {/* Time */}
+                      <span style={{
+                        fontSize: 9,
+                        color: 'var(--text-faint)',
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        flexShrink: 0,
+                      }}>
+                        {formatDistanceToNow(task.updatedAt, { addSuffix: false })}
+                      </span>
+
+                      {/* Delete - only visible on hover */}
+                      <button
+                        onClick={(e) => handleDeleteTask(e, task.id)}
+                        className="task-delete-btn"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 2,
+                          opacity: 0,
+                          display: 'flex',
                           flexShrink: 0,
-                          marginTop: 1,
-                        }} />
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <h4 style={{
-                            fontSize: 12,
-                            fontWeight: 500,
-                            color: 'var(--text-primary)',
-                            marginBottom: 4,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            lineHeight: 1.3,
-                          }}>
-                            {task.title}
-                          </h4>
-
-                          {task.description && (
-                            <p style={{
-                              fontSize: 10,
-                              color: 'var(--text-muted)',
-                              marginBottom: 6,
-                              lineHeight: 1.3,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical'
-                            }}>
-                              {task.description}
-                            </p>
-                          )}
-
-                          {/* Footer */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {/* Priority badge */}
-                              <span style={{
-                                fontSize: 8,
-                                fontWeight: 700,
-                                color: pCfg.color,
-                                backgroundColor: pCfg.bg,
-                                padding: '1px 4px',
-                                borderRadius: 0,
-                                letterSpacing: 0.8,
-                                fontFamily: 'IBM Plex Mono, monospace',
-                                textTransform: 'uppercase',
-                              }}>
-                                {pCfg.label}
-                              </span>
-
-                              {/* Assignee avatar */}
-                              {task.assignee && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                  <img
-                                    src={pixelAvatarToDataUrl(task.assignee, 14)}
-                                    alt={task.assignee}
-                                    style={{ width: 14, height: 14, borderRadius: 0 }}
-                                  />
-                                  <span style={{
-                                    fontSize: 9,
-                                    color: agentColor,
-                                    fontWeight: 500,
-                                    fontFamily: 'IBM Plex Mono, monospace',
-                                  }}>
-                                    {task.assignee}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {/* Dependency count */}
-                              {task.dependsOn && task.dependsOn.length > 0 && (
-                                <span style={{
-                                  fontSize: 9,
-                                  color: 'var(--text-faint)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 2,
-                                  fontFamily: 'IBM Plex Mono, monospace',
-                                }}>
-                                  <Link2 size={8} />
-                                  {task.dependsOn.length}
-                                </span>
-                              )}
-
-                              <span style={{
-                                fontSize: 9,
-                                color: 'var(--text-faint)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2,
-                                fontFamily: 'IBM Plex Mono, monospace',
-                              }}>
-                                <Clock size={8} />
-                                {formatDistanceToNow(task.updatedAt, { addSuffix: false })}
-                              </span>
-
-                              <button
-                                onClick={(e) => handleDeleteTask(e, task.id)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 2,
-                                  opacity: 0.3,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
-                              >
-                                <Trash2 size={10} color="var(--text-muted)" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                          transition: 'opacity 0.15s',
+                        }}
+                      >
+                        <Trash2 size={10} color="var(--text-muted)" />
+                      </button>
                     </div>
                   )
                 })}
-
-                {/* New task input */}
-                <div style={{ display: 'flex', gap: 4, marginTop: 'auto', paddingTop: 4 }}>
-                  <Input
-                    placeholder="Add task..."
-                    value={newTaskTitle[col.id] || ''}
-                    onChange={(e) => setNewTaskTitle((prev) => ({ ...prev, [col.id]: e.target.value }))}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddTask(col.id)}
-                    style={{
-                      flex: 1,
-                      height: 30,
-                      fontSize: 11,
-                      fontFamily: 'IBM Plex Sans, sans-serif',
-                      backgroundColor: 'var(--surface-0)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 0,
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleAddTask(col.id)}
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 0,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    <Plus size={12} />
-                  </Button>
-                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
+      {/* Task detail panel */}
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask as any}
@@ -419,7 +311,11 @@ export function KanbanView() {
         />
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .task-row:hover .task-delete-btn { opacity: 0.5 !important; }
+        .task-row:hover .task-delete-btn:hover { opacity: 1 !important; }
+      `}</style>
     </div>
   )
 }

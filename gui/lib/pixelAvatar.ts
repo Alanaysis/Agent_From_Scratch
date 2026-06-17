@@ -36,7 +36,7 @@ export interface PixelAvatarData {
   bgColor: string
 }
 
-export function generatePixelAvatar(name: string): PixelAvatarData {
+export function generatePixelAvatar(name: string, bgColor?: string): PixelAvatarData {
   const hash = hashString(name || 'default')
   const rand = seededRandom(hash)
 
@@ -56,8 +56,15 @@ export function generatePixelAvatar(name: string): PixelAvatarData {
   return {
     pixels,
     palette,
-    bgColor: '#0a0a0a',
+    bgColor: bgColor || getThemeSurfaceColor(),
   }
+}
+
+/** Read the current theme's surface-0 color from CSS */
+function getThemeSurfaceColor(): string {
+  if (typeof window === 'undefined') return '#0a0a0a'
+  const val = getComputedStyle(document.documentElement).getPropertyValue('--surface-0').trim()
+  return val || '#0a0a0a'
 }
 
 export function pixelAvatarToSvg(avatar: PixelAvatarData, size: number = 32): string {
@@ -81,8 +88,8 @@ export function pixelAvatarToSvg(avatar: PixelAvatarData, size: number = 32): st
   </svg>`
 }
 
-export function pixelAvatarToDataUrl(name: string, size: number = 32): string {
-  const avatar = generatePixelAvatar(name)
+export function pixelAvatarToDataUrl(name: string, size: number = 32, bgColor?: string): string {
+  const avatar = generatePixelAvatar(name, bgColor)
   const svg = pixelAvatarToSvg(avatar, size)
   return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }

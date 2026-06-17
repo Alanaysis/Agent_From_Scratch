@@ -133,7 +133,7 @@ export function formatSessionList(
 
   const lines = sessions
     .map((session) => {
-      const marker = session.status === "needs_attention" ? "!" : "-";
+      const marker = session.status === "error" ? "!" : "-";
       const updated = session.updatedAt || session.createdAt || "-";
       const title = session.title || session.id;
       const model =
@@ -198,7 +198,8 @@ export function clipText(text: string, maxLength: number): string {
 
 export function formatExportMessageEntry(message: Message): string {
   if (message.type === "user") {
-    return `user: ${clipText(message.content, 240)}`;
+    const text = typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    return `user: ${clipText(text, 240)}`;
   }
 
   if (message.type === "tool_result") {
@@ -314,7 +315,7 @@ export function formatJsonExport(session: SessionInfo, messages: Message[]): str
       messages: messages.map((message) => ({
         ...message,
         ...(message.type === "user"
-          ? { content: clipText(message.content, 240) }
+          ? { content: clipText(typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n'), 240) }
           : message.type === "tool_result"
             ? { content: summarizeUnknown(message.content, 400) }
             : {
@@ -609,7 +610,7 @@ export async function resolveSessionIdArg(
   }
   if (rawSession === "failed") {
     const sessions = await listSessions(cwd);
-    return sessions.find((session) => session.status === "needs_attention")?.id;
+    return sessions.find((session) => session.status === "error")?.id;
   }
   return rawSession;
 }
@@ -771,9 +772,9 @@ export function parseCleanupCommandOptions(args: string[]): CleanupCommandOption
     }
     if (arg === "--status") {
       const value = args[index + 1];
-      if (value !== "ready" && value !== "needs_attention") {
+      if (value !== "idle" && value !== "completed" && value !== "error") {
         throw new Error(
-          'cleanup-sessions --status requires "ready" or "needs_attention"',
+          'cleanup-sessions --status requires "idle", "completed", or "error"',
         );
       }
       status = value;
@@ -811,9 +812,9 @@ export function parseSessionsCommandOptions(args: string[]): SessionsCommandOpti
     }
     if (arg === "--status") {
       const value = args[index + 1];
-      if (value !== "ready" && value !== "needs_attention") {
+      if (value !== "idle" && value !== "completed" && value !== "error") {
         throw new Error(
-          'sessions --status requires "ready" or "needs_attention"',
+          'sessions --status requires "idle", "completed", or "error"',
         );
       }
       status = value;

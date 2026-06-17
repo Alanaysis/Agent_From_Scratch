@@ -15,6 +15,7 @@ export interface ToolCallEvent {
 
 export type MessageBlock =
   | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string }
   | { type: 'tool_use'; toolUseId: string; toolName: string; input: unknown; status: ToolCallEvent['status']; durationMs?: number }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
 
@@ -50,6 +51,7 @@ export interface Task {
   priority: 'low' | 'medium' | 'high'
   assignee?: string
   dependsOn?: string[]
+  proposalId?: string
   createdAt: number
   updatedAt: number
   errorCount?: number
@@ -57,6 +59,10 @@ export interface Task {
   sessionId?: string
   acceptanceCriteria?: AcceptanceCriterion[]
   relatedDocumentIds?: string[]
+  requiresApproval?: boolean
+  approvalMessage?: string
+  checkpointAfter?: boolean
+  checkpointMessage?: string
 }
 
 export interface TaskActivity {
@@ -136,6 +142,36 @@ export interface TaskDraft {
   relatedDocumentTempIds?: string[]
   requiresApproval?: boolean
   approvalMessage?: string
+  checkpointAfter?: boolean
+  checkpointMessage?: string
+  grpcConfig?: {
+    protoFile: string
+    service: string
+    method: string
+    address: string
+    payload: Record<string, unknown>
+    metadata?: Record<string, string>
+    deadline?: number
+  }
+  condition?: {
+    type: 'step_result' | 'llm_judge'
+    source?: string
+    field?: string
+    equals?: string
+    prompt?: string
+    options?: string[]
+  }
+  loop?: {
+    max: number
+    steps: string[]
+    until?: {
+      type: 'step_result' | 'llm_judge'
+      source?: string
+      field?: string
+      equals?: string
+    }
+    onExhausted?: 'abort' | 'continue' | 'skip'
+  }
 }
 
 export interface DocumentDraft {
@@ -154,6 +190,7 @@ export interface Proposal {
   status: 'draft' | 'pending' | 'approved' | 'rejected'
   taskDrafts: TaskDraft[]
   documentDrafts: DocumentDraft[]
+  sourceYamlPath?: string
   createdAt: number
   updatedAt: number
   approvedAt?: number
@@ -186,6 +223,29 @@ export interface ApprovalRequest {
   stepIndex: number
   stepTotal: number
   proposalTitle?: string
+  requestType?: 'approval' | 'task_failure' | 'checkpoint'
+  errorMessage?: string
+}
+
+export interface ActivityEvent {
+  id: string
+  type: 'task_status' | 'task_progress' | 'approval_required' | 'approval_resolved' | 'task_error'
+  taskId: string
+  taskTitle: string
+  agentName?: string
+  timestamp: number
+  // Status change details
+  fromStatus?: string
+  toStatus?: string
+  // Progress details
+  progressText?: string
+  // Approval details
+  approvalAction?: 'execute' | 'later' | 'abort'
+  approvalMessage?: string
+  // Error details
+  errorMessage?: string
+  // Summary
+  summary?: string
 }
 
 export interface AppState {

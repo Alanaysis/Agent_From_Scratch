@@ -15,6 +15,8 @@ export type TaskDraft = {
   relatedDocumentTempIds?: string[];
   requiresApproval?: boolean;
   approvalMessage?: string;
+  checkpointAfter?: boolean;
+  checkpointMessage?: string;
   grpcConfig?: {
     protoFile: string;
     service: string;
@@ -23,6 +25,25 @@ export type TaskDraft = {
     payload: Record<string, unknown>;
     metadata?: Record<string, string>;
     deadline?: number;
+  };
+  condition?: {
+    type: "step_result" | "llm_judge";
+    source?: string;
+    field?: string;
+    equals?: string;
+    prompt?: string;
+    options?: string[];
+  };
+  loop?: {
+    max: number;
+    steps: string[];
+    until?: {
+      type: "step_result" | "llm_judge";
+      source?: string;
+      field?: string;
+      equals?: string;
+    };
+    onExhausted?: "abort" | "continue" | "skip";
   };
 };
 
@@ -43,6 +64,7 @@ export type Proposal = {
   status: "draft" | "pending" | "approved" | "rejected";
   taskDrafts: TaskDraft[];
   documentDrafts: DocumentDraft[];
+  sourceYamlPath?: string;
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
@@ -51,8 +73,8 @@ export type Proposal = {
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ["pending"],
-  pending: ["approved", "rejected"],
-  approved: [],
+  pending: ["approved", "rejected", "draft"],
+  approved: ["draft"],
   rejected: ["draft"],
 };
 
@@ -218,9 +240,12 @@ export async function approveProposal(
         status: "todo",
         assignee: draft.agent || "general-purpose",
         createdBy: proposal.createdBy,
+        proposalId: proposal.id,
         acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
         requiresApproval: draft.requiresApproval || false,
         approvalMessage: draft.approvalMessage,
+        checkpointAfter: draft.checkpointAfter || false,
+        checkpointMessage: draft.checkpointMessage,
         grpcConfig: draft.grpcConfig,
       });
 

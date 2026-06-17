@@ -1,6 +1,6 @@
 import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
-import { resolvePathFromCwd, writeTextFile } from "../../shared/fs";
+import { resolvePathSafe, writeTextFile } from "../../shared/fs";
 
 export type WriteInput = {
   path: string;
@@ -24,7 +24,7 @@ export const WriteTool: Tool<WriteInput, WriteOutput> = {
     _canUseTool: CanUseToolFn,
     _parentMessage: AssistantMessage,
   ): Promise<ToolResult<WriteOutput>> {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const bytesWritten = await writeTextFile(absolutePath, args.content);
     return {
       data: {

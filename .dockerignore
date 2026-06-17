@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+gui/node_modules/
+
+# Build outputs
+bin/
+dist/
+gui/.next/
+gui/out/
+gui/dist/
+
+# Runtime data
+.irg/
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Docs
+docs/
+*.md
+
+# Tests
+tests/
+gui/tests/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

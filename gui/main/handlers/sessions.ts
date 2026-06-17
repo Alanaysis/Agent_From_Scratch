@@ -98,4 +98,28 @@ export function registerSessionHandlers() {
       throw e
     }
   });
+
+  ipcMain.handle("sessions:update", async (_event, input: { sessionId: string; status?: string }): Promise<void> => {
+    log('INFO', 'Sessions', `sessions:update called for ${input.sessionId}`)
+    try {
+      const session = await readSessionInfo(cwd(), input.sessionId)
+      if (!session) {
+        log('ERROR', 'Sessions', `sessions:update ${input.sessionId} not found`)
+        return
+      }
+      // Update the session file directly
+      const { writeFile } = await import("fs/promises")
+      const { getSessionInfoFilePath } = await import("../../../storage/sessionIndex")
+      const updated = {
+        ...session,
+        ...(input.status && { status: input.status }),
+        updatedAt: new Date().toISOString(),
+      }
+      await writeFile(getSessionInfoFilePath(cwd(), input.sessionId), JSON.stringify(updated, null, 2), "utf8")
+      log('INFO', 'Sessions', `sessions:update ${input.sessionId} completed`)
+    } catch (e) {
+      log('ERROR', 'Sessions', `sessions:update ${input.sessionId} failed`, e)
+      throw e
+    }
+  });
 }

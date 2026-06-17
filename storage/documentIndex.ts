@@ -72,9 +72,17 @@ export async function updateDocument(
   const previous = await readDocument(cwd, docId);
   if (!previous) return null;
 
+  // Filter out undefined values to prevent overwriting existing fields
+  const cleanUpdates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      cleanUpdates[key] = value;
+    }
+  }
+
   const updated: StoredDocument = {
     ...previous,
-    ...updates,
+    ...cleanUpdates,
     updatedAt: new Date().toISOString(),
   };
 

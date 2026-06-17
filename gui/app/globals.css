@@ -3,68 +3,371 @@
 @tailwind utilities;
 
 /* ========================================
-   Obsidian Terminal — Global Theme
-   All custom properties on :root directly
-   so inline styles can access them via var()
+   IRG Theme System
+   Switch themes via data-theme attribute on <html>
    ======================================== */
 
-:root {
-  /* shadcn/ui HSL tokens (space-separated, used with hsl()) */
-  --background: 0 0% 4.5%;
-  --foreground: 30 15% 88%;
-  --card: 0 0% 6.5%;
-  --card-foreground: 30 15% 88%;
-  --popover: 0 0% 6.5%;
-  --popover-foreground: 30 15% 88%;
-  --primary: 32 45% 65%;
+/* ====== Theme 1: Obsidian (Default Dark) ====== */
+:root, [data-theme="obsidian"] {
+  --background: 0 0% 4%;
+  --foreground: 30 15% 95%;
+  --card: 0 0% 7%;
+  --card-foreground: 30 15% 92%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 30 15% 92%;
+  --primary: 32 50% 68%;
   --primary-foreground: 0 0% 4%;
-  --secondary: 0 0% 8.5%;
-  --secondary-foreground: 30 15% 88%;
-  --muted: 0 0% 8.5%;
-  --muted-foreground: 30 10% 45%;
-  --accent: 32 45% 65%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 30 15% 92%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 30 12% 65%;
+  --accent: 32 50% 68%;
   --accent-foreground: 0 0% 4%;
-  --destructive: 0 55% 50%;
-  --destructive-foreground: 0 0% 95%;
-  --border: 32 20% 12%;
-  --input: 32 15% 10%;
-  --ring: 32 45% 65%;
+  --destructive: 0 60% 55%;
+  --destructive-foreground: 0 0% 97%;
+  --border: 32 20% 15%;
+  --input: 32 15% 12%;
+  --ring: 32 50% 68%;
   --radius: 2px;
 
-  /* ====== Custom palette (valid CSS colors for var() in inline styles) ====== */
-
-  /* Accent: warm amber / copper / bronze */
   --amber: #d4a574;
   --copper: #c0785a;
   --bronze: #8b7355;
+  --warm-green: #6dcc6d;
+  --warm-red: #d06060;
+  --warm-purple: #8b78d0;
 
-  /* Status (warm-shifted) */
-  --warm-green: #5cb85c;
-  --warm-red: #c05050;
-  --warm-purple: #7b68c0;
+  --surface-0: #080808;
+  --surface-1: #181818;
+  --surface-2: #222222;
+  --surface-3: #2e2e2e;
 
-  /* Surfaces (darkest → lightest) */
-  --surface-0: #0c0c0c;
-  --surface-1: #131313;
-  --surface-2: #1a1a1a;
-  --surface-3: #222222;
+  --text-primary: #f5f0ea;
+  --text-secondary: #c8b8a8;
+  --text-muted: #9a8e82;
+  --text-faint: #706858;
 
-  /* Text (brightest → dimmest) */
-  --text-primary: #ede6de;
-  --text-secondary: #a89888;
-  --text-muted: #6e6458;
-  --text-faint: #403830;
+  --border-subtle: rgba(212,165,116,0.12);
+  --border-medium: rgba(212,165,116,0.22);
+  --border-strong: rgba(212,165,116,0.35);
 
-  /* Borders (amber-tinted, subtle → strong) */
-  --border-subtle: rgba(212,165,116,0.07);
-  --border-medium: rgba(212,165,116,0.14);
-  --border-strong: rgba(212,165,116,0.25);
+  --glow-amber: 0 0 12px rgba(212,165,116,0.2);
+  --glow-amber-strong: 0 0 20px rgba(212,165,116,0.35);
+  --scrollbar-thumb: rgba(212,165,116,0.12);
+  --scrollbar-hover: rgba(212,165,116,0.25);
 
-  /* Glow */
-  --glow-amber: 0 0 12px rgba(212,165,116,0.15);
-  --glow-amber-strong: 0 0 20px rgba(212,165,116,0.25);
+  --status-blue: #3b82f6;
+  --status-green: #6dcc6d;
+  --status-purple: #8b78d0;
+  --status-cyan: #06b6d4;
+  --status-red: #d06060;
+  --status-bg-blue: rgba(59,130,246,0.12);
+  --status-bg-green: rgba(109,204,109,0.12);
+  --status-bg-purple: rgba(139,120,208,0.12);
+  --status-bg-red: rgba(208,96,96,0.12);
 }
 
+/* ====== Theme 2: One Dark (VS Code One Dark Pro inspired) ====== */
+[data-theme="one-dark"] {
+  --background: 220 14% 13%;
+  --foreground: 220 10% 85%;
+  --card: 220 14% 16%;
+  --card-foreground: 220 10% 85%;
+  --popover: 220 14% 16%;
+  --popover-foreground: 220 10% 85%;
+  --primary: 220 60% 65%;
+  --primary-foreground: 220 14% 10%;
+  --secondary: 220 14% 18%;
+  --secondary-foreground: 220 10% 85%;
+  --muted: 220 14% 18%;
+  --muted-foreground: 220 8% 55%;
+  --accent: 280 50% 65%;
+  --accent-foreground: 220 14% 10%;
+  --destructive: 0 65% 60%;
+  --destructive-foreground: 0 0% 97%;
+  --border: 220 14% 22%;
+  --input: 220 14% 15%;
+  --ring: 220 60% 65%;
+  --radius: 2px;
+
+  --amber: #e5c07b;
+  --copper: #c678dd;
+  --bronze: #61afef;
+  --warm-green: #98c379;
+  --warm-red: #e06c75;
+  --warm-purple: #c678dd;
+
+  --surface-0: #1e2127;
+  --surface-1: #282c34;
+  --surface-2: #2c313a;
+  --surface-3: #353b45;
+
+  --text-primary: #e6e6e6;
+  --text-secondary: #b0b8c8;
+  --text-muted: #7a8394;
+  --text-faint: #545c6e;
+
+  --border-subtle: rgba(97,175,239,0.1);
+  --border-medium: rgba(97,175,239,0.2);
+  --border-strong: rgba(97,175,239,0.35);
+
+  --glow-amber: 0 0 12px rgba(97,175,239,0.2);
+  --glow-amber-strong: 0 0 20px rgba(97,175,239,0.35);
+  --scrollbar-thumb: rgba(97,175,239,0.12);
+  --scrollbar-hover: rgba(97,175,239,0.25);
+
+  --status-blue: #61afef;
+  --status-green: #98c379;
+  --status-purple: #c678dd;
+  --status-cyan: #56b6c2;
+  --status-red: #e06c75;
+  --status-bg-blue: rgba(97,175,239,0.12);
+  --status-bg-green: rgba(152,195,121,0.12);
+  --status-bg-purple: rgba(198,120,221,0.12);
+  --status-bg-red: rgba(224,108,117,0.12);
+}
+
+/* ====== Theme 3: GitHub Light ====== */
+[data-theme="github-light"] {
+  --background: 0 0% 98%;
+  --foreground: 210 12% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 210 12% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 210 12% 16%;
+  --primary: 212 92% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 12% 95%;
+  --secondary-foreground: 210 12% 16%;
+  --muted: 210 12% 95%;
+  --muted-foreground: 210 8% 45%;
+  --accent: 212 92% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 12% 85%;
+  --input: 210 12% 90%;
+  --ring: 212 92% 45%;
+  --radius: 2px;
+
+  --amber: #0969da;
+  --copper: #8250df;
+  --bronze: #57606a;
+  --warm-green: #1a7f37;
+  --warm-red: #cf222e;
+  --warm-purple: #8250df;
+
+  --surface-0: #f6f8fa;
+  --surface-1: #ffffff;
+  --surface-2: #f0f3f6;
+  --surface-3: #e8ecf0;
+
+  --text-primary: #1f2328;
+  --text-secondary: #57606a;
+  --text-muted: #8b949e;
+  --text-faint: #b0b8c0;
+
+  --border-subtle: rgba(31,35,40,0.08);
+  --border-medium: rgba(31,35,40,0.15);
+  --border-strong: rgba(31,35,40,0.25);
+
+  --glow-amber: 0 0 12px rgba(9,105,218,0.15);
+  --glow-amber-strong: 0 0 20px rgba(9,105,218,0.25);
+  --scrollbar-thumb: rgba(31,35,40,0.12);
+  --scrollbar-hover: rgba(31,35,40,0.25);
+
+  --status-blue: #0969da;
+  --status-green: #1a7f37;
+  --status-purple: #8250df;
+  --status-cyan: #0969da;
+  --status-red: #cf222e;
+  --status-bg-blue: rgba(9,105,218,0.08);
+  --status-bg-green: rgba(26,127,55,0.08);
+  --status-bg-purple: rgba(130,80,223,0.08);
+  --status-bg-red: rgba(207,34,46,0.08);
+}
+
+/* ====== Theme 4: Dracula ====== */
+[data-theme="dracula"] {
+  --background: 231 15% 13%;
+  --foreground: 60 30% 90%;
+  --card: 231 15% 16%;
+  --card-foreground: 60 30% 90%;
+  --popover: 231 15% 16%;
+  --popover-foreground: 60 30% 90%;
+  --primary: 265 80% 70%;
+  --primary-foreground: 231 15% 10%;
+  --secondary: 231 15% 18%;
+  --secondary-foreground: 60 30% 90%;
+  --muted: 231 15% 18%;
+  --muted-foreground: 60 10% 55%;
+  --accent: 180 60% 60%;
+  --accent-foreground: 231 15% 10%;
+  --destructive: 0 75% 65%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 231 15% 22%;
+  --input: 231 15% 15%;
+  --ring: 265 80% 70%;
+  --radius: 2px;
+
+  --amber: #f1fa8c;
+  --copper: #ff79c6;
+  --bronze: #8be9fd;
+  --warm-green: #50fa7b;
+  --warm-red: #ff5555;
+  --warm-purple: #bd93f9;
+
+  --surface-0: #21222c;
+  --surface-1: #282a36;
+  --surface-2: #343746;
+  --surface-3: #3e4155;
+
+  --text-primary: #f8f8f2;
+  --text-secondary: #bfc5d0;
+  --text-muted: #7882a0;
+  --text-faint: #555e78;
+
+  --border-subtle: rgba(189,147,249,0.1);
+  --border-medium: rgba(189,147,249,0.2);
+  --border-strong: rgba(189,147,249,0.35);
+
+  --glow-amber: 0 0 12px rgba(189,147,249,0.2);
+  --glow-amber-strong: 0 0 20px rgba(189,147,249,0.35);
+  --scrollbar-thumb: rgba(189,147,249,0.12);
+  --scrollbar-hover: rgba(189,147,249,0.25);
+
+  --status-blue: #8be9fd;
+  --status-green: #50fa7b;
+  --status-purple: #bd93f9;
+  --status-cyan: #8be9fd;
+  --status-red: #ff5555;
+  --status-bg-blue: rgba(139,233,253,0.12);
+  --status-bg-green: rgba(80,250,123,0.12);
+  --status-bg-purple: rgba(189,147,249,0.12);
+  --status-bg-red: rgba(255,85,85,0.12);
+}
+
+/* ====== Theme 5: Solarized Light ====== */
+[data-theme="solarized-light"] {
+  --background: 44 30% 96%;
+  --foreground: 196 15% 25%;
+  --card: 44 30% 99%;
+  --card-foreground: 196 15% 25%;
+  --popover: 44 30% 99%;
+  --popover-foreground: 196 15% 25%;
+  --primary: 196 80% 40%;
+  --primary-foreground: 44 30% 98%;
+  --secondary: 44 20% 92%;
+  --secondary-foreground: 196 15% 25%;
+  --muted: 44 20% 92%;
+  --muted-foreground: 196 10% 45%;
+  --accent: 196 80% 40%;
+  --accent-foreground: 44 30% 98%;
+  --destructive: 4 80% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 44 15% 82%;
+  --input: 44 15% 88%;
+  --ring: 196 80% 40%;
+  --radius: 2px;
+
+  --amber: #268bd2;
+  --copper: #cb4b16;
+  --bronze: #657b83;
+  --warm-green: #859900;
+  --warm-red: #dc322f;
+  --warm-purple: #6c71c4;
+
+  --surface-0: #fdf6e3;
+  --surface-1: #ffffff;
+  --surface-2: #eee8d5;
+  --surface-3: #ddd6c1;
+
+  --text-primary: #073642;
+  --text-secondary: #586e75;
+  --text-muted: #93a1a1;
+  --text-faint: #b0bec5;
+
+  --border-subtle: rgba(7,54,66,0.08);
+  --border-medium: rgba(7,54,66,0.15);
+  --border-strong: rgba(7,54,66,0.25);
+
+  --glow-amber: 0 0 12px rgba(38,139,210,0.15);
+  --glow-amber-strong: 0 0 20px rgba(38,139,210,0.25);
+  --scrollbar-thumb: rgba(7,54,66,0.12);
+  --scrollbar-hover: rgba(7,54,66,0.25);
+
+  --status-blue: #268bd2;
+  --status-green: #859900;
+  --status-purple: #6c71c4;
+  --status-cyan: #2aa198;
+  --status-red: #dc322f;
+  --status-bg-blue: rgba(38,139,210,0.08);
+  --status-bg-green: rgba(133,153,0,0.08);
+  --status-bg-purple: rgba(108,113,196,0.08);
+  --status-bg-red: rgba(220,50,47,0.08);
+}
+
+/* ====== Theme 6: Silkent (SIOK WaferInspect) ====== */
+[data-theme="silkent"] {
+  --background: 210 20% 97%;
+  --foreground: 0 0% 20%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 20%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 20%;
+  --primary: 199 100% 40%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 207 60% 94%;
+  --secondary-foreground: 0 0% 20%;
+  --muted: 207 40% 94%;
+  --muted-foreground: 0 0% 46%;
+  --accent: 199 100% 40%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 355 70% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 207 30% 82%;
+  --input: 0 0% 100%;
+  --ring: 199 100% 40%;
+  --radius: 2px;
+
+  --amber: #0086CD;
+  --copper: #18A0FF;
+  --bronze: #87CEFF;
+  --warm-green: #008B00;
+  --warm-red: #DC3741;
+  --warm-purple: #7066E0;
+
+  --surface-0: #FFFFFF;
+  --surface-1: #EBF3FA;
+  --surface-2: #D6E8F5;
+  --surface-3: #C0DCF0;
+
+  --text-primary: #1A2A3A;
+  --text-secondary: #3A5068;
+  --text-muted: #7A94AA;
+  --text-faint: #A0B4C8;
+
+  --border-subtle: rgba(0,86,160,0.12);
+  --border-medium: rgba(0,86,160,0.22);
+  --border-strong: rgba(0,86,160,0.35);
+
+  --glow-amber: 0 0 12px rgba(0,134,205,0.25);
+  --glow-amber-strong: 0 0 20px rgba(0,134,205,0.4);
+  --scrollbar-thumb: rgba(0,86,160,0.18);
+  --scrollbar-hover: rgba(0,86,160,0.35);
+
+  --status-blue: #0086CD;
+  --status-green: #008B00;
+  --status-purple: #7066E0;
+  --status-cyan: #00BFFF;
+  --status-red: #DC3741;
+  --status-bg-blue: rgba(0,134,205,0.12);
+  --status-bg-green: rgba(0,139,0,0.1);
+  --status-bg-purple: rgba(112,102,224,0.1);
+  --status-bg-red: rgba(220,55,65,0.1);
+}
+
+/* ====== Base Layer ====== */
 @layer base {
   * { @apply border-border; }
   body {
@@ -75,8 +378,11 @@
   }
 }
 
-/* Noise texture overlay */
-.noise-bg::before {
+/* Noise texture overlay (dark themes only) */
+[data-theme="obsidian"] .noise-bg::before,
+:root:not([data-theme]) .noise-bg::before,
+[data-theme="one-dark"] .noise-bg::before,
+[data-theme="dracula"] .noise-bg::before {
   content: '';
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -88,8 +394,8 @@
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(212,165,116,0.12); border-radius: 1px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(212,165,116,0.25); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(212,165,116,0.12)); border-radius: 1px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover, rgba(212,165,116,0.25)); }
 
 /* Glow utility */
 .glow-amber { box-shadow: var(--glow-amber); }
@@ -108,6 +414,12 @@
 .markdown-content h3 { @apply text-sm; }
 .markdown-content a { @apply underline underline-offset-2; color: var(--amber); }
 .markdown-content blockquote { @apply border-l-2 pl-3 italic mb-3; border-color: var(--border-medium); color: var(--text-secondary); }
+
+/* Sidebar nav hover */
+.sidebar-nav-item:not([data-active]):hover {
+  color: var(--text-secondary) !important;
+  background-color: var(--surface-2) !important;
+}
 
 /* Animations */
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

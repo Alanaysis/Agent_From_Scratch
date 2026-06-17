@@ -11,6 +11,9 @@ import {
   type DocumentDraft,
 } from "../../../storage/proposalIndex";
 import type { Proposal } from "../../../storage/proposalIndex";
+import { listTasks, deleteTaskInfo } from "../../../storage/taskIndex";
+import { deleteSessionInfo } from "../../../storage/sessionIndex";
+import { deleteTranscript } from "../../../storage/transcript";
 import { createId } from "../../../shared/ids";
 import { log } from "../logger";
 
@@ -26,6 +29,7 @@ interface ProposalUpdateInput {
   proposalId: string;
   title?: string;
   description?: string;
+  status?: string;
 }
 
 interface TaskDraftInput {
@@ -96,10 +100,12 @@ export function registerProposalHandlers() {
   ipcMain.handle("proposals:update", async (_event, input: ProposalUpdateInput): Promise<{ proposal: Proposal | null }> => {
     log('INFO', 'Proposals', `proposals:update called for ${input.proposalId}`)
     try {
-      const proposal = await updateProposal(cwd(), input.proposalId, {
-        title: input.title,
-        description: input.description,
-      });
+      const updates: any = {};
+      if (input.title !== undefined) updates.title = input.title;
+      if (input.description !== undefined) updates.description = input.description;
+      if (input.status !== undefined) updates.status = input.status;
+
+      const proposal = await updateProposal(cwd(), input.proposalId, updates);
       return { proposal };
     } catch (e) {
       log('ERROR', 'Proposals', `proposals:update ${input.proposalId} failed`, e)
@@ -113,6 +119,91 @@ export function registerProposalHandlers() {
       await deleteProposal(cwd(), proposalId);
     } catch (e) {
       log('ERROR', 'Proposals', `proposals:delete ${proposalId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("proposals:delete_with_tasks", async (_event, proposalId: string): Promise<{ deletedTasks: number; deletedSessions: number }> => {
+    log('INFO', 'Proposals', `proposals:delete_with_tasks called for ${proposalId}`)
+    try {
+      const proposal = await readProposal(cwd(), proposalId);
+      if (!proposal) throw new Error("Proposal not found");
+
+      // Find tasks created from this proposal (by proposalId foreign key)
+      const allTasks = await listTasks(cwd());
+      const relatedTasks = allTasks.filter(t => t.proposalId === proposalId);
+
+      let deletedTasks = 0;
+      let deletedSessions = 0;
+
+      // Delete related tasks and their sessions
+      for (const task of relatedTasks) {
+        if (task.sessionId) {
+          try {
+            await deleteSessionInfo(cwd(), task.sessionId);
+            await deleteTranscript(cwd(), task.sessionId);
+            deletedSessions++;
+          } catch (e) {
+            log('WARN', 'Proposals', `Failed to delete session ${task.sessionId}:`, e);
+          }
+        }
+        try {
+          await deleteTaskInfo(cwd(), task.id);
+          deletedTasks++;
+        } catch (e) {
+          log('WARN', 'Proposals', `Failed to delete task ${task.id}:`, e);
+        }
+      }
+
+      // Delete the proposal
+      await deleteProposal(cwd(), proposalId);
+
+      log('INFO', 'Proposals', `proposals:delete_with_tasks done: ${deletedTasks} tasks, ${deletedSessions} sessions deleted`)
+      return { deletedTasks, deletedSessions };
+    } catch (e) {
+      log('ERROR', 'Proposals', `proposals:delete_with_tasks ${proposalId} failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("proposals:revert", async (_event, proposalId: string): Promise<{ proposal: Proposal | null; deletedTasks: number }> => {
+    log('INFO', 'Proposals', `proposals:revert called for ${proposalId}`)
+    try {
+      const proposal = await readProposal(cwd(), proposalId);
+      if (!proposal) throw new Error("Proposal not found");
+
+      let deletedTasks = 0;
+
+      // If proposal was approved, delete associated tasks first
+      if (proposal.status === 'approved') {
+        const allTasks = await listTasks(cwd());
+        const relatedTasks = allTasks.filter(t => t.proposalId === proposalId);
+
+        for (const task of relatedTasks) {
+          if (task.sessionId) {
+            try {
+              await deleteSessionInfo(cwd(), task.sessionId);
+              await deleteTranscript(cwd(), task.sessionId);
+            } catch (e) {
+              log('WARN', 'Proposals', `Failed to delete session ${task.sessionId}:`, e);
+            }
+          }
+          try {
+            await deleteTaskInfo(cwd(), task.id);
+            deletedTasks++;
+          } catch (e) {
+            log('WARN', 'Proposals', `Failed to delete task ${task.id}:`, e);
+          }
+        }
+      }
+
+      // Revert status to draft (works for pending, rejected, and approved)
+      const updated = await updateProposal(cwd(), proposalId, { status: 'draft' });
+
+      log('INFO', 'Proposals', `proposals:revert done: reverted to draft, ${deletedTasks} tasks deleted`)
+      return { proposal: updated, deletedTasks };
+    } catch (e) {
+      log('ERROR', 'Proposals', `proposals:revert ${proposalId} failed`, e)
       throw e
     }
   });

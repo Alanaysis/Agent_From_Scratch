@@ -4,16 +4,19 @@ import * as React from 'react'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Trash2, Search, MessageSquare, Clock, X, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import type { Session } from '@/types'
 
 const defaultStatus = { color: 'var(--text-muted)', bgColor: 'var(--surface-2)', label: 'Unknown' }
 const statusConfig: Record<string, { color: string; bgColor: string; label: string }> = {
-  active: { color: '#5cb85c', bgColor: 'rgba(92,184,92,0.1)', label: 'Active' },
+  active: { color: 'var(--status-green)', bgColor: 'rgba(92,184,92,0.1)', label: 'Active' },
+  ready: { color: 'var(--status-blue)', bgColor: 'rgba(59,130,246,0.1)', label: 'Ready' },
+  needs_attention: { color: 'var(--amber)', bgColor: 'rgba(245,158,11,0.08)', label: 'Needs Attention' },
+  closed: { color: 'var(--text-muted)', bgColor: 'var(--surface-2)', label: 'Closed' },
+  // Legacy fallbacks
   paused: { color: 'var(--amber)', bgColor: 'rgba(245,158,11,0.08)', label: 'Paused' },
-  completed: { color: '#3b82f6', bgColor: 'rgba(59,130,246,0.1)', label: 'Completed' },
+  completed: { color: 'var(--status-blue)', bgColor: 'rgba(59,130,246,0.1)', label: 'Completed' },
   failed: { color: 'var(--warm-red)', bgColor: 'rgba(239,68,68,0.1)', label: 'Failed' },
 }
 
@@ -41,11 +44,15 @@ export function SessionsView() {
     <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif' }}>
       {/* Session List */}
       <div style={{
-        width: 340,
+        width: '35%',
+        minWidth: 200,
+        maxWidth: 340,
         borderRight: '1px solid var(--border-subtle)',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: 'var(--surface-1)'
+        backgroundColor: 'var(--surface-1)',
+        overflow: 'hidden',
+        flexShrink: 0,
       }}>
         {/* Search + Clear */}
         <div style={{ padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
@@ -58,6 +65,7 @@ export function SessionsView() {
               color: 'var(--text-muted)'
             }} />
             <Input
+              data-testid="session-search"
               placeholder="Search sessions..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -75,6 +83,7 @@ export function SessionsView() {
           </div>
           {sessions.length > 0 && (
             <button
+              data-testid="clear-all-sessions"
               onClick={async () => {
                 if (confirm(`Delete all ${sessions.length} sessions?`)) {
                   for (const s of sessions) {
@@ -111,7 +120,7 @@ export function SessionsView() {
         </div>
 
         {/* Session List */}
-        <ScrollArea style={{ flex: 1 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
           <div style={{ padding: 4 }}>
             {filteredSessions.length === 0 ? (
               <div style={{
@@ -129,6 +138,7 @@ export function SessionsView() {
                 return (
                   <div
                     key={session.id}
+                    data-testid={`session-${session.id}`}
                     onClick={() => setCurrentSession(session)}
                     style={{
                       padding: '10px 12px',
@@ -191,6 +201,7 @@ export function SessionsView() {
 
                       {/* Delete button */}
                       <button
+                        data-testid={`delete-session-${session.id}`}
                         onClick={(e) => handleDelete(e, session.id)}
                         style={{
                           background: 'none',
@@ -235,7 +246,7 @@ export function SessionsView() {
               })
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Detail Panel */}
@@ -339,6 +350,7 @@ export function SessionsView() {
 
               <div style={{ marginTop: 20 }}>
                 <Button
+                  data-testid="continue-session"
                   variant="outline"
                   onClick={async () => {
                     await loadSessionMessages(currentSession.id)

@@ -14,6 +14,8 @@ const DEFAULT_LLM_CONFIG: LlmConfig = {
   model: "gpt-4o-mini",
   baseUrl: "https://api.openai.com/v1",
   anthropicVersion: "2023-06-01",
+  contextWindow: 200000,
+  maxOutputTokens: 4096,
 };
 
 function getConfigPath(): string {
@@ -59,8 +61,10 @@ export function mergeEnvIntoConfig(config: AppConfig): AppConfig {
   const baseUrl = process.env.IRG_LLM_BASE_URL?.trim();
   const systemPrompt = process.env.IRG_LLM_SYSTEM_PROMPT?.trim();
   const anthropicVersion = process.env.IRG_ANTHROPIC_VERSION?.trim();
+  const contextWindow = process.env.IRG_CONTEXT_WINDOW?.trim();
+  const maxOutputTokens = process.env.IRG_MAX_OUTPUT_TOKENS?.trim();
 
-  if (!apiKey && !model && !provider && !baseUrl && !systemPrompt && !anthropicVersion) {
+  if (!apiKey && !model && !provider && !baseUrl && !systemPrompt && !anthropicVersion && !contextWindow && !maxOutputTokens) {
     return config;
   }
 
@@ -73,6 +77,14 @@ export function mergeEnvIntoConfig(config: AppConfig): AppConfig {
   if (baseUrl) merged.llm.baseUrl = baseUrl.replace(/\/$/, "");
   if (systemPrompt) merged.llm.systemPrompt = systemPrompt;
   if (anthropicVersion) merged.llm.anthropicVersion = anthropicVersion;
+  if (contextWindow) {
+    const parsed = parseInt(contextWindow, 10);
+    if (!isNaN(parsed) && parsed > 0) merged.llm.contextWindow = parsed;
+  }
+  if (maxOutputTokens) {
+    const parsed = parseInt(maxOutputTokens, 10);
+    if (!isNaN(parsed) && parsed > 0) merged.llm.maxOutputTokens = parsed;
+  }
 
   return merged;
 }

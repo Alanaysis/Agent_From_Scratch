@@ -12,6 +12,37 @@ export type ShellOutput = {
   exitCode: number;
 };
 
+/** Commands that are safe to run without confirmation */
+const SAFE_COMMANDS = [
+  'ls', 'pwd', 'whoami', 'date', 'echo', 'cat', 'head', 'tail', 'wc',
+  'grep', 'find', 'which', 'env', 'printenv', 'uname', 'hostname',
+  'git', 'npm', 'node', 'npx', 'bun', 'pnpm', 'yarn',
+  'python', 'python3', 'pip', 'pip3',
+  'tsc', 'eslint', 'prettier',
+  'curl', 'wget',
+  'mkdir', 'touch', 'cp',
+  'ps', 'top', 'df', 'du', 'free',
+];
+
+/** Dangerous patterns that should always require confirmation */
+const DANGEROUS_PATTERNS = [
+  /\brm\b/, /\bkill\b/, /\bpkill\b/, /\bshutdown\b/, /\breboot\b/,
+  /\bchmod\b/, /\bchown\b/, /\bsudo\b/, /\bsu\b/,
+  /\bmkfs\b/, /\bdd\b/, /\bformat\b/,
+  /\b>\s*\/\w/, /\b>>\s*\/\w/,  // Redirect to system paths
+  /\|\s*sh/, /\|\s*bash/,  // Pipe to shell
+  /\bcurl\b.*\|\s*(sh|bash|python)/,  // curl pipe to interpreter
+];
+
+function isWhitelistedCommand(command: string): boolean {
+  const trimmed = command.trim();
+  // Check if it starts with a safe command
+  const firstWord = trimmed.split(/\s+/)[0];
+  if (!firstWord || !SAFE_COMMANDS.includes(firstWord)) return false;
+  // Check for dangerous patterns anywhere in the command
+  return !DANGEROUS_PATTERNS.some(p => p.test(trimmed));
+}
+
 export const ShellTool: Tool<ShellInput, ShellOutput> = {
   name: "Shell",
   inputSchema: null,
@@ -62,6 +93,10 @@ export const ShellTool: Tool<ShellInput, ShellOutput> = {
   },
   async checkPermissions(input, context) {
     if (context.getAppState().permissionContext.mode === "default") {
+      // Whitelisted safe commands can run without confirmation
+      if (isWhitelistedCommand(input.command)) {
+        return { behavior: "allow", updatedInput: input };
+      }
       return {
         behavior: "ask",
         message: `Shell requires confirmation for "${input.command}"`,

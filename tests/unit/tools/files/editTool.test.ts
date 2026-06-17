@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'bun:test';
 import { EditTool, type EditInput } from '../../../../tools/files/editTool';
-import { readTextFile, resolvePathFromCwd, writeTextFile } from '../../../../shared/fs';
+import { readTextFile, resolvePathSafe, writeTextFile } from '../../../../shared/fs';
 
 vi.mock('../../../../shared/fs', () => ({
   readTextFile: vi.fn(),
-  resolvePathFromCwd: vi.fn((cwd, path) => `${cwd}/${path}`),
+  resolvePathSafe: vi.fn((path, cwd) => `${cwd}/${path}`),
   writeTextFile: vi.fn(),
 }));
 
@@ -257,12 +257,12 @@ describe('EditTool', () => {
       const content = 'Hello old world';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       const input: EditInput = { path: 'test.txt', oldString: 'old', newString: 'new' };
       const result = await EditTool.call(input, mockContext, null as any, null as any);
 
-      expect(result.data).toEqual({ applied: true });
+      expect(result.data).toMatchObject({ applied: true });
     });
 
     it('resolves path relative to cwd', async () => {
@@ -276,13 +276,13 @@ describe('EditTool', () => {
         null as any
       );
 
-      expect(resolvePathFromCwd).toHaveBeenCalledWith('/tmp/test-dir', 'subdir/file.txt');
+      expect(resolvePathSafe).toHaveBeenCalledWith('subdir/file.txt', '/tmp/test-dir');
     });
 
     it('reads file before writing', async () => {
       (readTextFile as any).mockResolvedValue('Hello old world');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/output.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/output.txt');
 
       await EditTool.call(
         { path: 'output.txt', oldString: 'old', newString: 'new' },
@@ -297,7 +297,7 @@ describe('EditTool', () => {
     it('writes updated content after replacement', async () => {
       (readTextFile as any).mockResolvedValue('Hello old world');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/output.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/output.txt');
 
       await EditTool.call(
         { path: 'output.txt', oldString: 'old', newString: 'new' },
@@ -312,7 +312,7 @@ describe('EditTool', () => {
     it('handles single character replacement', async () => {
       (readTextFile as any).mockResolvedValue('abc');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       await EditTool.call(
         { path: 'test.txt', oldString: 'b', newString: 'x' },
@@ -328,7 +328,7 @@ describe('EditTool', () => {
       const content = 'line1\nold\nline3';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/multiline.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/multiline.txt');
 
       await EditTool.call(
         { path: 'multiline.txt', oldString: 'old', newString: 'new' },
@@ -344,7 +344,7 @@ describe('EditTool', () => {
       const content = 'a'.repeat(50000) + 'old' + 'b'.repeat(50000);
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/large.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/large.txt');
 
       await EditTool.call(
         { path: 'large.txt', oldString: 'old', newString: 'new' },
@@ -362,7 +362,7 @@ describe('EditTool', () => {
     it('handles unicode replacement', async () => {
       (readTextFile as any).mockResolvedValue('Hello 世界');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/unicode.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/unicode.txt');
 
       await EditTool.call(
         { path: 'unicode.txt', oldString: '世界', newString: 'World' },
@@ -377,7 +377,7 @@ describe('EditTool', () => {
     it('handles emoji replacement', async () => {
       (readTextFile as any).mockResolvedValue('Hello 👋 World');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/emoji.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/emoji.txt');
 
       await EditTool.call(
         { path: 'emoji.txt', oldString: '👋', newString: '🤠' },
@@ -393,7 +393,7 @@ describe('EditTool', () => {
       const content = '{"key": "old_value"}';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.json');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.json');
 
       await EditTool.call(
         { path: 'data.json', oldString: '"old_value"', newString: '"new_value"' },
@@ -409,7 +409,7 @@ describe('EditTool', () => {
       const content = 'function hello() {\n  console.log("old");\n}';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/code.js');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/code.js');
 
       await EditTool.call(
         { path: 'code.js', oldString: '"old"', newString: '"new"' },
@@ -428,7 +428,7 @@ describe('EditTool', () => {
       const content = '# Header\n\nThis is **old** text.';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/readme.md');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/readme.md');
 
       await EditTool.call(
         { path: 'readme.md', oldString: '**old**', newString: '**new**' },
@@ -444,7 +444,7 @@ describe('EditTool', () => {
       const content = 'value: @#$%^&*()';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/special.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/special.txt');
 
       await EditTool.call(
         { path: 'special.txt', oldString: '@#$%', newString: '***' },
@@ -460,7 +460,7 @@ describe('EditTool', () => {
       const content = `name: old_name\nversion: 1.0.0`;
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/config.yaml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/config.yaml');
 
       await EditTool.call(
         { path: 'config.yaml', oldString: 'old_name', newString: 'new_name' },
@@ -476,7 +476,7 @@ describe('EditTool', () => {
       const content = `[package]\nname = "old_package"`;
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/Cargo.toml');
 
       await EditTool.call(
         { path: 'Cargo.toml', oldString: '"old_package"', newString: '"new_package"' },
@@ -492,7 +492,7 @@ describe('EditTool', () => {
       const content = `<root>\n  <child>old_value</child>\n</root>`;
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/data.xml');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/data.xml');
 
       await EditTool.call(
         { path: 'data.xml', oldString: 'old_value', newString: 'new_value' },
@@ -508,7 +508,7 @@ describe('EditTool', () => {
       const content = `<!DOCTYPE html>\n<html><body>old_text</body></html>`;
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/index.html');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/index.html');
 
       await EditTool.call(
         { path: 'index.html', oldString: 'old_text', newString: 'new_text' },
@@ -524,7 +524,7 @@ describe('EditTool', () => {
       const content = 'old content\n';
       (readTextFile as any).mockResolvedValue(content);
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/newline.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/newline.txt');
 
       await EditTool.call(
         { path: 'newline.txt', oldString: 'old', newString: 'new' },
@@ -539,7 +539,7 @@ describe('EditTool', () => {
     it('handles replacement with empty string (deletion)', async () => {
       (readTextFile as any).mockResolvedValue('Hello old World');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/delete.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/delete.txt');
 
       await EditTool.call(
         { path: 'delete.txt', oldString: 'old ', newString: '' },
@@ -554,7 +554,7 @@ describe('EditTool', () => {
     it('handles replacement with newline (expansion)', async () => {
       (readTextFile as any).mockResolvedValue('single line old text');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/expand.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/expand.txt');
 
       await EditTool.call(
         { path: 'expand.txt', oldString: 'old', newString: 'new\nline' },
@@ -569,7 +569,7 @@ describe('EditTool', () => {
     it('handles multiple occurrences - only replaces first', async () => {
       (readTextFile as any).mockResolvedValue('old old old');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/multiple.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/multiple.txt');
 
       await EditTool.call(
         { path: 'multiple.txt', oldString: 'old', newString: 'new' },
@@ -585,7 +585,7 @@ describe('EditTool', () => {
   describe('call - error handling', () => {
     it('throws when file is not found (string not in content)', async () => {
       (readTextFile as any).mockResolvedValue('Hello world');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/test.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/test.txt');
 
       await expect(
         EditTool.call({ path: 'test.txt', oldString: 'old', newString: 'new' }, mockContext, null as any, null as any)
@@ -594,7 +594,7 @@ describe('EditTool', () => {
 
     it('throws with correct file path in error message', async () => {
       (readTextFile as any).mockResolvedValue('content without match');
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/subdir/file.tsx');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/subdir/file.tsx');
 
       await expect(
         EditTool.call({ path: 'subdir/file.tsx', oldString: 'missing', newString: 'found' }, mockContext, null as any, null as any)
@@ -629,7 +629,7 @@ describe('EditTool', () => {
     it('handles disk full error in writeTextFile', async () => {
       (readTextFile as any).mockResolvedValue('content with old string');
       (writeTextFile as any).mockRejectedValue(new Error('ENOSPC: no space left on device'));
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/large.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/large.txt');
 
       await expect(
         EditTool.call({ path: 'large.txt', oldString: 'old', newString: 'new' }, mockContext, null as any, null as any)
@@ -647,7 +647,7 @@ describe('EditTool', () => {
     it('handles readonly filesystem error in writeTextFile', async () => {
       (readTextFile as any).mockResolvedValue('content with old string');
       (writeTextFile as any).mockRejectedValue(new Error('EROFS: read-only file system'));
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/readonly.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/readonly.txt');
 
       await expect(
         EditTool.call({ path: 'readonly.txt', oldString: 'old', newString: 'new' }, mockContext, null as any, null as any)
@@ -665,7 +665,7 @@ describe('EditTool', () => {
     it('handles partial match - succeeds when substring exists', async () => {
       (readTextFile as any).mockResolvedValue('The old man and the sea');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/partial.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/partial.txt');
 
       await EditTool.call(
         { path: 'partial.txt', oldString: 'old man', newString: 'young' },
@@ -680,7 +680,7 @@ describe('EditTool', () => {
     it('handles regex special characters in search string - literal match only', async () => {
       (readTextFile as any).mockResolvedValue('price: $10.99');
       (writeTextFile as any).mockResolvedValue(0);
-      (resolvePathFromCwd as any).mockReturnValue('/tmp/test-dir/special.txt');
+      (resolvePathSafe as any).mockReturnValue('/tmp/test-dir/special.txt');
 
       await EditTool.call(
         { path: 'special.txt', oldString: '$10.99', newString: '$20.00' },

@@ -1,8 +1,8 @@
 import { ipcMain } from "electron";
 import { cwd } from "process";
 import { findRecipesByTrigger, readRecipe } from "../../../storage/recipeIndex";
-import { createPlan } from "../../../storage/planIndex";
-import type { Plan, PlanTaskDraft } from "../../../storage/planIndex";
+import { createProposal } from "../../../storage/proposalIndex";
+import type { Proposal, TaskDraft } from "../../../storage/proposalIndex";
 import type { Recipe } from "../../../storage/recipeIndex";
 import { createId } from "../../../shared/ids";
 import { log } from "../logger";
@@ -32,10 +32,10 @@ function extractKeywords(goal: string): string[] {
     .filter((word) => word.length > 1 && !stopWords.has(word));
 }
 
-function recipeToPlan(recipe: Recipe, goal: string, createdBy?: string): Omit<Plan, "createdAt" | "updatedAt"> {
-  // Convert recipe task templates to plan task drafts with tempIds
+function recipeToProposal(recipe: Recipe, goal: string, createdBy?: string): Omit<Proposal, "createdAt" | "updatedAt"> {
+  // Convert recipe task templates to proposal task drafts with tempIds
   const tempIdMap = new Map<number, string>();
-  const tasks: PlanTaskDraft[] = recipe.tasks.map((template, index) => {
+  const taskDrafts: TaskDraft[] = recipe.tasks.map((template, index) => {
     const tempId = `draft-${index}`;
     tempIdMap.set(index, tempId);
 
@@ -52,23 +52,25 @@ function recipeToPlan(recipe: Recipe, goal: string, createdBy?: string): Omit<Pl
   });
 
   return {
-    id: createId("plan"),
+    id: createId("proposal"),
     title: `Plan: ${goal}`,
-    description: `Auto-generated plan from recipe "${recipe.name}" for goal: ${goal}`,
-    recipeId: recipe.id,
+    description: `Auto-generated proposal from recipe "${recipe.name}" for goal: ${goal}`,
+    inputType: "manual",
     status: "draft",
-    tasks,
+    taskDrafts,
+    documentDrafts: [],
     createdBy,
   };
 }
 
-function createGenericPlan(goal: string, createdBy?: string): Omit<Plan, "createdAt" | "updatedAt"> {
+function createGenericProposal(goal: string, createdBy?: string): Omit<Proposal, "createdAt" | "updatedAt"> {
   return {
-    id: createId("plan"),
+    id: createId("proposal"),
     title: `Plan: ${goal}`,
-    description: `Plan for goal: ${goal}`,
+    description: `Proposal for goal: ${goal}`,
+    inputType: "manual",
     status: "draft",
-    tasks: [
+    taskDrafts: [
       {
         tempId: "draft-0",
         title: goal,
@@ -76,6 +78,7 @@ function createGenericPlan(goal: string, createdBy?: string): Omit<Plan, "create
         priority: "medium",
       },
     ],
+    documentDrafts: [],
     createdBy,
   };
 }
@@ -88,7 +91,7 @@ export function registerPmHandlers() {
     async (
       _event,
       input: { goal: string; createdBy?: string },
-    ): Promise<{ plan: Plan; matchedRecipe?: Recipe }> => {
+    ): Promise<{ proposal: Proposal; matchedRecipe?: Recipe }> => {
       log("INFO", "PM", `pm:create_plan_from_goal called: "${input.goal}"`);
       try {
         const keywords = extractKeywords(input.goal);
@@ -103,7 +106,7 @@ export function registerPmHandlers() {
           }
         }
 
-        let planData: Omit<Plan, "createdAt" | "updatedAt">;
+        let proposalData: Omit<Proposal, "createdAt" | "updatedAt">;
         let matchedRecipe: Recipe | undefined;
 
         if (matchedRecipes.size > 0) {
@@ -120,16 +123,16 @@ export function registerPmHandlers() {
 
           matchedRecipe = sortedRecipes[0]!;
           log("INFO", "PM", `Matched recipe: ${matchedRecipe.name} (${matchedRecipe.id})`);
-          planData = recipeToPlan(matchedRecipe, input.goal, input.createdBy);
+          proposalData = recipeToProposal(matchedRecipe, input.goal, input.createdBy);
         } else {
-          log("INFO", "PM", "No matching recipe found, creating generic plan");
-          planData = createGenericPlan(input.goal, input.createdBy);
+          log("INFO", "PM", "No matching recipe found, creating generic proposal");
+          proposalData = createGenericProposal(input.goal, input.createdBy);
         }
 
-        const plan = await createPlan(cwd(), planData);
-        log("INFO", "PM", `Created plan ${plan.id} with ${plan.tasks.length} tasks`);
+        const proposal = await createProposal(cwd(), proposalData);
+        log("INFO", "PM", `Created proposal ${proposal.id} with ${proposal.taskDrafts.length} tasks`);
 
-        return { plan, matchedRecipe };
+        return { proposal, matchedRecipe };
       } catch (e) {
         log("ERROR", "PM", "pm:create_plan_from_goal failed", e);
         throw e;

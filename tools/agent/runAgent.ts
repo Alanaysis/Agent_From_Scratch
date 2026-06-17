@@ -164,7 +164,7 @@ function buildAllToolDefinitions(): LlmToolDefinition[] {
           metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
           deadline: { type: "number", description: "Optional timeout in milliseconds (default 300000, i.e. 5 minutes)." },
         },
-        required: ["service", "method", "address", "payload"],
+        required: ["protoFile", "service", "method", "address", "payload"],
         additionalProperties: false,
       },
     },
@@ -180,6 +180,22 @@ function buildAllToolDefinitions(): LlmToolDefinition[] {
           schema: { type: "array", description: "Field definitions for data_input type.", items: { type: "object", properties: { name: { type: "string" }, label: { type: "string" }, type: { type: "string" }, options: { type: "array", items: { type: "string" } }, required: { type: "boolean" } } } },
         },
         required: ["type", "message"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "TaskCreate",
+      description: "Create a new task in the task management system.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Task title." },
+          description: { type: "string", description: "Task description." },
+          priority: { type: "string", enum: ["low", "medium", "high"], description: "Task priority." },
+          assignee: { type: "string", description: "Agent to assign (e.g. 'general-purpose', 'grpc-worker')." },
+          dependsOn: { type: "array", items: { type: "string" }, description: "Task IDs this task depends on." },
+        },
+        required: ["title"],
         additionalProperties: false,
       },
     },
@@ -295,6 +311,18 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
   ];
 
   const systemPrompt = buildSubagentSystemPrompt(agentDef);
+
+  // Inject irg.md project instructions + referenced documents
+  try {
+    const { getFullInjectionContent } = await import("../../storage/irgMd");
+    const irgContent = await getFullInjectionContent(params.parentContext.cwd);
+    if (irgContent.trim()) {
+      systemPrompt.push(irgContent);
+    }
+  } catch {
+    // irg.md loading is best-effort
+  }
+
   const toolDefs = getSubagentToolDefinitions(agentDef);
   const allResultMessages: Message[] = [];
 

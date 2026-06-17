@@ -83,7 +83,7 @@ describe('sessionIndex', () => {
       expect(result.id).toBe(sessionId);
       expect(result.title).toContain('Hello');
       expect(result.messageCount).toBe(2);
-      expect(result.status).toBe('ready');
+      expect(result.status).toBe('completed');
     });
 
     it('preserves createdAt when updating existing session', async () => {
@@ -141,8 +141,8 @@ describe('sessionIndex', () => {
       expect(result.title).toContain('First prompt');
     });
 
-    it('sets status to ready when no errors', async () => {
-      const sessionId = 'ready-status';
+    it('sets status to completed when no errors', async () => {
+      const sessionId = 'completed-status';
       const messages: any[] = [
         { id: '1', type: 'user', content: 'Test' },
         { id: '2', type: 'assistant', content: [{ type: 'tool_use', name: 'Read', input: {} }] },
@@ -151,10 +151,10 @@ describe('sessionIndex', () => {
 
       const result = await updateSessionInfo(tempDir, sessionId, messages);
 
-      expect(result.status).toBe('ready');
+      expect(result.status).toBe('completed');
     });
 
-    it('sets status to needs_attention when error exists', async () => {
+    it('sets status to error when error exists', async () => {
       const sessionId = 'error-status';
       const messages: any[] = [
         { id: '1', type: 'user', content: 'Test' },
@@ -164,7 +164,7 @@ describe('sessionIndex', () => {
 
       const result = await updateSessionInfo(tempDir, sessionId, messages);
 
-      expect(result.status).toBe('needs_attention');
+      expect(result.status).toBe('error');
     });
 
     it('tracks tool use count', async () => {
@@ -403,26 +403,26 @@ describe('sessionIndex', () => {
       expect(result[1].id).toBe(sessionOld);
     });
 
-    it('sorts needs_attention sessions before ready ones', async () => {
-      const readySession = 'ready-session';
-      const attentionSession = 'attention-session';
+    it('sorts error sessions before idle ones', async () => {
+      const idleSession = 'idle-session';
+      const errorSession = 'error-session';
 
       await fs.mkdir(path.join(tempDir, '.irg', 'sessions'), { recursive: true });
 
       await fs.writeFile(
-        path.join(tempDir, '.irg', 'sessions', `${readySession}.json`),
-        JSON.stringify({ id: readySession, status: 'ready', updatedAt: '2024-12-31T23:59:59.999Z' })
+        path.join(tempDir, '.irg', 'sessions', `${idleSession}.json`),
+        JSON.stringify({ id: idleSession, status: 'idle', updatedAt: '2024-12-31T23:59:59.999Z' })
       );
 
       await fs.writeFile(
-        path.join(tempDir, '.irg', 'sessions', `${attentionSession}.json`),
-        JSON.stringify({ id: attentionSession, status: 'needs_attention', updatedAt: '2024-01-01T00:00:00.000Z' })
+        path.join(tempDir, '.irg', 'sessions', `${errorSession}.json`),
+        JSON.stringify({ id: errorSession, status: 'error', updatedAt: '2024-01-01T00:00:00.000Z' })
       );
 
       const result = await listSessions(tempDir);
 
-      expect(result[0].id).toBe(attentionSession);
-      expect(result[1].id).toBe(readySession);
+      expect(result[0].id).toBe(errorSession);
+      expect(result[1].id).toBe(idleSession);
     });
 
     it('handles missing sessions directory gracefully', async () => {

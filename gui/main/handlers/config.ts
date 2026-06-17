@@ -16,6 +16,8 @@ interface ConfigSetInput {
   baseUrl?: string;
   systemPrompt?: string;
   anthropicVersion?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
 }
 
 export async function registerConfigHandlers() {
@@ -63,6 +65,8 @@ export async function registerConfigHandlers() {
       if (input.baseUrl) updates.baseUrl = input.baseUrl;
       if (input.systemPrompt !== undefined) updates.systemPrompt = input.systemPrompt;
       if (input.anthropicVersion) updates.anthropicVersion = input.anthropicVersion;
+      if (input.contextWindow !== undefined && input.contextWindow > 0) updates.contextWindow = input.contextWindow;
+      if (input.maxOutputTokens !== undefined && input.maxOutputTokens > 0) updates.maxOutputTokens = input.maxOutputTokens;
 
       log('INFO', 'Config', 'config:set calling setLlmConfig with updates:', updates)
       const newConfig = await setLlmConfig(updates);

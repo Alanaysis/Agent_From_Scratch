@@ -1,8 +1,9 @@
 import { EventEmitter } from "events"
 import { cwd } from "process"
 import { listTasks, updateTaskInfo, readTaskInfo, getUnblockedTasks } from "../../storage/taskIndex"
+import type { TaskInfo } from "../../storage/taskIndex"
 import { createSession, updateSessionInfo } from "../../storage/sessionIndex"
-import { appendTranscript } from "../../storage/transcript"
+import { appendTranscript, readTranscriptMessages } from "../../storage/transcript"
 import { runAgent } from "../../tools/agent/runAgent"
 import { createSubagentContext } from "../../tools/agent/subagentContext"
 import { canUseTool } from "../../permissions/engine"
@@ -10,6 +11,34 @@ import type { ToolUseContext } from "../../tools/Tool"
 import { createId } from "../../shared/ids"
 import type { Message } from "../../runtime/messages"
 import { eventBus } from "../../shared/eventBus"
+import { evolveAfterSession, DEFAULT_EVOLUTION_CONFIG } from "../../runtime/evolution"
+
+/** Fetch results from dependency tasks for context injection */
+async function getDependencyResults(
+  task: TaskInfo,
+): Promise<Array<{ title: string; status: string; lastActivity?: string }>> {
+  if (!task.dependsOn || task.dependsOn.length === 0) return [];
+
+  const deps = await Promise.all(
+    task.dependsOn.map(async (depId) => {
+      try {
+        const dep = await readTaskInfo(cwd(), depId);
+        if (!dep) return null;
+        const lastActivity = dep.activities?.length > 0
+          ? dep.activities[dep.activities.length - 1]?.details
+          : undefined;
+        return {
+          title: dep.title || depId,
+          status: dep.status,
+          lastActivity: lastActivity || dep.lastError || undefined,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return deps.filter((d): d is NonNullable<typeof d> => d !== null);
+}
 
 export type ExecutorEvents = {
   taskClaimed: (taskId: string, title: string) => void
@@ -39,6 +68,7 @@ export class ExecutorAgent extends EventEmitter {
   private running = false
   private intervalId: ReturnType<typeof setInterval> | null = null
   private activeTasks = new Map<string, { abortController: AbortController; startTime: number }>()
+  private pendingApprovalTasks = new Set<string>()
 
   constructor(parentContext: ToolUseContext, config: Partial<ExecutorConfig> = {}) {
     super()
@@ -108,7 +138,25 @@ export class ExecutorAgent extends EventEmitter {
     try {
       // Get tasks whose dependencies are all satisfied
       const unblocked = await getUnblockedTasks(cwd())
-      const executable = unblocked.filter((t) => t.assignee && !this.activeTasks.has(t.id))
+
+      // Separate requiresApproval tasks — emit approval requests, don't auto-execute
+      const approvalTasks = unblocked.filter(t =>
+        t.requiresApproval && t.assignee && !this.activeTasks.has(t.id) && !this.pendingApprovalTasks.has(t.id)
+      )
+      for (const task of approvalTasks) {
+        this.pendingApprovalTasks.add(task.id)
+        const approvalReq = {
+          taskId: task.id,
+          taskTitle: task.title || task.id,
+          approvalMessage: task.approvalMessage,
+          stepIndex: 0,
+          stepTotal: 1,
+        }
+        console.log(`[Executor] Requesting approval for: ${task.title}`)
+        eventBus.emit("approval:required", approvalReq)
+      }
+
+      const executable = unblocked.filter((t) => t.assignee && !t.requiresApproval && !this.activeTasks.has(t.id))
 
       this.emit("cycle", executable.length)
 
@@ -164,7 +212,9 @@ export class ExecutorAgent extends EventEmitter {
 
       // Re-read task to get the latest data (title, description may have been updated)
       const freshTask = await readTaskInfo(cwd(), taskId)
-      const prompt = this.buildTaskPrompt(freshTask || task)
+      const taskForPrompt = freshTask || task
+      const depResults = await getDependencyResults(taskForPrompt)
+      const prompt = await this.buildTaskPrompt(taskForPrompt, depResults)
       let messageCount = 0
 
       const result = await runAgent({
@@ -197,13 +247,30 @@ export class ExecutorAgent extends EventEmitter {
       }
 
       // Update session info with final state
+      let allMessages: Message[] = []
       try {
-        const { readTranscriptMessages } = await import("../../storage/transcript")
-        const allMessages = await readTranscriptMessages(cwd(), sessionId)
+        allMessages = await readTranscriptMessages(cwd(), sessionId)
         await updateSessionInfo(cwd(), sessionId, allMessages)
       } catch (e) {
         console.error(`[Executor] Failed to update session info:`, e)
       }
+
+      // Check for tool-level errors (e.g., gRPC failures)
+      const hasToolErrors = allMessages.some(m => m.type === 'tool_result' && m.isError)
+      if (hasToolErrors) {
+        console.log(`[Executor] Task ${taskId} has tool errors, marking as failed`)
+        await updateTaskInfo(
+          cwd(),
+          taskId,
+          { status: "failed", lastError: "Tool execution failed" },
+          this.config.executorName,
+        )
+        this.emit("taskCompleted", taskId, false, "Tool execution failed")
+        return
+      }
+
+      // Trigger reflection for knowledge extraction (fire-and-forget)
+      this.triggerReflection(sessionId, `Executor: ${title}`, allMessages)
 
       // Always go through verify so the user can review the work
       const finalStatus = "verify"
@@ -239,7 +306,10 @@ export class ExecutorAgent extends EventEmitter {
     }
   }
 
-  private buildTaskPrompt(task: { title?: string; description?: string; id?: string; grpcConfig?: any }): string {
+  private async buildTaskPrompt(
+    task: { title?: string; description?: string; id?: string; grpcConfig?: any; dependsOn?: string[] },
+    dependencyResults?: Array<{ title: string; status: string; lastActivity?: string }>,
+  ): Promise<string> {
     const title = task.title || task.id || "Untitled Task"
     if (!task.title && task.id) {
       console.warn(`[Executor] Task ${task.id} has no title, using ID as fallback`)
@@ -250,22 +320,66 @@ export class ExecutorAgent extends EventEmitter {
       prompt += `Description: ${task.description}\n\n`
     }
 
+    // Inject dependency task results for flow-aware context
+    if (dependencyResults && dependencyResults.length > 0) {
+      prompt += `## Dependency Results (upstream tasks):\n`;
+      for (const dep of dependencyResults) {
+        prompt += `- **${dep.title}** [${dep.status}]`;
+        if (dep.lastActivity) prompt += `: ${dep.lastActivity}`;
+        prompt += `\n`;
+      }
+      prompt += `\nUse these results to inform your work. The outputs above are from tasks yours depends on.\n\n`;
+    }
+
     // Include structured gRPC config if available
     if (task.grpcConfig) {
-      prompt += `gRPC Call Configuration:\n`;
-      prompt += `- Proto File: ${task.grpcConfig.protoFile}\n`;
-      prompt += `- Service: ${task.grpcConfig.service}\n`;
-      prompt += `- Method: ${task.grpcConfig.method}\n`;
-      prompt += `- Address: ${task.grpcConfig.address}\n`;
-      prompt += `- Payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
-      if (task.grpcConfig.metadata) prompt += `- Metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
-      if (task.grpcConfig.deadline) prompt += `- Deadline: ${task.grpcConfig.deadline}ms\n`;
-      prompt += `\nUse the GrpcClient tool to execute this call.\n`;
+      prompt += `## gRPC Task\n\n`;
+      prompt += `You MUST use the **GrpcClient** tool to execute this gRPC call. Do NOT use Shell or any other tool.\n\n`;
+      prompt += `Call the GrpcClient tool with these exact parameters:\n`;
+      prompt += `- protoFile: "${task.grpcConfig.protoFile || 'protos/AlgoService.proto'}"\n`;
+      prompt += `- service: "${task.grpcConfig.service}"\n`;
+      prompt += `- method: "${task.grpcConfig.method}"\n`;
+      prompt += `- address: "${task.grpcConfig.address}"\n`;
+      prompt += `- payload: ${JSON.stringify(task.grpcConfig.payload, null, 2)}\n`;
+      if (task.grpcConfig.metadata) prompt += `- metadata: ${JSON.stringify(task.grpcConfig.metadata)}\n`;
+      if (task.grpcConfig.deadline) prompt += `- deadline: ${task.grpcConfig.deadline}\n`;
+      prompt += `\nAfter the GrpcClient call completes, report the response. If it fails, use the Checkpoint tool to ask the user.\n`;
+    }
+
+    // Inject irg.md project instructions + referenced documents
+    try {
+      const { getFullInjectionContent } = await import("../../storage/irgMd");
+      const irgContent = await getFullInjectionContent(cwd());
+      if (irgContent.trim()) {
+        prompt += `\n## Project Instructions\n\n${irgContent}\n`;
+      }
+    } catch {
+      // irg.md loading is best-effort
     }
 
     prompt += `\nPlease complete this task. Work in the current directory.`
 
     return prompt
+  }
+
+  /** Trigger reflection for knowledge extraction (fire-and-forget) */
+  private triggerReflection(sessionId: string, title: string, allMessages: Message[]): void {
+    if (allMessages.length === 0) return;
+    const sessionInfo = {
+      id: sessionId,
+      title,
+      messageCount: allMessages.length,
+      toolUseCount: allMessages.filter(m => m.type === "tool_result").length,
+      errorCount: allMessages.filter(m => m.type === "tool_result" && m.isError).length,
+      status: "completed" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    evolveAfterSession(cwd(), sessionInfo, allMessages, this.parentContext, {
+      ...DEFAULT_EVOLUTION_CONFIG,
+      reflectionOnComplete: false,
+      reflectionOnError: true,
+    }).catch(e => console.error("[Executor] Reflection failed:", e));
   }
 
   async forceExecuteTask(taskId: string): Promise<void> {
@@ -333,7 +447,9 @@ export class ExecutorAgent extends EventEmitter {
 
       // Re-read task to get the latest data (title, description may have been updated)
       const freshTask = await readTaskInfo(cwd(), taskId)
-      const prompt = this.buildTaskPrompt(freshTask || task)
+      const taskForPrompt = freshTask || task
+      const depResults = await getDependencyResults(taskForPrompt)
+      const prompt = await this.buildTaskPrompt(taskForPrompt, depResults)
       const agentType = (freshTask || task).assignee || this.config.agentType
       console.log(`[Executor] Running agent for task ${taskId}, agentType=${agentType}, sessionId=${sessionId}, title="${(freshTask || task).title}"`)
       let messageCount = 0
@@ -372,13 +488,25 @@ export class ExecutorAgent extends EventEmitter {
       }
 
       // Update session info with final state
+      let allMessages: Message[] = []
       try {
-        const { readTranscriptMessages } = await import("../../storage/transcript")
-        const allMessages = await readTranscriptMessages(cwd(), sessionId)
+        allMessages = await readTranscriptMessages(cwd(), sessionId)
         await updateSessionInfo(cwd(), sessionId, allMessages)
       } catch (e) {
         console.error(`[Executor] Failed to update session info:`, e)
       }
+
+      // Check for tool-level errors (e.g., gRPC failures)
+      const hasToolErrors = allMessages.some(m => m.type === 'tool_result' && m.isError)
+      if (hasToolErrors) {
+        console.log(`[Executor] Task ${taskId} has tool errors, marking as failed`)
+        await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Tool execution failed" }, this.config.executorName)
+        this.emit("taskCompleted", taskId, false, "Tool execution failed")
+        return
+      }
+
+      // Trigger reflection for knowledge extraction (fire-and-forget)
+      this.triggerReflection(sessionId, `${task.assignee || this.config.agentType}: ${title}`, allMessages)
 
       // Always go to verify first (state machine requires in_progress → verify)
       await updateTaskInfo(cwd(), taskId, { status: "verify" }, this.config.executorName)

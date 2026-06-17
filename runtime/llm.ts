@@ -1,5 +1,5 @@
 import type { Message } from "./messages";
-import { loadConfig, saveConfig, getDefaultConfig, mergeEnvIntoConfig } from "./config";
+import { loadConfig, saveConfig, mergeEnvIntoConfig } from "./config";
 
 export type LlmProviderName = "openai" | "anthropic";
 

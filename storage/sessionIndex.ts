@@ -2,6 +2,8 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "fs/promises";
 import { join } from "path";
 import type { Message } from "../runtime/messages";
 
+export type SessionStatus = "idle" | "active" | "completed" | "error" | "archived";
+
 export type SessionInfo = {
   id: string;
   title?: string;
@@ -16,7 +18,7 @@ export type SessionInfo = {
   lastPrompt?: string;
   provider?: string;
   model?: string;
-  status?: "ready" | "needs_attention" | "active" | "closed";
+  status?: SessionStatus;
   lastTool?: string;
   lastError?: string;
   parentId?: string;
@@ -58,7 +60,10 @@ function extractUserPrompts(messages: Message[]): string[] {
       (message): message is Extract<Message, { type: "user" }> =>
         message.type === "user",
     )
-    .map((message) => summarizeText(message.content, 120));
+    .map((message) => {
+      const text = typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      return summarizeText(text, 120);
+    });
 }
 
 function deriveSessionTitle(messages: Message[], sessionId: string): string {
@@ -67,7 +72,8 @@ function deriveSessionTitle(messages: Message[], sessionId: string): string {
       message.type === "user",
   );
   if (firstUser) {
-    return summarizeText(firstUser.content, 72);
+    const text = typeof firstUser.content === 'string' ? firstUser.content : firstUser.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    return summarizeText(text, 72);
   }
   return `session ${sessionId}`;
 }
@@ -85,9 +91,13 @@ function deriveSessionSummary(
       ? ` · ${errorCount} error${errorCount > 1 ? "s" : ""}`
       : "";
   const prefix =
-    status === "needs_attention"
+    status === "error"
       ? `needs attention${errorSuffix}`
-      : `ready${errorSuffix}`;
+      : status === "completed"
+        ? `done${errorSuffix}`
+        : status === "active"
+          ? `active${errorSuffix}`
+          : `idle${errorSuffix}`;
   if (lastTool && latestPrompt) {
     return summarizeText(`${prefix} · ${lastTool} · ${latestPrompt}`, 120);
   }
@@ -100,11 +110,11 @@ function deriveSessionSummary(
   return status ? prefix : undefined;
 }
 
-function getSessionStatus(
+function getSessionMetadata(
   messages: Message[],
 ): Pick<
   SessionInfo,
-  "status" | "lastTool" | "lastError" | "toolUseCount" | "errorCount"
+  "lastTool" | "lastError" | "toolUseCount" | "errorCount"
 > {
   let lastTool: string | undefined;
   let lastError: string | undefined;
@@ -128,13 +138,26 @@ function getSessionStatus(
     }
   }
 
-  return {
-    status: lastError ? "needs_attention" : "ready",
-    lastTool,
-    lastError,
-    toolUseCount,
-    errorCount,
-  };
+  return { lastTool, lastError, toolUseCount, errorCount };
+}
+
+/** Determine session status from current state */
+function deriveSessionStatus(
+  previous: SessionInfo | null,
+  metadata: { errorCount?: number },
+  isActive: boolean,
+  currentMessageCount = 0,
+): SessionStatus {
+  // If already archived, stay archived
+  if (previous?.status === "archived") return "archived";
+  // If currently being used, mark active
+  if (isActive) return "active";
+  // If has errors, mark error
+  if ((metadata.errorCount ?? 0) > 0) return "error";
+  // If has messages (completed conversation), mark completed
+  if (currentMessageCount > 0 || (previous?.messageCount ?? 0) > 0) return "completed";
+  // Default: idle
+  return "idle";
 }
 
 function getConfiguredProvider(): string | undefined {
@@ -189,23 +212,26 @@ export async function updateSessionInfo(
   cwd: string,
   sessionId: string,
   messages: Message[],
+  isActive = false,
 ): Promise<SessionInfo> {
   const previous = await readSessionInfo(cwd, sessionId);
   const prompts = extractUserPrompts(messages);
   const now = new Date().toISOString();
-  const sessionStatus = getSessionStatus(messages);
+  const metadata = getSessionMetadata(messages);
+  const status = deriveSessionStatus(previous, metadata, isActive, messages.length);
   const next: SessionInfo = {
     id: sessionId,
     createdAt: previous?.createdAt || now,
     updatedAt: now,
+    lastActiveAt: isActive ? now : previous?.lastActiveAt,
     messageCount: messages.length,
     title: previous?.title || deriveSessionTitle(messages, sessionId),
     summary:
       deriveSessionSummary(
         messages,
-        sessionStatus.status,
-        sessionStatus.lastTool,
-        sessionStatus.errorCount,
+        status,
+        metadata.lastTool,
+        metadata.errorCount,
       ) || previous?.summary,
     firstPrompt: prompts[0],
     lastPrompt: prompts[prompts.length - 1],
@@ -213,7 +239,9 @@ export async function updateSessionInfo(
     model: getConfiguredModel() || previous?.model,
     parentId: previous?.parentId,
     taskId: previous?.taskId,
-    ...sessionStatus,
+    checkedInTasks: previous?.checkedInTasks,
+    status,
+    ...metadata,
   };
 
   await mkdir(getSessionsDir(cwd), { recursive: true });
@@ -267,15 +295,16 @@ export async function listSessions(cwd: string): Promise<SessionInfo[]> {
             .filter(Boolean)
             .map((line) => JSON.parse(line) as Message);
           const prompts = extractUserPrompts(messages);
-          const sessionStatus = getSessionStatus(messages);
+          const metadata = getSessionMetadata(messages);
+          const fallbackStatus = (metadata.errorCount ?? 0) > 0 ? "error" as SessionStatus : "completed" as SessionStatus;
           infos.set(sessionId, {
             ...current,
             title: deriveSessionTitle(messages, sessionId),
             summary: deriveSessionSummary(
               messages,
-              sessionStatus.status,
-              sessionStatus.lastTool,
-              sessionStatus.errorCount,
+              fallbackStatus,
+              metadata.lastTool,
+              metadata.errorCount,
             ),
             firstPrompt: prompts[0],
             lastPrompt: prompts[prompts.length - 1],
@@ -284,7 +313,8 @@ export async function listSessions(cwd: string): Promise<SessionInfo[]> {
               (
                 await stat(getTranscriptPath(cwd, sessionId)).catch(() => null)
               )?.mtime.toISOString() || current.updatedAt,
-            ...sessionStatus,
+            status: fallbackStatus,
+            ...metadata,
           });
         } catch {
           // ignore malformed transcript fallback
@@ -295,16 +325,24 @@ export async function listSessions(cwd: string): Promise<SessionInfo[]> {
     // ignore missing transcript dir
   }
 
-  // Mark stale active sessions
+  // Mark stale active sessions as idle
   for (const [id, info] of infos) {
     if (isSessionStale(info)) {
-      infos.set(id, { ...info, status: "ready" });
+      infos.set(id, { ...info, status: "idle" });
     }
   }
 
+  // Sort: error first, then active, then by time
+  const statusOrder: Record<string, number> = {
+    error: 0,
+    active: 1,
+    completed: 2,
+    idle: 3,
+    archived: 4,
+  };
   return [...infos.values()].sort((left, right) => {
-    const leftRank = left.status === "needs_attention" ? 0 : 1;
-    const rightRank = right.status === "needs_attention" ? 0 : 1;
+    const leftRank = statusOrder[left.status ?? "idle"] ?? 3;
+    const rightRank = statusOrder[right.status ?? "idle"] ?? 3;
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
     }
@@ -331,7 +369,7 @@ export async function touchSession(
   const next = {
     ...previous,
     lastActiveAt: now,
-    status: (previous.status === "closed" ? "closed" : "active") as SessionInfo["status"],
+    status: (previous.status === "archived" ? "archived" : "active") as SessionStatus,
   };
   await mkdir(getSessionsDir(cwd), { recursive: true });
   await writeFile(
@@ -347,9 +385,10 @@ export async function closeSession(
 ): Promise<void> {
   const previous = await readSessionInfo(cwd, sessionId);
   if (!previous) return;
+  const finalStatus: SessionStatus = (previous.errorCount ?? 0) > 0 ? "error" : "completed";
   const next = {
     ...previous,
-    status: "closed" as const,
+    status: finalStatus,
     checkedInTasks: [],
   };
   await mkdir(getSessionsDir(cwd), { recursive: true });
@@ -374,7 +413,7 @@ export async function checkinToTask(
     ...previous,
     lastActiveAt: now,
     checkedInTasks: [...tasks],
-    status: "active" as const,
+    status: "active" as SessionStatus,
   };
   await mkdir(getSessionsDir(cwd), { recursive: true });
   await writeFile(
@@ -410,4 +449,24 @@ export function isSessionStale(info: SessionInfo, thresholdMs = STALE_THRESHOLD_
   if (info.status !== "active") return false;
   if (!info.lastActiveAt) return true;
   return Date.now() - new Date(info.lastActiveAt).getTime() > thresholdMs;
+}
+
+/** Add an `archiveSession` function for the new archived status */
+export async function archiveSession(
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
+  const previous = await readSessionInfo(cwd, sessionId);
+  if (!previous) return;
+  const next = {
+    ...previous,
+    status: "archived" as SessionStatus,
+    checkedInTasks: [],
+  };
+  await mkdir(getSessionsDir(cwd), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd, sessionId),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8",
+  );
 }

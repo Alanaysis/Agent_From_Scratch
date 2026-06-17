@@ -15,20 +15,20 @@ interface TaskDetailPanelProps {
 }
 
 const statusConfig: Record<string, { color: string; bgColor: string; label: string; icon: React.ReactNode }> = {
-  todo: { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', label: 'To Do', icon: <ChevronRight size={11} /> },
+  todo: { color: 'var(--status-blue)', bgColor: 'rgba(59, 130, 246, 0.1)', label: 'To Do', icon: <ChevronRight size={11} /> },
   in_progress: { color: 'var(--amber)', bgColor: 'rgba(245, 158, 11, 0.08)', label: 'In Progress', icon: <Loader2 size={11} /> },
-  verify: { color: '#7b68c0', bgColor: 'rgba(123, 104, 192, 0.1)', label: 'Verify', icon: <Clock size={11} /> },
-  done: { color: '#5cb85c', bgColor: 'rgba(92, 184, 92, 0.1)', label: 'Done', icon: <CheckCircle size={11} /> },
+  verify: { color: 'var(--status-purple)', bgColor: 'rgba(123, 104, 192, 0.1)', label: 'Verify', icon: <Clock size={11} /> },
+  done: { color: 'var(--status-green)', bgColor: 'rgba(92, 184, 92, 0.1)', label: 'Done', icon: <CheckCircle size={11} /> },
   failed: { color: 'var(--warm-red)', bgColor: 'rgba(220, 80, 80, 0.08)', label: 'Failed', icon: <XCircle size={11} /> },
 }
 
 const actionLabels: Record<string, { label: string; color: string }> = {
   created: { label: 'Created', color: 'var(--text-muted)' },
-  assigned: { label: 'Assigned', color: '#3b82f6' },
+  assigned: { label: 'Assigned', color: 'var(--status-blue)' },
   released: { label: 'Released', color: 'var(--amber)' },
-  status_changed: { label: 'Status changed', color: '#7b68c0' },
+  status_changed: { label: 'Status changed', color: 'var(--status-purple)' },
   updated: { label: 'Updated', color: 'var(--text-muted)' },
-  comment_added: { label: 'Comment', color: '#5cb85c' },
+  comment_added: { label: 'Comment', color: 'var(--status-green)' },
 }
 
 export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
@@ -143,8 +143,10 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
   const blockedByDeps = depTasks.some(d => d && !d.resolved)
 
   return (
-    <div style={{
-      width: 380,
+    <div data-testid="task-detail-panel" style={{
+      width: '40%',
+      minWidth: 280,
+      maxWidth: 380,
       height: '100%',
       backgroundColor: 'var(--surface-0)',
       borderLeft: '1px solid var(--border-subtle)',
@@ -152,10 +154,11 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       flexDirection: 'column',
       overflow: 'hidden',
       fontFamily: 'IBM Plex Sans, sans-serif',
+      flexShrink: 0,
     }}>
       {/* Header */}
       <div style={{
-        padding: '12px 16px',
+        padding: '8px 12px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
@@ -191,7 +194,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         {/* Title & Description */}
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{
+          <h2 data-testid="task-title" style={{
             fontSize: 15,
             fontWeight: 600,
             color: 'var(--text-primary)',
@@ -209,7 +212,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           )}
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{
+            <span data-testid="task-status" style={{
               padding: '3px 8px',
               borderRadius: 2,
               backgroundColor: status.bgColor,
@@ -225,7 +228,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               {status.icon}
               {status.label}
             </span>
-            <span style={{
+            <span data-testid="task-priority" style={{
               padding: '3px 8px',
               borderRadius: 2,
               backgroundColor: task.priority === 'high' ? 'rgba(220,80,80,0.08)' : task.priority === 'medium' ? 'rgba(245,158,11,0.08)' : 'rgba(102,102,102,0.08)',
@@ -238,28 +241,27 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             }}>
               {task.priority}
             </span>
-            {task.sessionId && (
-              <button
-                onClick={handleViewInChat}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 8px',
-                  fontSize: 10,
-                  fontWeight: 500,
-                  fontFamily: 'IBM Plex Mono, monospace',
-                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 2,
-                  color: 'var(--amber)',
-                  cursor: 'pointer'
-                }}
-              >
-                <MessageCircle size={10} />
-                View in Chat
-              </button>
-            )}
+            <button
+              data-testid="task-view-chat"
+              onClick={handleViewInChat}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                fontSize: 10,
+                fontWeight: 500,
+                fontFamily: 'IBM Plex Mono, monospace',
+                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 2,
+                color: 'var(--amber)',
+                cursor: 'pointer'
+              }}
+            >
+              <MessageCircle size={10} />
+              {task.sessionId ? 'View in Chat' : 'Start Chat'}
+            </button>
           </div>
         </div>
 
@@ -281,6 +283,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             <div style={{ display: 'flex', gap: 6 }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <Input
+                  data-testid="task-assignee-input"
                   value={assigneeInput}
                   onChange={(e) => setAssigneeInput(e.target.value)}
                   onFocus={() => setShowAgentList(true)}
@@ -361,7 +364,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                   </div>
                 )}
               </div>
-              <Button onClick={handleAssign} disabled={!assigneeInput.trim() || isLoading} style={{
+              <Button data-testid="task-assign" onClick={handleAssign} disabled={!assigneeInput.trim() || isLoading} style={{
                 height: 34,
                 borderRadius: 0,
                 fontFamily: 'IBM Plex Mono, monospace',
@@ -389,7 +392,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                 style={{ width: 24, height: 24, borderRadius: 2 }}
               />
               <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, flex: 1 }}>{task.assignee}</span>
-              <Button variant="ghost" size="icon" onClick={handleRelease} style={{ width: 20, height: 20 }}>
+              <Button data-testid="task-release" variant="ghost" size="icon" onClick={handleRelease} style={{ width: 20, height: 20 }}>
                 <X size={12} color="var(--text-muted)" />
               </Button>
             </div>
@@ -426,7 +429,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                     gap: 8,
                   }}>
                     {dep.resolved ? (
-                      <CheckCircle size={12} color="#5cb85c" />
+                      <CheckCircle size={12} color="var(--status-green)" />
                     ) : (
                       <AlertCircle size={12} color="var(--amber)" />
                     )}
@@ -488,7 +491,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {relatedDocs.map(doc => {
-                  const docColor = { prd: '#3b82f6', tech_design: '#7b68c0', adr: 'var(--amber)', spec: '#5cb85c', guide: '#06b6d4', report: 'var(--warm-red)' }[doc.type] || 'var(--text-muted)'
+                  const docColor = { prd: 'var(--status-blue)', tech_design: 'var(--status-purple)', adr: 'var(--amber)', spec: 'var(--status-green)', guide: 'var(--status-cyan)', report: 'var(--warm-red)' }[doc.type] || 'var(--text-muted)'
                   return (
                     <div key={doc.id} style={{
                       padding: '6px 8px',
@@ -541,7 +544,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {(task.acceptanceCriteria || []).map((ac) => {
                 const acStatus = ac.status || 'pending'
-                const acColor = acStatus === 'passed' ? '#5cb85c' : acStatus === 'failed' ? 'var(--warm-red)' : 'var(--text-muted)'
+                const acColor = acStatus === 'passed' ? 'var(--status-green)' : acStatus === 'failed' ? 'var(--warm-red)' : 'var(--text-muted)'
                 return (
                   <div key={ac.id} style={{
                     padding: '6px 8px',
@@ -581,7 +584,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
                           title="Mark as passed"
                         >
-                          <CheckCircle size={12} color="#5cb85c" />
+                          <CheckCircle size={12} color="var(--status-green)" />
                         </button>
                         <button
                           onClick={async () => {
@@ -623,6 +626,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {task.status === 'todo' && task.assignee && (
               <ActionButton
+                testId="task-execute"
                 onClick={async () => {
                   setIsLoading(true)
                   try {
@@ -637,7 +641,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                   }
                 }}
                 disabled={isLoading || blockedByDeps}
-                color="#5cb85c"
+                color="var(--status-green)"
                 icon={<ArrowRight size={13} />}
                 label={task.requiresApproval ? 'Execute (requires approval)' : 'Execute'}
                 hint={blockedByDeps ? 'Resolve dependencies first' : undefined}
@@ -645,6 +649,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             )}
             {task.status === 'todo' && !task.assignee && (
               <ActionButton
+                testId="task-start"
                 onClick={() => handleStatusChange('in_progress')}
                 disabled={isLoading || blockedByDeps}
                 color="var(--amber)"
@@ -655,9 +660,10 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             )}
             {task.status === 'in_progress' && (
               <ActionButton
+                testId="task-submit-verify"
                 onClick={() => handleStatusChange('verify')}
                 disabled={isLoading}
-                color="#7b68c0"
+                color="var(--status-purple)"
                 icon={<CheckCircle size={13} />}
                 label="Submit for Verify"
               />
@@ -665,13 +671,15 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             {task.status === 'verify' && (
               <>
                 <ActionButton
+                  testId="task-approve"
                   onClick={() => handleStatusChange('done')}
                   disabled={isLoading}
-                  color="#5cb85c"
+                  color="var(--status-green)"
                   icon={<CheckCircle size={13} />}
                   label="Approve & Complete"
                 />
                 <ActionButton
+                  testId="task-reject"
                   onClick={() => handleStatusChange('in_progress')}
                   disabled={isLoading}
                   color="var(--amber)"
@@ -682,6 +690,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             )}
             {(task.status === 'failed' || task.status === 'todo') && (
               <ActionButton
+                testId="task-fail"
                 onClick={() => handleStatusChange('failed')}
                 disabled={isLoading}
                 color="var(--warm-red)"
@@ -691,6 +700,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             )}
             <div style={{ height: 1, backgroundColor: 'var(--border-subtle)', margin: '4px 0' }} />
             <ActionButton
+              testId="task-delete"
               onClick={handleDelete}
               disabled={isLoading}
               color="var(--warm-red)"
@@ -717,6 +727,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           </label>
           <div style={{ display: 'flex', gap: 6 }}>
             <Input
+              data-testid="task-comment-input"
               value={commentInput}
               onChange={(e) => setCommentInput(e.target.value)}
               placeholder="Write a comment..."
@@ -732,7 +743,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
                 fontFamily: 'IBM Plex Sans, sans-serif',
               }}
             />
-            <Button onClick={handleAddComment} disabled={!commentInput.trim() || isLoading} style={{
+            <Button data-testid="task-comment-submit" onClick={handleAddComment} disabled={!commentInput.trim() || isLoading} style={{
               height: 34,
               borderRadius: 0,
               fontFamily: 'IBM Plex Mono, monospace',
@@ -837,7 +848,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
       {/* Footer */}
       <div style={{
-        padding: '10px 16px',
+        padding: '8px 12px',
         borderTop: '1px solid var(--border-subtle)',
         fontSize: 10,
         color: 'var(--text-faint)',
@@ -852,7 +863,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
   )
 }
 
-function ActionButton({ onClick, disabled, color, icon, label, hint, variant }: {
+function ActionButton({ onClick, disabled, color, icon, label, hint, variant, testId }: {
   onClick: () => void
   disabled: boolean
   color: string
@@ -860,9 +871,11 @@ function ActionButton({ onClick, disabled, color, icon, label, hint, variant }: 
   label: string
   hint?: string
   variant?: 'default' | 'ghost'
+  testId?: string
 }) {
   return (
     <button
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled}
       style={{

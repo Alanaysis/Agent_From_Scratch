@@ -9,8 +9,8 @@ import type { AgentPresence } from '@/types'
 const statusConfig = {
   idle: { color: 'var(--text-muted)', label: 'Idle', animate: false },
   thinking: { color: 'var(--amber)', label: 'Thinking', animate: true },
-  running: { color: '#3b82f6', label: 'Working', animate: true },
-  waiting: { color: '#7b68c0', label: 'Waiting', animate: false },
+  running: { color: 'var(--status-blue)', label: 'Working', animate: true },
+  waiting: { color: 'var(--status-purple)', label: 'Waiting', animate: false },
   error: { color: 'var(--warm-red)', label: 'Error', animate: false },
 } as const
 
@@ -142,7 +142,7 @@ export function PresencePanel() {
         gap: 6,
         padding: '6px 8px',
         fontSize: 10,
-        color: backendConnected ? '#5cb85c' : 'var(--warm-red)',
+        color: backendConnected ? 'var(--status-green)' : 'var(--warm-red)',
         fontFamily: 'IBM Plex Mono, monospace',
       }}>
         {backendConnected ? <Wifi size={10} /> : <WifiOff size={10} />}

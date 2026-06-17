@@ -243,7 +243,8 @@ function makeConversationEntries(
   message: Message,
 ): ConversationEntry[] {
   if (message.type === "user") {
-    return [{ kind: "user", text: message.content }];
+    const text = typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    return [{ kind: "user", text }];
   }
 
   if (message.type === "tool_result") {
@@ -886,7 +887,7 @@ async function runSlashCommand(
   if (!commandLine) {
     state.entries.push({
       kind: "system",
-      text: "可用命令：/help /tools /skills /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit",
+      text: "可用命令：/help /tools /skills /sessions [--limit N] [--status idle|completed|error] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit",
     });
     return;
   }
@@ -919,7 +920,7 @@ async function runSlashCommand(
         "",
         "TUI commands:",
         "  /skills",
-        "  /sessions [--limit N] [--status ready|needs_attention]",
+        "  /sessions [--limit N] [--status idle|completed|error]",
         "  /inspect <id>",
         "  /export-session <id> [--format markdown|json] [--output path]",
         "  /rm-session <id>",
@@ -1130,7 +1131,7 @@ async function runSlashCommand(
       !rawTarget || rawTarget === "latest"
         ? sessions[0]?.id
         : rawTarget === "failed"
-          ? sessions.find((session) => session.status === "needs_attention")?.id
+          ? sessions.find((session) => session.status === "error")?.id
           : rawTarget;
     if (!target) {
       state.entries.push({

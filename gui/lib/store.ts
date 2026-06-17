@@ -14,6 +14,7 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'sessions:delete':        { method: 'DELETE', path: '/api/sessions/{0}', bodyKey: 'sessionId' },
   'sessions:heartbeat':     { method: 'POST', path: '/api/sessions/{0}/heartbeat', bodyKey: 'sessionId' },
   'sessions:close':         { method: 'POST', path: '/api/sessions/{0}/close', bodyKey: 'sessionId' },
+  'sessions:update':        { method: 'PATCH', path: '/api/sessions/{0}', bodyKey: 'sessionId' },
   'sessions:messages':      { method: 'GET',  path: '/api/sessions/{0}/messages' },
 
   // Tasks
@@ -42,6 +43,8 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'proposals:create':       { method: 'POST', path: '/api/proposals' },
   'proposals:update':       { method: 'PATCH', path: '/api/proposals/{0}', bodyKey: 'proposalId' },
   'proposals:delete':       { method: 'DELETE', path: '/api/proposals/{0}' },
+  'proposals:delete_with_tasks': { method: 'DELETE', path: '/api/proposals/{0}/with-tasks' },
+  'proposals:revert':       { method: 'POST', path: '/api/proposals/{0}/revert' },
   'proposals:submit':       { method: 'POST', path: '/api/proposals/{0}/submit' },
   'proposals:approve':      { method: 'POST', path: '/api/proposals/{0}/approve' },
   'proposals:reject':       { method: 'POST', path: '/api/proposals/{0}/reject' },
@@ -59,6 +62,8 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'documents:update':           { method: 'PATCH', path: '/api/documents/{0}', bodyKey: 'docId' },
   'documents:delete':           { method: 'DELETE', path: '/api/documents/{0}' },
   'documents:list_by_proposal': { method: 'GET',  path: '/api/documents/by-proposal/{0}' },
+  'documents:is_injected':      { method: 'GET',  path: '/api/documents/{0}/is-injected' },
+  'documents:toggle_inject':    { method: 'POST', path: '/api/documents/{0}/toggle-inject', bodyKey: 'docId' },
 
   // Agents
   'agents:list':            { method: 'GET',  path: '/api/agents' },
@@ -78,6 +83,10 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'workflows:list_files':   { method: 'GET',  path: '/api/workflows/files' },
   'workflows:import_remote':{ method: 'POST', path: '/api/workflows/import-remote' },
   'workflows:import_and_execute': { method: 'POST', path: '/api/workflows/import-and-execute' },
+  'workflows:save-yaml':    { method: 'POST', path: '/api/workflows/save-yaml' },
+
+  // Skills
+  'skills:list':            { method: 'GET',  path: '/api/skills' },
 
   // Recipes
   'recipes:list':           { method: 'GET',  path: '/api/recipes' },
@@ -174,10 +183,14 @@ export interface LlmConfig {
   baseUrl: string
   systemPrompt?: string
   anthropicVersion: string
+  contextWindow?: number
+  maxOutputTokens?: number
 }
 
 type Actions = {
   setViewMode: (mode: ViewMode) => void
+  goBack: () => void
+  newChat: () => void
   toggleSidebar: () => void
   setCurrentSession: (session: Session | null) => void
   jumpToSession: (sessionId: string) => Promise<void>
@@ -215,13 +228,15 @@ type Actions = {
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void
   markNotificationRead: (id: string) => void
   clearNotifications: () => void
+  addActivityEvent: (event: Omit<import('@/types').ActivityEvent, 'id' | 'timestamp'>) => void
+  clearActivityFeed: () => void
   setBackendConnected: (connected: boolean) => void
   sendToBackend: (channel: string, data?: unknown) => Promise<unknown>
   loadConfig: () => Promise<void>
   setLlmConfig: (config: Partial<LlmConfig>) => Promise<void>
   getLlmConfig: () => LlmConfig | null
-  sendChatMessage: (message: string, sessionId?: string) => Promise<{ sessionId: string }>
-  sendChatMessageSse: (message: string, sessionId?: string) => Promise<{ sessionId: string }>
+  sendChatMessage: (message: string | { text: string; images?: Array<{ data: string; mimeType: string }> }, sessionId?: string) => Promise<{ sessionId: string }>
+  sendChatMessageSse: (message: string | { text: string; images?: Array<{ data: string; mimeType: string }> }, sessionId?: string) => Promise<{ sessionId: string }>
   cancelChat: () => Promise<void>
   startHeartbeat: () => void
   stopHeartbeat: () => void
@@ -231,7 +246,7 @@ type Actions = {
   editingProposalId: string | null
   loadProposals: () => Promise<void>
   createProposal: (input: { title: string; description?: string }) => Promise<Proposal | null>
-  updateProposal: (id: string, updates: { title?: string; description?: string }) => Promise<void>
+  updateProposal: (id: string, updates: { title?: string; description?: string; status?: string }) => Promise<void>
   deleteProposal: (id: string) => Promise<void>
   addTaskDraft: (proposalId: string, draft: Partial<TaskDraft> & { title: string }) => Promise<void>
   removeTaskDraft: (proposalId: string, tempId: string) => Promise<void>
@@ -247,6 +262,8 @@ type Actions = {
   createDocument: (input: { title: string; type: string; content?: string }) => Promise<void>
   updateDocument: (id: string, updates: { title?: string; content?: string }) => Promise<void>
   deleteDocument: (id: string) => Promise<void>
+  toggleDocumentInject: (docId: string, inject: boolean) => Promise<void>
+  isDocumentInjected: (docId: string) => Promise<boolean>
 }
 
 interface AppStoreState extends AppState {
@@ -259,21 +276,69 @@ interface AppStoreState extends AppState {
   executorRunning: boolean
   agents: Agent[]
   permissionRequest: PermissionRequest | null
+  approvalRequest: import('@/types').ApprovalRequest | null
   activeToolCalls: Map<string, ToolCallEvent>
   heartbeatTimer: ReturnType<typeof setInterval> | null
+  activityFeed: import('@/types').ActivityEvent[]
+  previousViewMode: ViewMode | null
 }
 
 function createId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function rawMessageToMessage(m: any): Message {
+function rawMessageToMessage(m: any, activeToolCalls?: Map<string, any>): Message {
   let content = ''
   let role: 'user' | 'assistant' | 'tool_result' | 'tool_error' = m.role || (m.type === 'user' ? 'user' : m.type === 'tool_result' ? 'tool_result' : 'assistant')
   const blocks: import('@/types').MessageBlock[] = []
 
+  // If backend sent pre-built blocks, use them directly
+  if (Array.isArray(m.blocks) && m.blocks.length > 0) {
+    for (const b of m.blocks) {
+      if (b.type === 'text') {
+        blocks.push({ type: 'text', text: b.text || '' })
+      } else if (b.type === 'image') {
+        blocks.push({ type: 'image', data: b.data, mimeType: b.mimeType || 'image/png' })
+      } else if (b.type === 'tool_use') {
+        // Look up status from activeToolCalls if available
+        const active = activeToolCalls?.get(b.id)
+        blocks.push({
+          type: 'tool_use',
+          toolUseId: b.id,
+          toolName: b.name,
+          input: b.input,
+          status: active?.status || 'pending',
+          durationMs: active?.durationMs,
+        })
+      }
+    }
+    content = m.content || blocks.filter(b => b.type === 'text').map(b => (b as any).text).join('')
+    return {
+      id: m.id || `msg-${Date.now()}-${Math.random()}`,
+      role,
+      content,
+      timestamp: m.timestamp || Date.now(),
+      blocks: blocks.length > 0 ? blocks : undefined,
+    }
+  }
+
+  // Fallback: parse from content field
   if (role === 'user') {
-    content = m.content || ''
+    if (Array.isArray(m.content)) {
+      const textParts: string[] = []
+      for (const block of m.content) {
+        if (block.type === 'text') {
+          textParts.push(block.text || '')
+          blocks.push({ type: 'text', text: block.text || '' })
+        } else if (block.type === 'image') {
+          blocks.push({ type: 'image', data: block.data, mimeType: block.mimeType || 'image/png' })
+        }
+      }
+      content = textParts.join('\n')
+    } else {
+      content = m.content || ''
+      blocks.push({ type: 'text', text: content })
+    }
   } else if (role === 'tool_result' || role === 'tool_error') {
     content = m.content || ''
     blocks.push({ type: 'text', text: content })
@@ -316,6 +381,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
   persist(
     (set, get) => ({
       viewMode: 'chat',
+      previousViewMode: null,
       sidebarCollapsed: false,
       currentSession: null,
       sessions: [],
@@ -336,8 +402,26 @@ export const useAppStore = create<AppStoreState & Actions>()(
       approvalRequest: null,
       activeToolCalls: new Map<string, ToolCallEvent>(),
       heartbeatTimer: null,
+      activityFeed: [],
 
-      setViewMode: (mode) => set({ viewMode: mode }),
+      setViewMode: (mode) => {
+        const current = get().viewMode
+        if (mode === 'chat' && current !== 'chat') {
+          set({ previousViewMode: current, viewMode: mode })
+        } else {
+          set({ viewMode: mode })
+        }
+      },
+      goBack: () => {
+        const prev = get().previousViewMode
+        if (prev) {
+          set({ viewMode: prev, previousViewMode: null })
+        }
+      },
+      newChat: () => {
+        get().stopHeartbeat()
+        set({ currentSession: null, messages: [], streamingText: '', previousViewMode: null })
+      },
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
       setCurrentSession: (session) => {
@@ -358,12 +442,16 @@ export const useAppStore = create<AppStoreState & Actions>()(
       },
       jumpToSession: async (sessionId: string) => {
         try {
+          const current = get().viewMode
           const result = await get().sendToBackend('sessions:get', sessionId) as { session: Session; messages: any[] }
           if (result?.session) {
-            set({ viewMode: 'chat', currentSession: result.session, messages: [] })
-            if (result?.messages) {
-              set({ messages: result.messages.map(rawMessageToMessage) })
-            }
+            const msgs = result.messages ? result.messages.map(m => rawMessageToMessage(m, get().activeToolCalls)) : []
+            set({
+              previousViewMode: current !== 'chat' ? current : get().previousViewMode,
+              viewMode: 'chat',
+              currentSession: result.session,
+              messages: msgs,
+            })
           }
         } catch (e) {
           console.error('[Store] jumpToSession error:', e)
@@ -420,13 +508,35 @@ export const useAppStore = create<AppStoreState & Actions>()(
       loadSessions: async () => {
         try {
           console.log('[Store] loadSessions: calling backend')
-          const result = await get().sendToBackend('sessions:list', {}) as { sessions: Session[] }
+          const result = await get().sendToBackend('sessions:list', {}) as { sessions: any[] }
           console.log('[Store] loadSessions: received result:', result)
           if (result?.sessions) {
-            console.log('[Store] loadSessions: setting', result.sessions.length, 'sessions')
-            set({ sessions: result.sessions })
+            // Map backend status to frontend status
+            const statusMap: Record<string, Session['status']> = {
+              'ready': 'active',
+              'active': 'active',
+              'needs_attention': 'failed',
+              'closed': 'completed',
+            }
+            const mappedSessions: Session[] = result.sessions.map((s: any) => ({
+              id: s.id,
+              title: s.title || 'Untitled Session',
+              createdAt: s.createdAt || Date.now(),
+              updatedAt: s.updatedAt || Date.now(),
+              messageCount: s.messageCount || 0,
+              status: statusMap[s.status] || 'active',
+              lastPrompt: s.lastPrompt,
+              provider: s.provider,
+              model: s.model,
+              parentId: s.parentId,
+              taskId: s.taskId,
+            }))
+            console.log('[Store] loadSessions: setting', mappedSessions.length, 'sessions')
+            // Sort by updatedAt descending (newest first)
+            mappedSessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            set({ sessions: mappedSessions })
           }
-        } catch (e) { 
+        } catch (e) {
           console.error('[Store] loadSessions: error:', e)
         }
       },
@@ -454,6 +564,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
               priority: t.priority,
               assignee: t.assignee,
               dependsOn: t.dependsOn,
+              proposalId: t.proposalId,
               sessionId: t.sessionId,
               errorCount: t.errorCount,
               lastError: t.lastError,
@@ -462,6 +573,8 @@ export const useAppStore = create<AppStoreState & Actions>()(
               createdAt: new Date(t.createdAt).getTime(),
               updatedAt: new Date(t.updatedAt).getTime(),
             }))
+            // Sort by updatedAt descending (newest first)
+            tasks.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
             set({ tasks })
 
             // Update agent presence based on task status (for browser mode)
@@ -558,8 +671,6 @@ export const useAppStore = create<AppStoreState & Actions>()(
       },
 
       // Proposal actions
-      proposals: [],
-
       loadProposals: async () => {
         try {
           const result = await get().sendToBackend('proposals:list') as { proposals: any[] }
@@ -623,9 +734,16 @@ export const useAppStore = create<AppStoreState & Actions>()(
 
       deleteProposal: async (id) => {
         const previous = get().proposals
+        const proposal = previous.find(p => p.id === id)
         set({ proposals: previous.filter(p => p.id !== id) })
         try {
-          await get().sendToBackend('proposals:delete', id)
+          // Draft proposals have no real tasks, use simple delete
+          if (proposal?.status === 'draft') {
+            await get().sendToBackend('proposals:delete', id)
+          } else {
+            await get().sendToBackend('proposals:delete_with_tasks', id)
+            await Promise.all([get().loadTasks(), get().loadSessions()])
+          }
         } catch (e) {
           console.error('[Store] deleteProposal error, restoring:', e)
           set({ proposals: previous })
@@ -732,8 +850,6 @@ export const useAppStore = create<AppStoreState & Actions>()(
       },
 
       // Document actions
-      documents: [],
-
       loadDocuments: async () => {
         try {
           const result = await get().sendToBackend('documents:list') as { documents: any[] }
@@ -786,6 +902,24 @@ export const useAppStore = create<AppStoreState & Actions>()(
         }
       },
 
+      toggleDocumentInject: async (docId, inject) => {
+        try {
+          await get().sendToBackend('documents:toggle_inject', { docId, inject })
+        } catch (e) {
+          console.error('[Store] toggleDocumentInject error:', e)
+        }
+      },
+
+      isDocumentInjected: async (docId) => {
+        try {
+          const result = await get().sendToBackend('documents:is_injected', docId) as { injected: boolean }
+          return result?.injected ?? false
+        } catch (e) {
+          console.error('[Store] isDocumentInjected error:', e)
+          return false
+        }
+      },
+
       updateAgentPresence: (presence) =>
         set((s) => {
           const idx = s.agentPresences.findIndex(( a ) => a.agentId === presence.agentId)
@@ -800,6 +934,14 @@ export const useAppStore = create<AppStoreState & Actions>()(
         })),
       markNotificationRead: (id) => set((s) => ({ notifications: s.notifications.map(( n ) => n.id === id ? { ...n, read: true } : n) })),
       clearNotifications: () => set({ notifications: [] }),
+
+      addActivityEvent: (event) =>
+        set((s) => ({
+          activityFeed: [...s.activityFeed, { ...event, id: createId(), timestamp: Date.now() }]
+            .sort((a, b) => a.timestamp - b.timestamp) // sort chronologically
+            .slice(-200), // keep last 200
+        })),
+      clearActivityFeed: () => set({ activityFeed: [] }),
 
       setBackendConnected: (connected) => {
         console.log('[Store] setBackendConnected called with:', connected)
@@ -913,8 +1055,12 @@ export const useAppStore = create<AppStoreState & Actions>()(
 
       deleteAgent: async (id) => {
         try {
-          await get().sendToBackend('agents:delete', { agentId: id })
-          set((s) => ({ agents: s.agents.filter((a) => a.id !== id) }))
+          const result = await get().sendToBackend('agents:delete', { agentId: id }) as { success: boolean }
+          if (result?.success) {
+            set((s) => ({ agents: s.agents.filter((a) => a.id !== id) }))
+          } else {
+            console.warn('[Store] deleteAgent: agent may be built-in or not found:', id)
+          }
         } catch (e) {
           console.error('[Store] deleteAgent error:', e)
         }
@@ -964,24 +1110,27 @@ export const useAppStore = create<AppStoreState & Actions>()(
         set({ isLoading: true, streamingText: '', activeToolCalls: new Map() })
         get().startHeartbeat()
 
+        // Normalize message format
+        const msgPayload = typeof message === 'string' ? { text: message } : message
+
         // Browser mode — use SSE
         if (!window.electronAPI?.invoke) {
-          return await get().sendChatMessageSse(message, sessionId)
+          return await get().sendChatMessageSse(msgPayload, sessionId)
         }
 
         // Electron mode — use IPC
         try {
-          const result = await get().sendToBackend('chat:send', { message, sessionId }) as {
+          const result = await get().sendToBackend('chat:send', { message: msgPayload, sessionId }) as {
             messages: any[]
             sessionId: string
           }
           if (result?.messages) {
-            const newMessages = result.messages.map(rawMessageToMessage)
+            const newMessages = result.messages.map(m => rawMessageToMessage(m, get().activeToolCalls))
             get().stopHeartbeat()
             set({
               currentSession: result.sessionId ? {
                 id: result.sessionId,
-                title: message.slice(0, 50),
+                title: msgPayload.text.slice(0, 50),
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 messageCount: newMessages.length,
@@ -1003,15 +1152,18 @@ export const useAppStore = create<AppStoreState & Actions>()(
         return { sessionId: '' }
       },
 
-      sendChatMessageSse: async (message: string, sessionId?: string) => {
+      sendChatMessageSse: async (message, sessionId?: string) => {
         const collectedMessages: any[] = []
         let resultSessionId = ''
+
+        // Normalize message format
+        const msgPayload = typeof message === 'string' ? { text: message } : message
 
         try {
           const res = await fetch(`${API_BASE}/api/chat/sse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, sessionId }),
+            body: JSON.stringify({ message: msgPayload, sessionId }),
           })
 
           if (!res.ok || !res.body) {
@@ -1039,9 +1191,78 @@ export const useAppStore = create<AppStoreState & Actions>()(
                   const data = JSON.parse(line.slice(6))
 
                   if (currentEvent === 'delta') {
-                    set({ streamingText: (get().streamingText || '') + data.text })
+                    // Replace, not append — the server sends accumulated text
+                    get().setStreamingText(data.text)
+                  } else if (currentEvent === 'tool:start') {
+                    // Track active tool calls in real-time
+                    set(state => {
+                      const newMap = new Map(state.activeToolCalls)
+                      newMap.set(data.toolUseId, {
+                        toolUseId: data.toolUseId,
+                        toolName: data.toolName,
+                        input: data.input,
+                        status: 'running',
+                        startTime: data.timestamp || Date.now(),
+                      })
+                      return { activeToolCalls: newMap }
+                    })
+                  } else if (currentEvent === 'tool:result') {
+                    // Update tool call status to completed
+                    set(state => {
+                      const newMap = new Map(state.activeToolCalls)
+                      const existing = newMap.get(data.toolUseId)
+                      if (existing) {
+                        newMap.set(data.toolUseId, { ...existing, status: 'completed', result: data.result, endTime: Date.now(), durationMs: data.durationMs })
+                      }
+                      // Also update message blocks with final status
+                      const newMessages = state.messages.map(msg => {
+                        if (!msg.blocks) return msg
+                        const newBlocks = msg.blocks.map(b => {
+                          if (b.type === 'tool_use' && b.toolUseId === data.toolUseId) {
+                            return { ...b, status: 'completed' as const, durationMs: data.durationMs }
+                          }
+                          return b
+                        })
+                        return { ...msg, blocks: newBlocks }
+                      })
+                      return { activeToolCalls: newMap, messages: newMessages }
+                    })
+                  } else if (currentEvent === 'tool:error') {
+                    // Update tool call status to failed
+                    set(state => {
+                      const newMap = new Map(state.activeToolCalls)
+                      const existing = newMap.get(data.toolUseId)
+                      if (existing) {
+                        newMap.set(data.toolUseId, { ...existing, status: 'failed', error: data.error, endTime: Date.now(), durationMs: data.durationMs })
+                      }
+                      // Also update message blocks with failed status
+                      const newMessages = state.messages.map(msg => {
+                        if (!msg.blocks) return msg
+                        const newBlocks = msg.blocks.map(b => {
+                          if (b.type === 'tool_use' && b.toolUseId === data.toolUseId) {
+                            return { ...b, status: 'failed' as const, durationMs: data.durationMs }
+                          }
+                          return b
+                        })
+                        return { ...msg, blocks: newBlocks }
+                      })
+                      return { activeToolCalls: newMap, messages: newMessages }
+                    })
+                  } else if (currentEvent === 'session:message-appended') {
+                    // Handle real-time session messages from executor
+                    const event = data as { sessionId: string; message: any }
+                    const currentSession = get().currentSession
+                    if (currentSession && currentSession.id === event.sessionId) {
+                      const msg = rawMessageToMessage(event.message, get().activeToolCalls)
+                      set((s) => ({ messages: [...s.messages, msg] }))
+                    }
                   } else if (currentEvent === 'message') {
                     collectedMessages.push(data)
+                    // Immediately display user messages in the UI
+                    if (data.role === 'user') {
+                      const userMsg = rawMessageToMessage(data)
+                      set(state => ({ messages: [...state.messages, userMsg] }))
+                    }
                     set({ streamingText: '' })
                   } else if (currentEvent === 'permission') {
                     const permPromise = new Promise<boolean>((resolve) => {
@@ -1080,14 +1301,18 @@ export const useAppStore = create<AppStoreState & Actions>()(
         }
 
         get().stopHeartbeat()
-        const newMessages = collectedMessages.map(rawMessageToMessage)
+        // Append new messages (skip user message since it was already shown immediately)
+        const currentActiveTools = get().activeToolCalls
+        const newMessages = collectedMessages
+          .filter(m => m.role !== 'user')
+          .map(m => rawMessageToMessage(m, currentActiveTools))
         set({
           currentSession: resultSessionId ? {
             id: resultSessionId,
-            title: message.slice(0, 50),
+            title: msgPayload.text.slice(0, 50),
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            messageCount: newMessages.length,
+            messageCount: get().messages.length + newMessages.length,
             status: 'active',
           } : get().currentSession,
           messages: [...get().messages, ...newMessages],
@@ -1291,6 +1516,14 @@ export const useAppStore = create<AppStoreState & Actions>()(
                   currentTask: event.title,
                   lastSeen: Date.now(),
                 })
+                get().addActivityEvent({
+                  type: 'task_status',
+                  taskId: event.taskId,
+                  taskTitle: event.title,
+                  agentName,
+                  toStatus: 'in_progress',
+                  summary: `Task claimed by ${agentName}`,
+                })
               }
 
               const onExecutorTaskProgress = (data: unknown) => {
@@ -1304,12 +1537,38 @@ export const useAppStore = create<AppStoreState & Actions>()(
                   currentTask: event.text?.slice(0, 80) || 'Working...',
                   lastSeen: Date.now(),
                 })
+                get().addActivityEvent({
+                  type: 'task_progress',
+                  taskId: event.taskId,
+                  taskTitle: task?.title || event.taskId,
+                  agentName,
+                  progressText: event.text,
+                  summary: event.text?.slice(0, 120),
+                })
               }
 
               const onExecutorTaskCompleted = (data: unknown) => {
                 const event = data as { taskId: string; success: boolean; result?: string }
                 const task = get().tasks.find(t => t.id === event.taskId)
                 const agentName = task?.assignee || 'executor'
+
+                // Update session status if task has an associated session
+                if (task?.sessionId) {
+                  const sessionStatus = event.success ? 'completed' as const : 'failed' as const
+                  get().sendToBackend('sessions:update', {
+                    sessionId: task.sessionId,
+                    status: sessionStatus,
+                  }).catch(() => {})
+                  // Update local session state
+                  set((s) => ({
+                    sessions: s.sessions.map(sess =>
+                      sess.id === task.sessionId
+                        ? { ...sess, status: sessionStatus, updatedAt: Date.now() }
+                        : sess
+                    ),
+                  }))
+                }
+
                 if (event.success) {
                   get().updateAgentPresence({
                     agentId: agentName,
@@ -1318,14 +1577,29 @@ export const useAppStore = create<AppStoreState & Actions>()(
                     currentTask: undefined,
                     lastSeen: Date.now(),
                   })
+                  get().addActivityEvent({
+                    type: 'task_status',
+                    taskId: event.taskId,
+                    taskTitle: task?.title || event.taskId,
+                    agentName,
+                    toStatus: 'done',
+                    summary: 'Task completed successfully',
+                  })
                 } else {
-                  // Failed — show error status so user can see something went wrong
                   get().updateAgentPresence({
                     agentId: agentName,
                     agentName,
                     status: 'error',
                     currentTask: event.result?.slice(0, 60) || 'Task failed',
                     lastSeen: Date.now(),
+                  })
+                  get().addActivityEvent({
+                    type: 'task_error',
+                    taskId: event.taskId,
+                    taskTitle: task?.title || event.taskId,
+                    agentName,
+                    errorMessage: event.result,
+                    summary: `Task failed: ${event.result?.slice(0, 100) || 'Unknown error'}`,
                   })
                 }
               }
@@ -1346,7 +1620,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
                 const event = data as { sessionId: string; message: any }
                 const currentSession = get().currentSession
                 if (currentSession && currentSession.id === event.sessionId) {
-                  const msg = rawMessageToMessage(event.message)
+                  const msg = rawMessageToMessage(event.message, get().activeToolCalls)
                   set((s) => ({ messages: [...s.messages, msg] }))
                 }
               }
@@ -1354,6 +1628,25 @@ export const useAppStore = create<AppStoreState & Actions>()(
               const onApprovalRequired = (data: unknown) => {
                 const event = data as ApprovalRequest
                 get().setApprovalRequest(event)
+                get().addActivityEvent({
+                  type: 'approval_required',
+                  taskId: event.taskId,
+                  taskTitle: event.taskTitle,
+                  approvalMessage: event.approvalMessage,
+                  summary: `Approval required: ${event.approvalMessage || event.taskTitle}`,
+                })
+              }
+
+              const onApprovalResolved = (data: unknown) => {
+                const event = data as { taskId: string; action: string }
+                const task = get().tasks.find(t => t.id === event.taskId)
+                get().addActivityEvent({
+                  type: 'approval_resolved',
+                  taskId: event.taskId,
+                  taskTitle: task?.title || event.taskId,
+                  approvalAction: event.action as any,
+                  summary: `Approval ${event.action}: ${task?.title || event.taskId}`,
+                })
               }
 
               api.on('chat:delta', onDelta)
@@ -1368,6 +1661,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
               api.on('event:executor:cycle', onExecutorCycle)
               api.on('event:session:message-appended', onSessionMessageAppended)
               api.on('event:approval:required', onApprovalRequired)
+              api.on('event:approval:resolved', onApprovalResolved)
 
               // Store cleanup functions for potential future use
               ;(window as any).__ipcCleanup = () => {
@@ -1383,6 +1677,7 @@ export const useAppStore = create<AppStoreState & Actions>()(
                 api.off?.('event:executor:cycle', onExecutorCycle)
                 api.off?.('event:session:message-appended', onSessionMessageAppended)
                 api.off?.('event:approval:required', onApprovalRequired)
+                api.off?.('event:approval:resolved', onApprovalResolved)
                 set({ listenersRegistered: false })
               }
             }
@@ -1398,17 +1693,210 @@ export const useAppStore = create<AppStoreState & Actions>()(
             get().loadDocuments()
             get().loadAgents()
 
+            // Track previous task states for change detection
+            let prevTaskStates = new Map<string, string>()
+            const tasks = get().tasks
+            tasks.forEach(t => prevTaskStates.set(t.id, t.status))
+
             // Poll for updates every 3 seconds
-            setInterval(() => {
-              get().loadTasks()
-              get().loadProposals()
-              get().loadSessions()
+            setInterval(async () => {
+              const prevTasks = get().tasks
+              await get().loadTasks()
+              await get().loadProposals()
+              await get().loadSessions()
+
+              // Detect task status changes and add activity events
+              const currentTasks = get().tasks
+              for (const task of currentTasks) {
+                const prevStatus = prevTaskStates.get(task.id)
+                if (prevStatus && prevStatus !== task.status) {
+                  get().addActivityEvent({
+                    type: task.status === 'failed' ? 'task_error' : 'task_status',
+                    taskId: task.id,
+                    taskTitle: task.title,
+                    agentName: task.assignee,
+                    fromStatus: prevStatus,
+                    toStatus: task.status,
+                    summary: `Status changed: ${prevStatus} → ${task.status}`,
+                    ...(task.status === 'failed' && task.lastError ? { errorMessage: task.lastError } : {}),
+                  })
+                }
+                prevTaskStates.set(task.id, task.status)
+              }
+
+              // Check for pending approvals
               get().sendToBackend('approvals:pending').then((result: any) => {
                 if (result?.approvals?.length > 0 && !get().approvalRequest) {
-                  get().setApprovalRequest(result.approvals[0])
+                  const approval = result.approvals[0]
+                  get().setApprovalRequest(approval)
+                  get().addActivityEvent({
+                    type: 'approval_required',
+                    taskId: approval.taskId,
+                    taskTitle: approval.taskTitle,
+                    approvalMessage: approval.approvalMessage,
+                    summary: `Approval required: ${approval.approvalMessage || approval.taskTitle}`,
+                  })
                 }
               }).catch(() => {})
             }, 3000)
+
+            // Connect to live events SSE for real-time updates from executor
+            try {
+              const eventsUrl = `${API_BASE}/api/events`
+              const eventSource = new EventSource(eventsUrl)
+
+              eventSource.addEventListener('session:message-appended', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  const currentSession = get().currentSession
+                  if (currentSession && currentSession.id === data.sessionId) {
+                    const msg = rawMessageToMessage(data.message, get().activeToolCalls)
+                    set((s) => ({ messages: [...s.messages, msg] }))
+                  }
+                } catch {}
+              })
+
+              eventSource.addEventListener('executor:task-claimed', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  get().updateAgentPresence({
+                    agentId: data.agentId || data.assignee || 'executor',
+                    agentName: data.agentName || data.assignee || 'executor',
+                    status: 'running',
+                    currentTask: data.taskId,
+                    lastSeen: Date.now(),
+                  })
+                } catch {}
+              })
+
+              eventSource.addEventListener('executor:task-progress', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  get().updateAgentPresence({
+                    agentId: data.agentId || 'executor',
+                    agentName: data.agentName || 'executor',
+                    status: 'running',
+                    currentTask: data.taskId,
+                    lastSeen: Date.now(),
+                  })
+                } catch {}
+              })
+
+              eventSource.addEventListener('executor:task-completed', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  const task = get().tasks.find(t => t.id === data.taskId)
+                  const agentName = task?.assignee || 'executor'
+                  if (task?.sessionId) {
+                    const sessionStatus = data.success ? 'completed' as const : 'failed' as const
+                    get().sendToBackend('sessions:update', {
+                      sessionId: task.sessionId,
+                      status: sessionStatus,
+                    }).catch(() => {})
+                    set((s) => ({
+                      sessions: s.sessions.map(sess =>
+                        sess.id === task.sessionId
+                          ? { ...sess, status: sessionStatus, updatedAt: Date.now() }
+                          : sess
+                      ),
+                    }))
+                  }
+                  get().updateAgentPresence({
+                    agentId: agentName,
+                    agentName,
+                    status: 'idle',
+                    currentTask: undefined,
+                    lastSeen: Date.now(),
+                  })
+                  get().addActivityEvent({
+                    type: data.success ? 'task_status' : 'task_error',
+                    taskId: data.taskId,
+                    taskTitle: task?.title || data.taskId,
+                    agentName,
+                    fromStatus: 'in_progress',
+                    toStatus: data.success ? 'done' : 'failed',
+                    summary: data.success ? `Task completed: ${task?.title || data.taskId}` : `Task failed: ${data.result?.slice(0, 100) || 'Unknown error'}`,
+                    ...(data.success ? {} : { errorMessage: data.result }),
+                  })
+                } catch {}
+              })
+
+              eventSource.addEventListener('tool:start', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  set(state => {
+                    const newMap = new Map(state.activeToolCalls)
+                    newMap.set(data.toolUseId, {
+                      toolUseId: data.toolUseId,
+                      toolName: data.toolName,
+                      input: data.input,
+                      status: 'running',
+                      startTime: data.timestamp || Date.now(),
+                    })
+                    return { activeToolCalls: newMap }
+                  })
+                } catch {}
+              })
+
+              eventSource.addEventListener('tool:result', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  set(state => {
+                    const newMap = new Map(state.activeToolCalls)
+                    const existing = newMap.get(data.toolUseId)
+                    if (existing) {
+                      newMap.set(data.toolUseId, { ...existing, status: 'completed', result: data.result, endTime: Date.now(), durationMs: data.durationMs })
+                    }
+                    const newMessages = state.messages.map(msg => {
+                      if (!msg.blocks) return msg
+                      const newBlocks = msg.blocks.map(b => {
+                        if (b.type === 'tool_use' && b.toolUseId === data.toolUseId) {
+                          return { ...b, status: 'completed' as const, durationMs: data.durationMs }
+                        }
+                        return b
+                      })
+                      return { ...msg, blocks: newBlocks }
+                    })
+                    return { activeToolCalls: newMap, messages: newMessages }
+                  })
+                } catch {}
+              })
+
+              eventSource.addEventListener('tool:error', (e) => {
+                try {
+                  const data = JSON.parse(e.data)
+                  set(state => {
+                    const newMap = new Map(state.activeToolCalls)
+                    const existing = newMap.get(data.toolUseId)
+                    if (existing) {
+                      newMap.set(data.toolUseId, { ...existing, status: 'failed', error: data.error, endTime: Date.now(), durationMs: data.durationMs })
+                    }
+                    const newMessages = state.messages.map(msg => {
+                      if (!msg.blocks) return msg
+                      const newBlocks = msg.blocks.map(b => {
+                        if (b.type === 'tool_use' && b.toolUseId === data.toolUseId) {
+                          return { ...b, status: 'failed' as const, durationMs: data.durationMs }
+                        }
+                        return b
+                      })
+                      return { ...msg, blocks: newBlocks }
+                    })
+                    return { activeToolCalls: newMap, messages: newMessages }
+                  })
+                } catch {}
+              })
+
+              eventSource.onerror = () => {
+                console.log('[Store] SSE events connection error, will reconnect...')
+              }
+
+              // Store cleanup
+              ;(window as any).__sseEventsCleanup = () => {
+                eventSource.close()
+              }
+            } catch (e) {
+              console.warn('[Store] Failed to connect to events SSE:', e)
+            }
           }
         } catch (e) {
           console.error('[Store] initBackendConnection error:', e)

@@ -10,6 +10,7 @@ import {
   type StoredDocument,
   type DocumentType,
 } from "../../../storage/documentIndex";
+import { addDocRef, removeDocRef, isDocInjected } from "../../../storage/irgMd";
 import { createId } from "../../../shared/ids";
 import { log } from "../logger";
 
@@ -103,6 +104,32 @@ export function registerDocumentHandlers() {
       return { documents };
     } catch (e) {
       log('ERROR', 'Documents', `documents:list_by_proposal failed`, e)
+      throw e
+    }
+  });
+
+  ipcMain.handle("documents:is_injected", async (_event, docId: string): Promise<{ injected: boolean }> => {
+    log('INFO', 'Documents', `documents:is_injected called for ${docId}`)
+    try {
+      const injected = await isDocInjected(cwd(), docId);
+      return { injected };
+    } catch (e) {
+      log('ERROR', 'Documents', `documents:is_injected ${docId} failed`, e)
+      return { injected: false }
+    }
+  });
+
+  ipcMain.handle("documents:toggle_inject", async (_event, input: { docId: string; inject: boolean }): Promise<{ ok: boolean }> => {
+    log('INFO', 'Documents', `documents:toggle_inject called for ${input.docId}, inject=${input.inject}`)
+    try {
+      if (input.inject) {
+        await addDocRef(cwd(), input.docId);
+      } else {
+        await removeDocRef(cwd(), input.docId);
+      }
+      return { ok: true };
+    } catch (e) {
+      log('ERROR', 'Documents', `documents:toggle_inject ${input.docId} failed`, e)
       throw e
     }
   });

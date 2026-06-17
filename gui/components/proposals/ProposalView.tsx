@@ -10,9 +10,9 @@ import { ProposalDetailPanel } from './ProposalDetailPanel'
 import type { Proposal } from '@/types'
 
 const columns: { id: Proposal['status']; label: string; color: string; icon: React.ReactNode }[] = [
-  { id: 'draft', label: 'Draft', color: '#3b82f6', icon: <FileText size={12} /> },
+  { id: 'draft', label: 'Draft', color: 'var(--status-blue)', icon: <FileText size={12} /> },
   { id: 'pending', label: 'Pending Review', color: 'var(--amber)', icon: <Clock size={12} /> },
-  { id: 'approved', label: 'Approved', color: '#5cb85c', icon: <CheckCircle size={12} /> },
+  { id: 'approved', label: 'Approved', color: 'var(--status-green)', icon: <CheckCircle size={12} /> },
   { id: 'rejected', label: 'Rejected', color: 'var(--warm-red)', icon: <XCircle size={12} /> },
 ]
 
@@ -109,6 +109,8 @@ export function ProposalView() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
+    const proposal = proposals.find(p => p.id === id)
+    if (!confirm(`Delete proposal "${proposal?.title || id}"? This will also delete all associated tasks and sessions.`)) return
     await deleteProposal(id)
     if (selectedProposal?.id === id) {
       setSelectedProposal(null)
@@ -155,7 +157,7 @@ export function ProposalView() {
         {columns.map((col) => {
           const colProposals = getProposalsByStatus(col.id)
           return (
-            <div key={col.id} style={{
+            <div key={col.id} data-testid={`proposal-column-${col.id}`} style={{
               display: 'flex',
               flexDirection: 'column',
               flex: 1,
@@ -207,6 +209,7 @@ export function ProposalView() {
               {/* Proposal cards */}
               <div style={{
                 flex: 1,
+                minHeight: 0,
                 overflowY: 'auto',
                 padding: 4,
                 display: 'flex',
@@ -214,7 +217,7 @@ export function ProposalView() {
                 gap: 2
               }}>
                 {colProposals.map((proposal) => (
-                  <div key={proposal.id} style={{
+                  <div key={proposal.id} data-testid={`proposal-${proposal.id}`} style={{
                     padding: '8px 10px',
                     backgroundColor: selectedProposal?.id === proposal.id ? 'var(--surface-2)' : 'var(--surface-0)',
                     borderRadius: 0,
@@ -264,7 +267,7 @@ export function ProposalView() {
                         {proposal.taskDrafts.length > 0 && (
                           <span style={{
                             fontSize: 9,
-                            color: '#3b82f6',
+                            color: 'var(--status-blue)',
                             backgroundColor: 'rgba(59,130,246,0.1)',
                             padding: '1px 5px',
                             borderRadius: 0,
@@ -277,7 +280,7 @@ export function ProposalView() {
                         {proposal.documentDrafts.length > 0 && (
                           <span style={{
                             fontSize: 9,
-                            color: '#7b68c0',
+                            color: 'var(--status-purple)',
                             backgroundColor: 'rgba(123,104,192,0.1)',
                             padding: '1px 5px',
                             borderRadius: 0,
@@ -294,6 +297,7 @@ export function ProposalView() {
                         </span>
                         {proposal.status === 'draft' && (
                           <button
+                            data-testid={`edit-proposal-${proposal.id}`}
                             onClick={(e) => {
                               e.stopPropagation()
                               useAppStore.getState().editingProposalId = proposal.id
@@ -315,6 +319,7 @@ export function ProposalView() {
                           </button>
                         )}
                         <button
+                          data-testid={`delete-proposal-${proposal.id}`}
                           onClick={(e) => handleDelete(e, proposal.id)}
                           style={{
                             background: 'none',
@@ -339,6 +344,7 @@ export function ProposalView() {
                 {col.id === 'draft' && (
                   <div style={{ marginTop: 'auto', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <button
+                      data-testid="new-proposal"
                       onClick={handleCreate}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -351,6 +357,7 @@ export function ProposalView() {
                       New Proposal
                     </button>
                     <button
+                      data-testid="import-yaml"
                       onClick={handleImportWorkflow}
                       style={{
                         display: 'flex',
@@ -439,7 +446,7 @@ export function ProposalView() {
                   >
                     <span style={{
                       fontSize: 8, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700,
-                      color: file.type === 'proto' ? '#7b68c0' : 'var(--amber)',
+                      color: file.type === 'proto' ? 'var(--status-purple)' : 'var(--amber)',
                       backgroundColor: file.type === 'proto' ? 'rgba(123,104,192,0.1)' : 'rgba(212,165,116,0.1)',
                       padding: '1px 4px', borderRadius: 0,
                     }}>
