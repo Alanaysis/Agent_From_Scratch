@@ -9,10 +9,10 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    minWidth: 500,
-    minHeight: 480,
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
     backgroundColor: '#0a0e14',
     title: 'IRG',
     webPreferences: {
