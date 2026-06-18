@@ -231,16 +231,20 @@ export function CompactWorkflowView() {
   const eventSourceRef = React.useRef<EventSource | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
   const taskIdsRef = React.useRef<Set<string>>(new Set())
+  const sessionIdRef = React.useRef<string | null>(null)
+  const seenMsgIdsRef = React.useRef<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
 
   React.useEffect(() => {
     const saved = localStorage.getItem('compact-session-id')
     if (saved) {
       setSessionId(saved)
+      sessionIdRef.current = saved
       restoreSession(saved)
     }
-  }, [])
-
-  React.useEffect(() => {
     connectSSE()
     return () => disconnectSSE()
   }, [])
@@ -272,19 +276,24 @@ export function CompactWorkflowView() {
       const msgRes = await fetch(`${API_BASE}/api/sessions/${sid}/messages`)
       const msgData = await msgRes.json()
       if (msgData.messages) {
-        const loaded: CompactMessage[] = msgData.messages.map((m: any) => ({
-          id: m.id || `m-${Date.now()}-${Math.random()}`,
-          role: m.role || m.type || 'assistant',
-          content: typeof m.content === 'string' ? m.content : (m.content?.[0]?.text || ''),
-          timestamp: m.timestamp || Date.now(),
-          blocks: m.blocks,
-        }))
+        const loaded: CompactMessage[] = msgData.messages.map((m: any) => {
+          const id = m.id || `m-${Date.now()}-${Math.random()}`
+          seenMsgIdsRef.current.add(id)
+          return {
+            id,
+            role: m.role || m.type || 'assistant',
+            content: typeof m.content === 'string' ? m.content : (m.content?.[0]?.text || ''),
+            timestamp: m.timestamp || Date.now(),
+            blocks: m.blocks,
+          }
+        })
         setMessages(loaded)
       }
       await loadTasks()
     } catch (e) {
       console.error('[Compact] restore error:', e)
       setSessionId(null)
+      sessionIdRef.current = null
       localStorage.removeItem('compact-session-id')
     }
   }
@@ -297,21 +306,33 @@ export function CompactWorkflowView() {
     es.addEventListener('session:message-appended', (e: any) => {
       try {
         const data = JSON.parse(e.data)
-        if (data.sessionId === sessionId) {
-          const m = data.message
-          const msg: CompactMessage = {
-            id: m.id || `sse-${Date.now()}`,
-            role: m.type === 'user' ? 'user' : m.type === 'tool_result' ? (m.isError ? 'tool_error' : 'tool_result') : 'assistant',
-            content: typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('') : ''),
-            timestamp: m.timestamp || Date.now(),
-            blocks: m.blocks,
-          }
-          setMessages(prev => {
-            if (prev.some(pm => pm.id === msg.id)) return prev
-            return [...prev, msg]
-          })
+        const currentSid = sessionIdRef.current
+        if (data.sessionId && data.sessionId !== currentSid) return
+
+        const m = data.message
+        if (!m) return
+        const msgId = m.id || `sse-${Date.now()}-${Math.random()}`
+        if (seenMsgIdsRef.current.has(msgId)) return
+        seenMsgIdsRef.current.add(msgId)
+
+        let content = ''
+        if (typeof m.content === 'string') {
+          content = m.content
+        } else if (Array.isArray(m.content)) {
+          content = m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
         }
-      } catch {}
+
+        const msg: CompactMessage = {
+          id: msgId,
+          role: m.type === 'user' ? 'user' : m.type === 'tool_result' ? (m.isError ? 'tool_error' : 'tool_result') : 'assistant',
+          content,
+          timestamp: m.timestamp || Date.now(),
+          blocks: m.blocks,
+        }
+        setMessages(prev => [...prev, msg])
+      } catch (err) {
+        console.error('[Compact] SSE parse error:', err)
+      }
     })
 
     es.addEventListener('executor:task-claimed', (e: any) => {
@@ -332,9 +353,32 @@ export function CompactWorkflowView() {
       } catch {}
     })
 
+    es.addEventListener('executor:task-progress', (e: any) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (taskIdsRef.current.has(data.taskId)) {
+          const msgId = `progress-${data.taskId}-${Date.now()}`
+          if (seenMsgIdsRef.current.has(msgId)) return
+          seenMsgIdsRef.current.add(msgId)
+          const msg: CompactMessage = {
+            id: msgId,
+            role: 'assistant',
+            content: data.text || '',
+            timestamp: Date.now(),
+            taskId: data.taskId,
+          }
+          setMessages(prev => [...prev, msg])
+        }
+      } catch {}
+    })
+
     es.addEventListener('approval:required', () => {
       setWorkflowExpanded(false)
     })
+
+    es.addEventListener('tool:start', () => {})
+    es.addEventListener('tool:result', () => {})
+    es.addEventListener('tool:error', () => {})
 
     es.onerror = () => {
       es.close()
@@ -352,10 +396,11 @@ export function CompactWorkflowView() {
 
   async function loadTasks() {
     try {
+      const currentSid = sessionIdRef.current
       const res = await fetch(`${API_BASE}/api/tasks`)
       const data = await res.json()
       if (data.tasks) {
-        const myTasks = data.tasks.filter((t: any) => t.sessionId === sessionId)
+        const myTasks = data.tasks.filter((t: any) => currentSid && t.sessionId === currentSid)
         const compact: CompactTask[] = myTasks.map((t: any) => ({
           id: t.id,
           title: t.title,
@@ -377,10 +422,11 @@ export function CompactWorkflowView() {
   async function handleStart(filePath: string) {
     try {
       setIsLoading(true)
+      const currentSid = sessionIdRef.current
       const res = await fetch(`${API_BASE}/api/compact/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath, sessionId: sessionId || undefined }),
+        body: JSON.stringify({ filePath, sessionId: currentSid || undefined }),
       })
       const data = await res.json()
       if (data.error) {
@@ -388,6 +434,7 @@ export function CompactWorkflowView() {
         return
       }
       setSessionId(data.sessionId)
+      sessionIdRef.current = data.sessionId
       setWorkflowName(data.workflow)
       const newTasks: CompactTask[] = data.tasks.map((t: any) => ({
         id: t.id, title: t.title, status: t.status, assignee: t.assignee, dependsOn: t.dependsOn,
@@ -408,15 +455,18 @@ export function CompactWorkflowView() {
     const text = input.trim()
     setInput('')
 
+    const userMsgId = `user-${Date.now()}`
+    seenMsgIdsRef.current.add(userMsgId)
     const userMsg: CompactMessage = {
-      id: `user-${Date.now()}`,
+      id: userMsgId,
       role: 'user',
       content: text,
       timestamp: Date.now(),
     }
     setMessages(prev => [...prev, userMsg])
 
-    if (!sessionId) {
+    let sid = sessionIdRef.current
+    if (!sid) {
       try {
         const res = await fetch(`${API_BASE}/api/sessions`, {
           method: 'POST',
@@ -425,7 +475,9 @@ export function CompactWorkflowView() {
         })
         const data = await res.json()
         if (data.session) {
-          setSessionId(data.session.id)
+          sid = data.session.id
+          setSessionId(sid)
+          sessionIdRef.current = sid
         }
       } catch {}
     }
@@ -442,7 +494,7 @@ export function CompactWorkflowView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: { text },
-          sessionId: sessionId || undefined,
+          sessionId: sid || undefined,
           keepOpen: true,
         }),
         signal: abortController.signal,
@@ -475,8 +527,11 @@ export function CompactWorkflowView() {
               } else if (currentEvent === 'message') {
                 setStreamingText('')
                 if (data.role !== 'user') {
+                  const msgId = data.id || `msg-${Date.now()}-${Math.random()}`
+                  if (seenMsgIdsRef.current.has(msgId)) continue
+                  seenMsgIdsRef.current.add(msgId)
                   const msg: CompactMessage = {
-                    id: data.id || `msg-${Date.now()}`,
+                    id: msgId,
                     role: data.role || 'assistant',
                     content: data.content || '',
                     timestamp: Date.now(),
@@ -494,8 +549,9 @@ export function CompactWorkflowView() {
         }
       }
 
-      if (newSessionId && !sessionId) {
+      if (newSessionId && !sid) {
         setSessionId(newSessionId)
+        sessionIdRef.current = newSessionId
       }
     } catch (e: any) {
       if (e.name !== 'AbortError') {
@@ -520,12 +576,14 @@ export function CompactWorkflowView() {
 
   async function handleNewSession() {
     setSessionId(null)
+    sessionIdRef.current = null
     setMessages([])
     setTasks([])
     setWorkflowName(null)
     setWorkflowExpanded(false)
     setStreamingText('')
     setInput('')
+    seenMsgIdsRef.current = new Set()
     localStorage.removeItem('compact-session-id')
   }
 
@@ -540,11 +598,13 @@ export function CompactWorkflowView() {
 
   async function handleSelectSession(sid: string) {
     setSessionId(sid)
+    sessionIdRef.current = sid
     setMessages([])
     setTasks([])
     setWorkflowName(null)
     setWorkflowExpanded(false)
     setShowHistory(false)
+    seenMsgIdsRef.current = new Set()
     await restoreSession(sid)
   }
 
@@ -566,7 +626,6 @@ export function CompactWorkflowView() {
   }
 
   const hasWorkflow = tasks.length > 0
-  const anyTaskRunning = tasks.some(t => t.status === 'in_progress')
 
   return (
     <div style={{
