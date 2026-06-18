@@ -721,6 +721,82 @@ routes.set("POST /api/workflows/import-and-execute", async (_req, body) => {
   return { workflow: workflow.name, tasks: createdTasks };
 });
 
+// ====== Compact Workflow ======
+
+routes.set("POST /api/compact/start", async (_req, body) => {
+  const input = JSON.parse(body);
+  const { readFile: readFileFs } = await import("fs/promises");
+
+  let yaml;
+  if (input.filePath) {
+    const safePath = validateFilePath(input.filePath, cwd());
+    yaml = await readFileFs(safePath, "utf8");
+  }
+  if (!yaml) return { error: "No filePath provided" };
+
+  const workflow = parseWorkflowYaml(yaml);
+  if (input.filePath) workflow.sourceFile = input.filePath;
+
+  const sessionId = input.sessionId || createId("session");
+  if (!input.sessionId) {
+    await createSession(cwd(), sessionId, {
+      title: `Compact: ${workflow.name}`,
+    });
+  }
+
+  const tempIdToTaskId = new Map<string, string>();
+  for (const step of workflow.steps) {
+    tempIdToTaskId.set(step.id, createId("task"));
+  }
+
+  for (const step of workflow.steps) {
+    if (step.dependsOn) {
+      for (const depId of step.dependsOn) {
+        if (!tempIdToTaskId.has(depId)) {
+          return { error: `Step "${step.id}" depends on unknown step "${depId}"` };
+        }
+      }
+    }
+  }
+
+  const createdTasks = [];
+  for (const step of workflow.steps) {
+    const taskId = tempIdToTaskId.get(step.id)!;
+    let description = step.description || "";
+    if (step.grpc) {
+      description += (description ? "\n\n" : "") + `gRPC: ${step.grpc.service}.${step.grpc.method} @ ${step.grpc.address || "default"}`;
+      description += `\nPayload: ${JSON.stringify(step.grpc.payload)}`;
+      if (step.grpc.protoFile) description += `\nProto: ${step.grpc.protoFile}`;
+    }
+    if (step.shell) description += (description ? "\n\n" : "") + `Shell: ${step.shell}`;
+
+    const dependsOn = step.dependsOn?.map((d: string) => tempIdToTaskId.get(d)!).filter(Boolean);
+
+    const task = await createTask(cwd(), {
+      id: taskId,
+      title: step.name,
+      description: description.trim() || undefined,
+      priority: "medium",
+      status: "todo",
+      assignee: step.agent || "general-purpose",
+      dependsOn,
+      createdBy: input.createdBy || "compact",
+    });
+
+    await updateTaskInfo(cwd(), taskId, { sessionId });
+
+    createdTasks.push({
+      id: taskId,
+      title: step.name,
+      assignee: task.assignee,
+      status: task.status,
+      dependsOn,
+    });
+  }
+
+  return { sessionId, workflow: workflow.name, tasks: createdTasks };
+});
+
 // ====== Recipes ======
 
 import { readRecipe, createRecipe, updateRecipe, deleteRecipe, listRecipes, findRecipesByTrigger } from "../../storage/recipeIndex";
@@ -1091,8 +1167,9 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
 
       send("done", { sessionId: session.sessionId });
 
-      // Close session after conversation ends (sets status to completed/error)
-      await closeSession(cwd(), session.sessionId).catch(() => {});
+      if (!input.keepOpen) {
+        await closeSession(cwd(), session.sessionId).catch(() => {});
+      }
     } catch (error) {
       send("error", { message: error instanceof Error ? error.message : String(error) });
     } finally {
