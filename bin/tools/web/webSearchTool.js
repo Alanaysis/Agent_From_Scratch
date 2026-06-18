@@ -21,12 +21,13 @@ async function duckduckgoSearch(query, maxResults = 10) {
     const snippetRegex = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]+href="[^"]+"[^>]*>([^<]+)<\/a>/g;
     let titleMatch;
     while ((titleMatch = titleRegex.exec(html)) !== null && results.length < maxResults) {
-        const href = titleMatch[1].replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
+        const matchUrl = titleMatch[1];
+        const href = matchUrl.replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
             try {
                 return decodeURIComponent(u);
             }
             catch {
-                return titleMatch[1];
+                return matchUrl;
             }
         });
         results.push({

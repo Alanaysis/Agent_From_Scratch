@@ -4,7 +4,7 @@ import { createId } from "../shared/ids";
 const MAX_ENTRIES = 100;
 const CHAR_LIMIT = 500;
 function getKnowledgePath(cwd) {
-    return join(cwd, ".claude-code-lite", "knowledge.json");
+    return join(cwd, ".irg", "knowledge.json");
 }
 function emptyStore() {
     return { entries: [], version: 1 };
@@ -19,7 +19,7 @@ export async function loadKnowledgeStore(cwd) {
     }
 }
 export async function saveKnowledgeStore(cwd, store) {
-    await mkdir(join(cwd, ".claude-code-lite"), { recursive: true });
+    await mkdir(join(cwd, ".irg"), { recursive: true });
     await writeFile(getKnowledgePath(cwd), JSON.stringify(store, null, 2), "utf8");
 }
 export async function addKnowledge(cwd, category, content, source, tags = [], confidence = 0.7) {

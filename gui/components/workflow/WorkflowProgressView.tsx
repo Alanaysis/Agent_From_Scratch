@@ -1,16 +1,17 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle, XCircle, Clock, Loader2, AlertCircle, Eye, ChevronRight, GitBranch, Repeat, Maximize2, Minimize2, MessageCircle, Pencil } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Loader2, AlertCircle, Eye, ChevronRight, GitBranch, Repeat, Maximize2, Minimize2, MessageCircle, Pencil, Pause, SkipForward } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import type { Task, TaskDraft } from '@/types'
 
-const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  todo: { color: 'var(--text-muted)', icon: <ChevronRight size={12} />, label: 'Pending' },
-  in_progress: { color: 'var(--amber)', icon: <Loader2 size={12} />, label: 'Running' },
-  verify: { color: 'var(--status-purple)', icon: <Eye size={12} />, label: 'Verify' },
-  done: { color: 'var(--status-green)', icon: <CheckCircle size={12} />, label: 'Done' },
-  failed: { color: 'var(--warm-red)', icon: <XCircle size={12} />, label: 'Failed' },
+const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string; bg: string }> = {
+  todo: { color: 'var(--text-muted)', icon: <ChevronRight size={12} />, label: 'Pending', bg: 'var(--surface-2)' },
+  in_progress: { color: 'var(--amber)', icon: <Loader2 size={12} />, label: 'Running', bg: 'rgba(245,158,11,0.08)' },
+  verify: { color: 'var(--status-purple)', icon: <Eye size={12} />, label: 'Verify', bg: 'rgba(123,104,192,0.08)' },
+  done: { color: 'var(--status-green)', icon: <CheckCircle size={12} />, label: 'Done', bg: 'rgba(92,184,92,0.08)' },
+  failed: { color: 'var(--warm-red)', icon: <XCircle size={12} />, label: 'Failed', bg: 'rgba(220,80,80,0.08)' },
+  skipped: { color: 'var(--text-faint)', icon: <SkipForward size={12} />, label: 'Skipped', bg: 'var(--surface-1)' },
 }
 
 interface WorkflowStep {
@@ -32,6 +33,9 @@ interface WorkflowStep {
     max: number
     steps: string[]
   }
+  checkpointAfter?: boolean
+  checkpointMessage?: string
+  skipped?: boolean
 }
 
 interface Props {
@@ -46,177 +50,220 @@ interface Props {
   sessionMessages?: Map<string, Array<{ type: string; content: string; timestamp?: number }>>
 }
 
+function condLabel(cond: WorkflowStep['condition']): string | null {
+  if (!cond) return null
+  if (cond.type === 'llm_judge') return 'LLM'
+  if (cond.equals === 'success') return '✓'
+  if (cond.equals === 'failure') return '✗'
+  return cond.equals || '?'
+}
+
 export function WorkflowProgressView({ steps, title, onViewChat, onEditDraft, onUpdateDraft, agents, isFullscreen: isFullscreenProp, actionButtons, sessionMessages }: Props) {
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [editingStep, setEditingStep] = React.useState<string | null>(null)
-  const wrapperRef = React.useRef<HTMLDivElement>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = React.useState(600)
   const fullscreen = isFullscreenProp !== undefined ? isFullscreenProp : isFullscreen
 
-  // Track container width
-  React.useEffect(() => {
-    if (!containerRef.current) return
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width)
-      }
-    })
-    observer.observe(containerRef.current)
-    return () => observer.disconnect()
-  }, [])
-  // Build adjacency for dependency edges
   const stepMap = new Map(steps.map(s => [s.id, s]))
 
-  // Calculate layout: group by dependency depth
+  const dependents = new Map<string, string[]>()
+  for (const step of steps) {
+    if (step.dependsOn) {
+      for (const depId of step.dependsOn) {
+        if (!dependents.has(depId)) dependents.set(depId, [])
+        dependents.get(depId)!.push(step.id)
+      }
+    }
+  }
+
   const depths = new Map<string, number>()
-  const getDepth = (id: string, visited = new Set<string>()): number => {
+  const getDepth = (id: string, seen = new Set<string>()): number => {
     if (depths.has(id)) return depths.get(id)!
-    if (visited.has(id)) return 0 // cycle protection
-    visited.add(id)
+    if (seen.has(id)) return 0
+    seen.add(id)
     const step = stepMap.get(id)
     if (!step?.dependsOn || step.dependsOn.length === 0) {
       depths.set(id, 0)
       return 0
     }
-    const maxDep = Math.max(...step.dependsOn.map(d => getDepth(d, visited)))
-    const depth = maxDep + 1
-    depths.set(id, depth)
-    return depth
+    const maxDep = Math.max(...step.dependsOn.map(d => getDepth(d, seen)))
+    depths.set(id, maxDep + 1)
+    return maxDep + 1
   }
   steps.forEach(s => getDepth(s.id))
 
-  // Group steps by depth level
-  const levels = new Map<number, WorkflowStep[]>()
-  for (const step of steps) {
-    const depth = depths.get(step.id) || 0
-    if (!levels.has(depth)) levels.set(depth, [])
-    levels.get(depth)!.push(step)
-  }
-
-  const maxLevel = Math.max(...levels.keys(), 0)
-  const nodeWidth = 130
-  const nodeHeight = 50
-  const levelGap = 50
-  const nodeGap = 10
-
-  // Calculate positions (vertical layout: levels go top-to-bottom)
-  const hasAnyPreview = steps.some(s => s.sessionId && sessionMessages?.has(s.sessionId) && (sessionMessages.get(s.sessionId) || []).length > 0)
-  const previewWidth = hasAnyPreview ? 116 : 0
-
-  const positions = new Map<string, { x: number; y: number }>()
-  const padding = 16
-  const svgHeight = (maxLevel + 1) * (nodeHeight + levelGap) + padding * 2
-
-  // Center nodes based on container width
-  const centerPositions = (width: number) => {
-    for (let level = 0; level <= maxLevel; level++) {
-      const levelSteps = levels.get(level) || []
-      const stepWidths = levelSteps.map(s => {
-        const hasP = s.sessionId && sessionMessages?.has(s.sessionId) && (sessionMessages.get(s.sessionId) || []).length > 0
-        return nodeWidth + (hasP ? previewWidth : 0)
-      })
-      const totalWidth = stepWidths.reduce((a, b) => a + b, 0) + Math.max(0, levelSteps.length - 1) * nodeGap
-      const startX = Math.max((width - totalWidth) / 2, padding)
-      let currentX = startX
-      levelSteps.forEach((step, i) => {
-        positions.set(step.id, { x: currentX, y: level * (nodeHeight + levelGap) + padding })
-        currentX += stepWidths[i]! + nodeGap
-      })
-    }
-  }
-
-  // Use container width (minus scrollbar/border) for centering
-  const usableWidth = Math.max(containerWidth - 10, 100)
-  centerPositions(usableWidth)
-
-  // Build edges
-  const edges: Array<{ from: string; to: string }> = []
-  for (const step of steps) {
-    if (step.dependsOn) {
-      for (const depId of step.dependsOn) {
-        if (stepMap.has(depId)) {
-          edges.push({ from: depId, to: step.id })
-        }
+  const branchGroupOf = new Map<string, number>()
+  let branchGroupCounter = 0
+  for (const [parentId, childIds] of dependents) {
+    const condChildren = childIds.filter(cid => stepMap.get(cid)?.condition)
+    if (condChildren.length >= 2) {
+      const groupIdx = branchGroupCounter++
+      for (const cid of condChildren) {
+        branchGroupOf.set(cid, groupIdx)
       }
     }
   }
 
-  // Auto-scroll to running node
-  const runningStep = steps.find(s => s.status === 'in_progress')
+  const branchOffset = new Map<string, number>()
+  const processedGroups = new Set<number>()
+  for (const [parentId, childIds] of dependents) {
+    const condChildren = childIds.filter(cid => stepMap.get(cid)?.condition)
+    if (condChildren.length >= 2) {
+      const groupIdx = branchGroupOf.get(condChildren[0])!
+      if (processedGroups.has(groupIdx)) continue
+      processedGroups.add(groupIdx)
+      const sorted = condChildren.sort((a, b) => steps.findIndex(s => s.id === a) - steps.findIndex(s => s.id === b))
+      for (let i = 0; i < sorted.length; i++) {
+        branchOffset.set(sorted[i], i === 0 ? -1 : i === 1 ? 1 : (i % 2 === 0 ? -i : i))
+      }
+    }
+  }
+
+  const nodeBranch = new Map<string, number>()
+
+  const getBranchSubtree = (id: string, visited = new Set<string>()): number[] => {
+    if (visited.has(id)) return []
+    visited.add(id)
+    const myOffset = branchOffset.get(id)
+    if (myOffset !== undefined) return [myOffset]
+    const step = stepMap.get(id)
+    if (!step?.dependsOn || step.dependsOn.length === 0) return [0]
+    const parentOffsets: number[] = []
+    for (const depId of step.dependsOn) {
+      parentOffsets.push(...getBranchSubtree(depId, visited))
+    }
+    return [...new Set(parentOffsets)]
+  }
+
+  const isMergeNode = new Set<string>()
+  for (const step of steps) {
+    if (step.dependsOn && step.dependsOn.length >= 2) {
+      const subtreeOffsets = getBranchSubtree(step.id)
+      if (new Set(subtreeOffsets).size >= 2) {
+        isMergeNode.add(step.id)
+      }
+    }
+  }
+
+  const propagateBranch = (id: string, offset: number, visited = new Set<string>()) => {
+    if (visited.has(id)) return
+    visited.add(id)
+    if (!nodeBranch.has(id)) {
+      nodeBranch.set(id, isMergeNode.has(id) ? 0 : offset)
+    }
+    const children = dependents.get(id) || []
+    const myOffset = nodeBranch.get(id) ?? offset
+    for (const childId of children) {
+      if (branchOffset.has(childId)) {
+        propagateBranch(childId, branchOffset.get(childId)!, visited)
+      } else if (!nodeBranch.has(childId)) {
+        propagateBranch(childId, myOffset, visited)
+      }
+    }
+  }
+  for (const step of steps) {
+    if (!step.dependsOn || step.dependsOn.length === 0) {
+      if (!nodeBranch.has(step.id)) nodeBranch.set(step.id, 0)
+      const children = dependents.get(step.id) || []
+      for (const childId of children) {
+        if (branchOffset.has(childId)) {
+          propagateBranch(childId, branchOffset.get(childId)!)
+        } else if (!nodeBranch.has(childId)) {
+          propagateBranch(childId, 0)
+        }
+      }
+    }
+  }
+  for (const [stepId, offset] of branchOffset) {
+    nodeBranch.set(stepId, offset)
+    const children = dependents.get(stepId) || []
+    for (const childId of children) {
+      if (branchOffset.has(childId)) {
+        propagateBranch(childId, branchOffset.get(childId)!)
+      } else if (!nodeBranch.has(childId)) {
+        propagateBranch(childId, offset)
+      }
+    }
+  }
+  for (const step of steps) {
+    if (!nodeBranch.has(step.id)) nodeBranch.set(step.id, 0)
+  }
+
+  // Determine indent level for each step
+  // Branch nodes get indent=1, their downstream inherits indent until merge
+  const nodeIndent = new Map<string, number>()
+  const propagateIndent = (id: string, indent: number, visited = new Set<string>()) => {
+    if (visited.has(id)) return
+    visited.add(id)
+    if (!nodeIndent.has(id)) {
+      nodeIndent.set(id, isMergeNode.has(id) ? 0 : indent)
+    }
+    const children = dependents.get(id) || []
+    const myIndent = nodeIndent.get(id) ?? indent
+    for (const childId of children) {
+      if (branchOffset.has(childId)) {
+        propagateIndent(childId, 1, visited)
+      } else if (!nodeIndent.has(childId)) {
+        propagateIndent(childId, myIndent, visited)
+      }
+    }
+  }
+  for (const step of steps) {
+    if (!step.dependsOn || step.dependsOn.length === 0) {
+      if (!nodeIndent.has(step.id)) nodeIndent.set(step.id, 0)
+      const children = dependents.get(step.id) || []
+      for (const childId of children) {
+        if (branchOffset.has(childId)) {
+          propagateIndent(childId, 1)
+        } else if (!nodeIndent.has(childId)) {
+          propagateIndent(childId, 0)
+        }
+      }
+    }
+  }
+  for (const [stepId] of branchOffset) {
+    nodeIndent.set(stepId, 1)
+    const children = dependents.get(stepId) || []
+    for (const childId of children) {
+      if (branchOffset.has(childId)) {
+        propagateIndent(childId, 1)
+      } else if (!nodeIndent.has(childId)) {
+        propagateIndent(childId, 1)
+      }
+    }
+  }
+  for (const step of steps) {
+    if (!nodeIndent.has(step.id)) nodeIndent.set(step.id, 0)
+  }
+
+  // Sort steps for display: depth-first, then by branch offset, then original order
+  const displayOrder = [...steps].sort((a, b) => {
+    const da = depths.get(a.id) || 0
+    const db = depths.get(b.id) || 0
+    if (da !== db) return da - db
+    const oa = nodeBranch.get(a.id) || 0
+    const ob = nodeBranch.get(b.id) || 0
+    if (oa !== ob) return oa - ob
+    return steps.indexOf(a) - steps.indexOf(b)
+  })
+
+  // Auto-scroll to active step
+  const activeStep = steps.find(s => s.status === 'in_progress' || s.status === 'verify') ||
+    steps.find(s => s.status === 'todo' && steps.every(o => o.id === s.id || ['done', 'failed', 'in_progress'].includes(o.status)))
+
   React.useEffect(() => {
-    if (!runningStep || !containerRef.current) return
-    const pos = positions.get(runningStep.id)
-    if (!pos) return
-    const container = containerRef.current
-    const targetY = pos.y + nodeHeight / 2 - container.clientHeight / 2
-    const targetX = pos.x + nodeWidth / 2 - container.clientWidth / 2
-    container.scrollTo({ top: Math.max(0, targetY), left: Math.max(0, targetX), behavior: 'smooth' })
-  }, [runningStep?.id])
+    if (!activeStep || !containerRef.current) return
+    const el = containerRef.current.querySelector(`[data-step-id="${activeStep.id}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [activeStep?.id ?? '', activeStep?.status ?? ''])
 
   // Edit panel for draft nodes
   const editingDraftData = editingStep ? steps.find(s => s.id === editingStep)?.draft : null
-  const editPanel = editingDraftData ? (
-    <div style={{
-      position: 'absolute', top: 10, right: 10, width: '100%', maxWidth: 240,
-      backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-medium)',
-      padding: 10, zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-        Edit: {editingDraftData.title}
-      </div>
-      {/* Agent selector */}
-      {agents && agents.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>Agent</label>
-          <select
-            value={editingDraftData.agent || ''}
-            onChange={(e) => onUpdateDraft?.(editingDraftData.tempId, { agent: e.target.value || undefined })}
-            style={{ width: '100%', height: 24, fontSize: 11, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-primary)', padding: '0 4px' }}
-          >
-            <option value="">Auto</option>
-            {agents.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-          </select>
-        </div>
-      )}
-      {/* Priority selector */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 3, fontFamily: 'IBM Plex Mono, monospace' }}>Priority</label>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['low', 'medium', 'high'] as const).map(p => (
-            <button
-              key={p}
-              onClick={() => onUpdateDraft?.(editingDraftData.tempId, { priority: p })}
-              style={{
-                flex: 1, height: 22, fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
-                backgroundColor: editingDraftData.priority === p ? 'var(--surface-2)' : 'transparent',
-                border: `1px solid ${editingDraftData.priority === p ? 'var(--amber)' : 'var(--border-subtle)'}`,
-                color: editingDraftData.priority === p ? 'var(--amber)' : 'var(--text-muted)',
-                cursor: 'pointer', borderRadius: 0,
-              }}
-            >
-              {p.charAt(0).toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Close button */}
-      <button
-        onClick={() => setEditingStep(null)}
-        style={{
-          width: '100%', height: 22, fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
-          backgroundColor: 'transparent', border: '1px solid var(--border-subtle)',
-          color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 0,
-        }}
-      >
-        Close
-      </button>
-    </div>
-  ) : null
 
-  const dagContent = (
+  const timelineContent = (
     <>
-      {/* Header: action buttons (fullscreen) + fullscreen toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         {fullscreen && actionButtons ? (
           <div style={{ display: 'flex', gap: 6 }}>{actionButtons}</div>
@@ -235,306 +282,333 @@ export function WorkflowProgressView({ steps, title, onViewChat, onEditDraft, on
         </button>
       </div>
 
-      {/* DAG visualization */}
       <div ref={containerRef} style={{
-        position: 'relative',
-        overflowX: 'auto',
+        flex: 1,
+        minHeight: 0,
         overflowY: 'auto',
+        overflowX: 'hidden',
         backgroundColor: 'var(--surface-0)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 2,
-        padding: 4,
-        flex: 1,
-        minHeight: 0,
+        padding: '8px 6px',
       }}>
-        <svg width="100%" height={svgHeight} style={{ display: 'block' }}>
-          {/* Edges with dependency labels */}
-          {edges.map((edge, i) => {
-            const fromPos = positions.get(edge.from)
-            const toPos = positions.get(edge.to)
-            if (!fromPos || !toPos) return null
-            const fromCfg = statusConfig[stepMap.get(edge.from)?.status || 'todo']
-            const edgeColor = fromCfg?.color === 'var(--status-green)' ? '#5cb85c44' : 'var(--border-medium)'
+        {displayOrder.map((step, idx) => {
+          const cfg = statusConfig[step.status || 'todo']
+          const indent = nodeIndent.get(step.id) || 0
+          const isSkipped = step.status === 'skipped'
+          const isLast = idx === displayOrder.length - 1
+          const hasCondition = !!step.condition
+          const hasLoop = !!step.loop
+          const cLabel = condLabel(step.condition)
+          const isActive = step.status === 'in_progress' || step.status === 'verify'
 
-            // Vertical layout: edges go from bottom of source to top of target
-            const x1 = fromPos.x + nodeWidth / 2
-            const y1 = fromPos.y + nodeHeight
-            const x2 = toPos.x + nodeWidth / 2
-            const y2 = toPos.y
-            const cy = (y1 + y2) / 2
+          const parentStep = step.dependsOn?.[0] ? stepMap.get(step.dependsOn[0]) : null
+          const parentHasCheckpoint = !!parentStep?.checkpointAfter
 
-            // Check if target has a condition
-            const targetStep = stepMap.get(edge.to)
-            const hasCondition = !!targetStep?.condition
+          const msgs = step.sessionId && sessionMessages?.has(step.sessionId)
+            ? sessionMessages.get(step.sessionId) || []
+            : []
+          const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null
+          const msgCount = msgs.length
 
-            return (
-              <g key={i}>
-                <path
-                  d={`M ${x1} ${y1} C ${x1} ${cy}, ${x2} ${cy}, ${x2} ${y2}`}
-                  stroke={edgeColor}
-                  strokeWidth={1.5}
-                  fill="none"
-                  strokeDasharray={fromCfg?.color === 'var(--status-green)' ? 'none' : '4 4'}
-                />
-                {/* Condition indicator on edge */}
-                {hasCondition && (() => {
-                  const cond = targetStep!.condition!
-                  const label = cond.type === 'llm_judge'
-                    ? 'LLM'
-                    : cond.equals === 'success' ? '✓'
-                    : cond.equals === 'failure' ? '✗'
-                    : cond.equals || '?'
-                  const labelWidth = label.length * 5 + 8
-                  const midX = (x1 + x2) / 2
-                  const midY = (y1 + y2) / 2
-                  return (
-                    <g>
-                      <rect x={midX - labelWidth / 2} y={midY - 8} width={labelWidth} height={16} rx={3} fill="var(--surface-1)" stroke="var(--amber)" strokeWidth={1} />
-                      <text x={midX} y={midY + 4} fill="var(--amber)" fontSize={8} textAnchor="middle" fontFamily="IBM Plex Mono, monospace">{label}</text>
-                    </g>
-                  )
-                })()}
-              </g>
-            )
-          })}
+          return (
+            <div key={step.id} data-step-id={step.id} style={{
+              marginLeft: indent * 20,
+              opacity: isSkipped ? 0.45 : 1,
+              position: 'relative',
+            }}>
+              <div style={{
+                position: 'absolute',
+                left: 8 - indent * 20,
+                top: 0,
+                bottom: isLast ? 16 : 0,
+                width: 1,
+                backgroundColor: isSkipped ? 'var(--border-subtle)' : 'var(--border-medium)',
+              }} />
 
-          {/* Nodes */}
-          {steps.map((step) => {
-            const pos = positions.get(step.id)
-            if (!pos) return null
-            const cfg = statusConfig[step.status || 'todo']
-            const hasCondition = !!step.condition
-            const hasLoop = !!step.loop
+              {parentHasCheckpoint && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginLeft: 2,
+                  marginBottom: 3,
+                  marginTop: idx > 0 ? 0 : 2,
+                }}>
+                  <div style={{
+                    width: 14, height: 14, borderRadius: 2,
+                    backgroundColor: 'var(--surface-1)',
+                    border: '1px solid var(--status-green)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, color: 'var(--status-green)',
+                    flexShrink: 0,
+                  }}>
+                    ⏸
+                  </div>
+                  <span style={{ fontSize: 9, color: 'var(--status-green)', fontFamily: 'IBM Plex Mono, monospace', fontWeight: 500 }}>
+                    checkpoint
+                  </span>
+                </div>
+              )}
 
-            return (
-              <g key={step.id}>
-                {/* Node background */}
-                <rect
-                  x={pos.x}
-                  y={pos.y}
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={2}
-                  fill="var(--surface-1)"
-                  stroke={step.status === 'in_progress' ? 'var(--amber)' : hasCondition ? 'var(--amber)' : cfg.color}
-                  strokeWidth={step.status === 'in_progress' ? 2 : 1}
-                  strokeOpacity={step.status === 'in_progress' ? 1 : 0.5}
-                  strokeDasharray={hasCondition ? '4 2' : 'none'}
-                />
-                {/* Status indicator */}
-                <circle
-                  cx={pos.x + 14}
-                  cy={pos.y + 14}
-                  r={4}
-                  fill={cfg.color}
-                />
-                {/* Title - truncate more if condition/loop indicators present */}
-                <text
-                  x={pos.x + 24}
-                  y={pos.y + 17}
-                  fill="var(--text-primary)"
-                  fontSize={10}
-                  fontWeight={500}
-                  fontFamily="IBM Plex Mono, monospace"
-                >
-                  {(() => {
-                    const maxLen = (hasCondition && hasLoop) ? 6 : (hasCondition || hasLoop) ? 10 : 14
-                    return step.title.length > maxLen ? step.title.slice(0, maxLen) + '...' : step.title
-                  })()}
-                </text>
-                {/* Status label */}
-                <text
-                  x={pos.x + 14}
-                  y={pos.y + 34}
-                  fill={cfg.color}
-                  fontSize={8}
-                  fontFamily="IBM Plex Mono, monospace"
-                >
-                  {cfg.label}
-                </text>
-                {/* Condition indicator - top right */}
-                {hasCondition && (() => {
-                  const cond = step.condition!
-                  const label = cond.type === 'llm_judge' ? 'LLM' : 'IF'
-                  const xOff = hasLoop ? 30 : 4
-                  return (
-                    <g>
-                      <rect x={pos.x + nodeWidth - xOff - 22} y={pos.y + 2} width={22} height={12} rx={2} fill="rgba(245,158,11,0.15)" />
-                      <text x={pos.x + nodeWidth - xOff - 11} y={pos.y + 11} fill="var(--amber)" fontSize={7} textAnchor="middle" fontFamily="IBM Plex Mono, monospace">{label}</text>
-                    </g>
-                  )
-                })()}
-                {/* Loop indicator - top right, left of condition */}
-                {hasLoop && (
-                  <g>
-                    <rect x={pos.x + nodeWidth - 4 - 22} y={pos.y + 2} width={22} height={12} rx={2} fill="rgba(139,120,208,0.15)" />
-                    <text x={pos.x + nodeWidth - 4 - 11} y={pos.y + 11} fill="var(--status-purple)" fontSize={7} textAnchor="middle" fontFamily="IBM Plex Mono, monospace">
-                      ×{step.loop?.max}
-                    </text>
-                  </g>
-                )}
-                {/* Assignee */}
-                {step.assignee && (
-                  <text
-                    x={pos.x + nodeWidth - 8}
-                    y={pos.y + nodeHeight - 4}
-                    fill="var(--text-faint)"
-                    fontSize={7}
-                    textAnchor="end"
-                    fontFamily="IBM Plex Mono, monospace"
-                  >
-                    {step.assignee}
-                  </text>
-                )}
-                {/* Draft edit button (pencil) or View in Chat button */}
-                {step.isDraft && step.draft ? (
-                  <g
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); setEditingStep(editingStep === step.id ? null : step.id) }}
-                  >
-                    <rect
-                      x={pos.x + nodeWidth - 22}
-                      y={pos.y + nodeHeight / 2 - 7}
-                      width={18}
-                      height={14}
-                      rx={2}
-                      fill="rgba(245,158,11,0.12)"
-                    />
-                    <text
-                      x={pos.x + nodeWidth - 13}
-                      y={pos.y + nodeHeight / 2 + 4}
-                      fill="var(--amber)"
-                      fontSize={9}
-                      textAnchor="middle"
-                      fontFamily="IBM Plex Mono, monospace"
-                    >
-                      ✏️
-                    </text>
-                  </g>
-                ) : step.sessionId && onViewChat ? (
-                  <g
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); onViewChat(step.sessionId!) }}
-                  >
-                    <rect
-                      x={pos.x + nodeWidth - 22}
-                      y={pos.y + nodeHeight / 2 - 7}
-                      width={18}
-                      height={14}
-                      rx={2}
-                      fill="rgba(0,134,205,0.12)"
-                    />
-                    <text
-                      x={pos.x + nodeWidth - 13}
-                      y={pos.y + nodeHeight / 2 + 4}
-                      fill="var(--amber)"
-                      fontSize={8}
-                      textAnchor="middle"
-                      fontFamily="IBM Plex Mono, monospace"
-                    >
-                      💬
-                    </text>
-                  </g>
-                ) : null}
-                {/* Message preview — shows latest messages from session */}
-                {step.sessionId && sessionMessages?.has(step.sessionId) && (() => {
-                  const msgs = sessionMessages.get(step.sessionId) || []
-                  if (msgs.length === 0) return null
-                  const lastMsg = msgs[msgs.length - 1]
-                  if (!lastMsg) return null
-                  const previewX = pos.x + nodeWidth + 6
-                  const previewY = pos.y
-                  const previewWidth = 110
-                  const previewHeight = nodeHeight
-                  const maxCharsPerLine = 20 // approx chars that fit in 110px at 7px font
-                  const content = lastMsg.content.replace(/\n/g, ' ').trim()
-                  const lines: string[] = []
-                  for (let i = 0; i < content.length && lines.length < 3; i += maxCharsPerLine) {
-                    lines.push(content.slice(i, i + maxCharsPerLine))
-                  }
-                  if (content.length > maxCharsPerLine * 3) {
-                    lines[2] = lines[2]?.slice(0, -3) + '...'
-                  }
-                  const icon = lastMsg.type === 'assistant' ? '🤖' : lastMsg.type === 'tool_result' ? '🔧' : '👤'
-                  return (
-                    <g>
-                      <rect
-                        x={previewX}
-                        y={previewY}
-                        width={previewWidth}
-                        height={previewHeight}
-                        rx={2}
-                        fill="var(--surface-2)"
-                        stroke="var(--border-subtle)"
-                        strokeWidth={0.5}
-                      />
-                      {/* Header: icon + message count */}
-                      <text
-                        x={previewX + 4}
-                        y={previewY + 11}
-                        fill="var(--text-secondary)"
-                        fontSize={7}
-                        fontFamily="IBM Plex Mono, monospace"
-                      >
-                        {icon} {msgs.length} msg{msgs.length > 1 ? 's' : ''}
-                      </text>
-                      {/* Content lines */}
-                      {lines.map((line, li) => (
-                        <text
-                          key={li}
-                          x={previewX + 4}
-                          y={previewY + 21 + li * 9}
-                          fill="var(--text-muted)"
-                          fontSize={7}
-                          fontFamily="IBM Plex Mono, monospace"
+              <div style={{
+                display: 'flex',
+                alignItems: 'stretch',
+                gap: 8,
+                padding: '6px 0',
+                position: 'relative',
+              }}>
+                <div style={{
+                  width: 16, height: 16, borderRadius: '50%',
+                  backgroundColor: isSkipped ? 'var(--surface-2)' : cfg.bg,
+                  border: `2px solid ${cfg.color}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: 3,
+                  animation: step.status === 'in_progress' ? 'pulse 2s infinite' : undefined,
+                }}>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: cfg.color }} />
+                </div>
+
+                <div style={{
+                  flex: 1,
+                  minWidth: 0,
+                  backgroundColor: isActive ? cfg.bg : 'var(--surface-1)',
+                  border: `1px solid ${isActive ? cfg.color : 'var(--border-subtle)'}`,
+                  borderRadius: 3,
+                  padding: '6px 8px',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
+                      {hasCondition && cLabel && (
+                        <span style={{
+                          fontSize: 9, fontFamily: 'IBM Plex Mono, monospace',
+                          padding: '1px 5px', height: 16, lineHeight: '14px',
+                          backgroundColor: 'rgba(245,158,11,0.15)',
+                          color: 'var(--amber)',
+                          border: '1px solid rgba(245,158,11,0.4)',
+                          borderRadius: 2,
+                          flexShrink: 0,
+                          fontWeight: 600,
+                        }}>
+                          {cLabel}
+                        </span>
+                      )}
+                      {hasLoop && (
+                        <span style={{
+                          fontSize: 9, fontFamily: 'IBM Plex Mono, monospace',
+                          padding: '1px 5px', height: 16, lineHeight: '14px',
+                          backgroundColor: 'rgba(139,120,208,0.15)',
+                          color: 'var(--status-purple)',
+                          border: '1px solid rgba(139,120,208,0.4)',
+                          borderRadius: 2,
+                          flexShrink: 0,
+                          fontWeight: 600,
+                        }}>
+                          ×{step.loop?.max}
+                        </span>
+                      )}
+                      <span style={{
+                        fontSize: 13, fontWeight: 600, color: isSkipped ? 'var(--text-faint)' : 'var(--text-primary)',
+                        fontFamily: 'IBM Plex Sans, sans-serif',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        lineHeight: 1.2,
+                      }}>
+                        {step.title}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: 9, color: cfg.color,
+                        fontFamily: 'IBM Plex Mono, monospace',
+                        display: 'flex', alignItems: 'center', gap: 3,
+                        fontWeight: 500,
+                      }}>
+                        {cfg.icon}
+                        {cfg.label}
+                      </span>
+                      {step.assignee && (
+                        <span style={{
+                          fontSize: 9, color: 'var(--text-faint)',
+                          fontFamily: 'IBM Plex Mono, monospace',
+                          backgroundColor: 'var(--surface-2)',
+                          padding: '0 4px',
+                          borderRadius: 2,
+                          height: 16,
+                          lineHeight: '16px',
+                        }}>
+                          @{step.assignee}
+                        </span>
+                      )}
+                      {step.isDraft && step.draft && (
+                        <button
+                          onClick={() => setEditingStep(editingStep === step.id ? null : step.id)}
+                          style={{
+                            fontSize: 9, color: 'var(--amber)',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            background: 'none', border: '1px solid rgba(245,158,11,0.4)',
+                            borderRadius: 2, padding: '0 5px', cursor: 'pointer',
+                            height: 16, lineHeight: '14px',
+                          }}
                         >
-                          {line}
-                        </text>
-                      ))}
-                    </g>
-                  )
-                })()}
-              </g>
-            )
-          })}
-        </svg>
-        {/* Edit panel overlay */}
-        {editPanel}
+                          ✏
+                        </button>
+                      )}
+                      {step.sessionId && onViewChat && !step.isDraft && (
+                        <button
+                          onClick={() => onViewChat(step.sessionId!)}
+                          style={{
+                            fontSize: 9, color: 'var(--status-blue)',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            background: 'none', border: '1px solid rgba(59,130,246,0.4)',
+                            borderRadius: 2, padding: '0 5px', cursor: 'pointer',
+                            height: 16, lineHeight: '14px',
+                            display: 'flex', alignItems: 'center', gap: 2,
+                          }}
+                        >
+                          <MessageCircle size={9} />
+                          {msgCount > 0 ? msgCount : ''}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {lastMsg && (
+                    <div style={{
+                      marginTop: 4,
+                      padding: '4px 8px',
+                      backgroundColor: 'var(--surface-2)',
+                      borderLeft: `2px solid ${lastMsg.type === 'assistant' ? 'var(--status-green)' : lastMsg.type === 'tool_result' ? 'var(--amber)' : 'var(--status-blue)'}`,
+                      fontSize: 9,
+                      color: 'var(--text-muted)',
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      lineHeight: 1.4,
+                      maxHeight: 42,
+                      overflow: 'hidden',
+                      wordBreak: 'break-all',
+                    }}>
+                      <span style={{ color: 'var(--text-faint)' }}>
+                        {lastMsg.type === 'assistant' ? '🤖' : lastMsg.type === 'tool_result' ? '🔧' : '👤'}
+                      </span>
+                      {' '}
+                      {lastMsg.content.replace(/\n/g, ' ').trim().slice(0, 150)}
+                      {lastMsg.content.length > 150 && '...'}
+                    </div>
+                  )}
+
+                  {editingStep === step.id && editingDraftData && step.draft && (
+                    <div style={{
+                      marginTop: 6,
+                      padding: 8,
+                      backgroundColor: 'var(--surface-0)',
+                      border: '1px solid var(--border-medium)',
+                    }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6, fontFamily: 'IBM Plex Mono, monospace' }}>
+                        Edit: {editingDraftData.title}
+                      </div>
+                      {agents && agents.length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Agent</label>
+                          <select
+                            value={editingDraftData.agent || ''}
+                            onChange={(e) => onUpdateDraft?.(editingDraftData.tempId, { agent: e.target.value || undefined })}
+                            style={{ width: '100%', height: 24, fontSize: 10, backgroundColor: 'var(--surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 0, color: 'var(--text-primary)', padding: '0 4px' }}
+                          >
+                            <option value="">Auto</option>
+                            {agents.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{ marginBottom: 6 }}>
+                        <label style={{ fontSize: 9, color: 'var(--text-faint)', display: 'block', marginBottom: 2, fontFamily: 'IBM Plex Mono, monospace' }}>Priority</label>
+                        <div style={{ display: 'flex', gap: 3 }}>
+                          {(['low', 'medium', 'high'] as const).map(p => (
+                            <button
+                              key={p}
+                              onClick={() => onUpdateDraft?.(editingDraftData.tempId, { priority: p })}
+                              style={{
+                                flex: 1, height: 22, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace',
+                                backgroundColor: editingDraftData.priority === p ? 'var(--surface-2)' : 'transparent',
+                                border: `1px solid ${editingDraftData.priority === p ? 'var(--amber)' : 'var(--border-subtle)'}`,
+                                color: editingDraftData.priority === p ? 'var(--amber)' : 'var(--text-muted)',
+                                cursor: 'pointer', borderRadius: 0,
+                              }}
+                            >
+                              {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setEditingStep(null)}
+                        style={{
+                          width: '100%', height: 22, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace',
+                          backgroundColor: 'transparent', border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 0,
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Legend */}
       <div style={{
         display: 'flex',
-        gap: 12,
-        marginTop: 8,
-        fontSize: 9,
+        gap: 10,
+        marginTop: 6,
+        fontSize: 8,
         color: 'var(--text-muted)',
         fontFamily: 'IBM Plex Mono, monospace',
+        flexWrap: 'wrap',
       }}>
         {Object.entries(statusConfig).map(([key, cfg]) => (
-          <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <span style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: cfg.color,
-              display: 'inline-block',
+              width: 5, height: 5, borderRadius: '50%',
+              backgroundColor: cfg.color, display: 'inline-block',
             }} />
             {cfg.label}
           </span>
         ))}
+        {steps.some(s => s.checkpointAfter) && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: 9 }}>⏸</span>
+            Checkpoint
+          </span>
+        )}
       </div>
 
       {/* Action buttons (non-fullscreen) */}
       {!fullscreen && actionButtons && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           {actionButtons}
         </div>
       )}
+
+      {/* Pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
     </>
   )
 
-  // Fullscreen mode — covers the parent main content area
   if (isFullscreen) {
     return (
       <div style={{
@@ -544,14 +618,14 @@ export function WorkflowProgressView({ steps, title, onViewChat, onEditDraft, on
         padding: 10, overflow: 'hidden',
         fontFamily: 'IBM Plex Sans, sans-serif',
       }}>
-        {dagContent}
+        {timelineContent}
       </div>
     )
   }
 
   return (
-    <div ref={wrapperRef} style={{ padding: 8, fontFamily: 'IBM Plex Sans, sans-serif', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {dagContent}
+    <div style={{ padding: 8, fontFamily: 'IBM Plex Sans, sans-serif', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {timelineContent}
     </div>
   )
 }

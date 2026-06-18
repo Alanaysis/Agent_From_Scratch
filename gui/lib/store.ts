@@ -572,6 +572,10 @@ export const useAppStore = create<AppStoreState & Actions>()(
               relatedDocumentIds: t.relatedDocumentIds,
               createdAt: new Date(t.createdAt).getTime(),
               updatedAt: new Date(t.updatedAt).getTime(),
+              skipped: t.skipped,
+              condition: t.condition,
+              loop: t.loop,
+              checkpointAwaiting: t.checkpointAwaiting,
             }))
             // Sort by updatedAt descending (newest first)
             tasks.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))

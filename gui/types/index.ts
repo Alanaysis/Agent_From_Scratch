@@ -47,7 +47,7 @@ export interface Task {
   id: string
   title: string
   description?: string
-  status: 'todo' | 'in_progress' | 'verify' | 'done' | 'failed'
+  status: 'todo' | 'in_progress' | 'verify' | 'done' | 'failed' | 'skipped'
   priority: 'low' | 'medium' | 'high'
   assignee?: string
   dependsOn?: string[]
@@ -63,6 +63,18 @@ export interface Task {
   approvalMessage?: string
   checkpointAfter?: boolean
   checkpointMessage?: string
+  skipped?: boolean
+  condition?: {
+    type: 'step_result' | 'llm_judge'
+    source?: string
+    field?: string
+    equals?: string
+  }
+  loop?: {
+    max: number
+    steps: string[]
+  }
+  checkpointAwaiting?: boolean
 }
 
 export interface TaskActivity {

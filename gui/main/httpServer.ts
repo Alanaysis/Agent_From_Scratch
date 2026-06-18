@@ -7,7 +7,7 @@ import { log } from "./logger";
 // Import the same storage functions used by IPC handlers
 import { listSessions, readSessionInfo, createSession, deleteSessionInfo, touchSession, closeSession, updateSessionInfo } from "../../storage/sessionIndex";
 import { readTranscriptMessages, deleteTranscript, getTranscriptPath } from "../../storage/transcript";
-import { listTasks, readTaskInfo, createTask, updateTaskInfo, deleteTaskInfo, getUnblockedTasks, addTaskComment } from "../../storage/taskIndex";
+import { listTasks, readTaskInfo, createTask, updateTaskInfo, deleteTaskInfo, getUnblockedTasks, addTaskComment, evaluateCondition } from "../../storage/taskIndex";
 import { listProposals, readProposal, createProposal, updateProposal, deleteProposal, approveProposal } from "../../storage/proposalIndex";
 import { listDocuments, readDocument, createDocument, updateDocument, deleteDocument } from "../../storage/documentIndex";
 import { listWorkflows, readWorkflow, deleteWorkflow, saveWorkflow, parseWorkflowYaml, importWorkflowAsProposal, proposalToWorkflowYaml } from "../../storage/workflowIndex";
@@ -204,7 +204,11 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   }
 
   const pendingReq = pendingApprovalTasks.get(taskId);
-  pendingApprovalTasks.delete(taskId);
+  
+  // Don't delete for later action - we want to re-prompt
+  if (action !== 'later') {
+    pendingApprovalTasks.delete(taskId);
+  }
 
   // Handle task failure decisions
   if (pendingReq?.requestType === 'task_failure') {
@@ -221,18 +225,18 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
       return { ok: true, action: "retry" };
     }
 
-    if (action === 'continue') {
+    if (action === 'continue' || action === 'execute') {
       // Continue: keep as failed, but trigger downstream tasks
       log("INFO", "AutoExec", `Continuing after failed task ${taskId}`);
       await assignDependentTasks(taskId);
       eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
-      return { ok: true, action: "continue" };
+      return { ok: true, action: action };
     }
 
-    // stop: keep as failed, don't continue (user will intervene manually)
+    // stop/abort: keep as failed, don't continue (user will intervene manually)
     log("INFO", "AutoExec", `Stopped after failed task ${taskId}`);
     eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
-    return { ok: true, action: "stop" };
+    return { ok: true, action: action };
   }
 
   // Handle normal approval actions
@@ -244,6 +248,9 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
 
   if (action === 'later') {
     eventBus.emit("approval:resolved", { taskId, action });
+    // Do not delete from pendingApprovalTasks or set checkpointAwaiting to false!
+    // We keep it so that the next poll will re-trigger the approval prompt
+    pendingApprovalTasks.set(taskId, pendingReq!);
     return { ok: true, action: "later" };
   }
 
@@ -255,6 +262,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   if (task?.status === 'done' && task?.checkpointAfter) {
     // This is a checkpoint confirmation — trigger downstream tasks
     log("INFO", "AutoExec", `Checkpoint confirmed for task ${taskId}, triggering downstream tasks`);
+    await updateTaskInfo(cwd(), taskId, { checkpointAwaiting: false });
     await assignDependentTasks(taskId);
     return { ok: true, action: "execute" };
   }
@@ -1190,8 +1198,15 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
     send("status", { status: "in_progress" });
 
     const title = task.title || taskId;
-    let prompt = `Task: ${title}\n\n`;
-    if (task.description) prompt += `Description: ${task.description}\n\n`;
+    let prompt = `## Task: ${title}\n\n`;
+    if (task.description) prompt += `${task.description}\n\n`;
+    prompt += `## Instructions\n`;
+    prompt += `- Focus ONLY on completing this specific task. Do NOT start other unrelated work.\n`;
+    prompt += `- Do NOT modify files unless the task explicitly requires it.\n`;
+    prompt += `- If the task is simple (e.g. say hello, acknowledge, confirm), just respond directly. Do NOT use tools unnecessarily.\n`;
+    prompt += `- Do NOT launch sub-agents unless the task is genuinely complex and requires delegation.\n`;
+    prompt += `- Keep your response concise and to the point.\n`;
+    prompt += `- When done, clearly state what you accomplished.\n\n`;
 
     // Include structured gRPC config if available
     if (task.grpcConfig) {
@@ -1208,7 +1223,7 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
       prompt += `\nAfter the GrpcClient call completes, report the response. If it fails, use the Checkpoint tool to ask the user.\n`;
     }
 
-    prompt += `\nPlease complete this task. Work in the current directory.`;
+    prompt += `Work in the current directory.`;
 
     const appState = createInitialAppState();
     const abortController = new AbortController();
@@ -1227,7 +1242,7 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
           setAppState: (updater) => { Object.assign(appState, updater(appState)); },
         },
         canUseTool,
-        maxTurns: 16,
+        maxTurns: 8,
         onProgress: (text) => send("progress", { text }),
         onMessage: async (msg) => {
           allMessages.push(msg);
@@ -1284,38 +1299,65 @@ type ApprovalRequestEvent = {
   approvalMessage?: string
   stepIndex: number
   stepTotal: number
+  requestType?: 'task_failure' | 'checkpoint'
+  errorMessage?: string
 }
 
 function isTaskBlocked(task: any, allTasks: any[]): boolean {
   if (!task.dependsOn || task.dependsOn.length === 0) return false;
   const taskMap = new Map(allTasks.map(t => [t.id, t]));
+  
+  let anyDepComplete = false;
+  let hasBlockingDep = false;
+
   for (const depId of task.dependsOn) {
     const dep = taskMap.get(depId);
     if (!dep) continue; // missing dep = not blocked (graceful)
-    if (dep.status !== "done" && dep.status !== "failed") return true;
+    
+    // Check if dep is complete
+    if (dep.status === "done" || dep.status === "failed" || dep.skipped) {
+      anyDepComplete = true;
+    }
+    
+    // Check if dep is blocking
+    if (dep.checkpointAwaiting || 
+        !(dep.status === "done" || dep.status === "failed" || dep.skipped)) {
+      hasBlockingDep = true;
+    }
   }
+
+  if (hasBlockingDep) return true;
+  if (!anyDepComplete) return true;
   return false;
 }
 
 async function pollAndExecuteTasks() {
   try {
-    const tasks = await listTasks(cwd());
-    const unblockedTasks = tasks.filter(t =>
-      t.status === "todo" &&
-      t.assignee &&
-      !executingTasks.has(t.id) &&
-      !isTaskBlocked(t, tasks)
-    );
+    // Re-emit pending checkpoint approvals (for "later" action)
+    for (const [taskId, req] of pendingApprovalTasks.entries()) {
+      const task = await readTaskInfo(cwd(), taskId);
+      if (task?.checkpointAwaiting) {
+        log("INFO", "AutoExec", `Re-emitting checkpoint approval for: ${task.title}`);
+        eventBus.emit("approval:required", req);
+      }
+    }
 
-    if (unblockedTasks.length === 0) return;
+    // Use the updated getUnblockedTasks function that already handles conditions and checkpoints
+    const unblockedTasks = await getUnblockedTasks(cwd());
+    
+    // Filter out tasks that are already executing
+    const availableTasks = unblockedTasks.filter(t => !executingTasks.has(t.id));
+
+    if (availableTasks.length === 0) return;
 
     // Separate requiresApproval tasks from auto-executable tasks
-    const approvalTasks = unblockedTasks.filter(t => t.requiresApproval && !pendingApprovalTasks.has(t.id));
-    const autoTasks = unblockedTasks.filter(t => !t.requiresApproval);
+    const approvalTasks = availableTasks.filter(t => t.requiresApproval && !pendingApprovalTasks.has(t.id));
+    const autoTasks = availableTasks.filter(t => !t.requiresApproval);
 
     // Store approval requests for tasks that need user confirmation
+    const allTasks = await listTasks(cwd());
     for (const task of approvalTasks) {
-      const proposalTasks = tasks.filter(t => t.dependsOn || tasks.some(tt => tt.dependsOn?.includes(t.id)));
+      const proposalTasks = allTasks.filter(t => t.dependsOn || allTasks.some(tt => tt.dependsOn?.includes(t.id)));
       const stepIndex = proposalTasks.findIndex(t => t.id === task.id) + 1;
       const stepTotal = proposalTasks.length;
 
@@ -1361,16 +1403,42 @@ async function assignDependentTasks(completedTaskId: string) {
   const dependents = tasks.filter(t =>
     t.dependsOn?.includes(completedTaskId) &&
     t.status === "todo" &&
-    !executingTasks.has(t.id)
+    !executingTasks.has(t.id) &&
+    !t.skipped
   );
 
   for (const dep of dependents) {
-    // Check if ALL dependencies are now met
-    const allDepsMet = dep.dependsOn!.every(depId => {
+    // Check if ANY dependency is complete and NO dependencies are blocking
+    let anyDepComplete = false;
+    let hasBlockingDep = false;
+
+    for (const depId of dep.dependsOn!) {
       const d = tasks.find(t => t.id === depId);
-      return d && (d.status === "done" || d.status === "failed");
-    });
-    if (!allDepsMet) continue;
+      if (!d) continue;
+      
+      if (d.status === "done" || d.status === "failed" || d.skipped) {
+        anyDepComplete = true;
+      }
+      
+      if (d.checkpointAwaiting || 
+          !(d.status === "done" || d.status === "failed" || d.skipped)) {
+        hasBlockingDep = true;
+      }
+    }
+
+    if (hasBlockingDep || !anyDepComplete) continue;
+
+    // Check condition if exists
+    if (dep.condition) {
+      const conditionMet = evaluateCondition(dep.condition, tasks);
+      if (!conditionMet) {
+        log("INFO", "AutoExec", `Condition not met, skipping task: ${dep.title}`);
+        await updateTaskInfo(cwd(), dep.id, { skipped: true }, "auto-exec");
+        // Continue to its dependents
+        await assignDependentTasks(dep.id);
+        continue;
+      }
+    }
 
     // Assign the task (set assignee) but keep in todo for the poll to pick up
     const assignee = dep.assignee || "general-purpose";
@@ -1438,8 +1506,15 @@ async function executeTaskViaHttp(taskId: string) {
   eventBus.emit("executor:task-claimed", { taskId, title: task.title || taskId });
 
   const title = task.title || taskId;
-  let prompt = `Task: ${title}\n\n`;
-  if (task.description) prompt += `Description: ${task.description}\n\n`;
+  let prompt = `## Task: ${title}\n\n`;
+  if (task.description) prompt += `${task.description}\n\n`;
+  prompt += `## Instructions\n`;
+  prompt += `- Focus ONLY on completing this specific task. Do NOT start other unrelated work.\n`;
+  prompt += `- Do NOT modify files unless the task explicitly requires it.\n`;
+  prompt += `- If the task is simple (e.g. say hello, acknowledge, confirm), just respond directly. Do NOT use tools unnecessarily.\n`;
+  prompt += `- Do NOT launch sub-agents unless the task is genuinely complex and requires delegation.\n`;
+  prompt += `- Keep your response concise and to the point.\n`;
+  prompt += `- When done, clearly state what you accomplished.\n\n`;
 
   // Include structured gRPC config if available
   if (task.grpcConfig) {
@@ -1456,7 +1531,7 @@ async function executeTaskViaHttp(taskId: string) {
     prompt += `\nAfter the GrpcClient call completes, report the response. If it fails, use the Checkpoint tool to ask the user.\n`;
   }
 
-  prompt += `\nPlease complete this task. Work in the current directory.`;
+  prompt += `Work in the current directory.`;
 
   const appState = createInitialAppState();
   const abortController = new AbortController();
@@ -1477,7 +1552,7 @@ async function executeTaskViaHttp(taskId: string) {
         setAppState: (updater) => { Object.assign(appState, updater(appState)); },
       },
       canUseTool,
-      maxTurns: 16,
+      maxTurns: 8,
       onProgress: (text) => {
         eventBus.emit("executor:task-progress", { taskId, text });
       },
@@ -1527,6 +1602,7 @@ async function executeTaskViaHttp(taskId: string) {
       // Check if this task has checkpoint_after — wait for user confirmation before continuing
       if (updatedTask?.checkpointAfter) {
         log("INFO", "AutoExec", `Task ${taskId} has checkpoint_after, waiting for user confirmation`);
+        await updateTaskInfo(cwd(), taskId, { checkpointAwaiting: true });
         const checkpointReq: ApprovalRequestEvent = {
           taskId,
           taskTitle: updatedTask.title || taskId,

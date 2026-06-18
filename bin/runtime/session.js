@@ -1,5 +1,6 @@
 import { appendTranscript, getTranscriptPath } from "../storage/transcript";
-import { updateSessionInfo } from "../storage/sessionIndex";
+import { updateSessionInfo, touchSession, closeSession, checkinToTask, checkoutFromTask, } from "../storage/sessionIndex";
+import { eventBus } from "../shared/eventBus";
 import { emptyUsage } from "./usage";
 import { addKnowledge } from "../storage/knowledge";
 import { rebuildMemoryFromKnowledge } from "../storage/memory";
@@ -51,7 +52,11 @@ function extractKnowledgeFromMessages(messages) {
     }
     const userMessages = messages.filter((m) => m.type === "user");
     if (userMessages.length > 3) {
-        const userContents = userMessages.map((m) => m.type === "user" ? m.content : "");
+        const userContents = userMessages.map((m) => {
+            if (m.type !== "user")
+                return "";
+            return typeof m.content === 'string' ? m.content : m.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        });
         const hasCorrection = userContents.some((c, i) => {
             if (i === 0)
                 return false;
@@ -114,6 +119,26 @@ export class SessionEngine {
     }
     getUsage() {
         return { ...this.usage };
+    }
+    async touch() {
+        await touchSession(this.config.cwd, this.sessionId);
+        eventBus.emit("session:heartbeat", {
+            sessionId: this.sessionId,
+            timestamp: Date.now(),
+        });
+    }
+    async close() {
+        await closeSession(this.config.cwd, this.sessionId);
+        eventBus.emit("session:closed", {
+            sessionId: this.sessionId,
+            timestamp: Date.now(),
+        });
+    }
+    async checkinTask(taskId) {
+        await checkinToTask(this.config.cwd, this.sessionId, taskId);
+    }
+    async checkoutTask(taskId) {
+        await checkoutFromTask(this.config.cwd, this.sessionId, taskId);
     }
     async extractAndPersistKnowledge() {
         const insights = extractKnowledgeFromMessages(this.messages);

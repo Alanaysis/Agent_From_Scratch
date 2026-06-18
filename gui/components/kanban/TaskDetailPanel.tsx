@@ -21,6 +21,7 @@ const statusConfig: Record<string, { color: string; bgColor: string; label: stri
   verify: { color: 'var(--status-purple)', bgColor: 'rgba(123, 104, 192, 0.1)', label: 'Verify', icon: <Clock size={11} /> },
   done: { color: 'var(--status-green)', bgColor: 'rgba(92, 184, 92, 0.1)', label: 'Done', icon: <CheckCircle size={11} /> },
   failed: { color: 'var(--warm-red)', bgColor: 'rgba(220, 80, 80, 0.08)', label: 'Failed', icon: <XCircle size={11} /> },
+  skipped: { color: 'var(--text-faint)', bgColor: 'rgba(128, 128, 128, 0.08)', label: 'Skipped', icon: <ChevronRight size={11} /> },
 }
 
 const actionLabels: Record<string, { label: string; color: string }> = {

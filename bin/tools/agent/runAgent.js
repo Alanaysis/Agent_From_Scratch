@@ -1,5 +1,5 @@
 import { createId } from "../../shared/ids";
-import { getLlmConfigFromEnv, runLlmTurn } from "../../runtime/llm";
+import { getLlmConfig, runLlmTurn } from "../../runtime/llm";
 import { createSubagentContext } from "./subagentContext";
 import { getAgentDefinition, getToolDefinitionsForAgent } from "./agentRegistry";
 import { compressSubagentResult } from "./resultCompressor";
@@ -130,6 +130,55 @@ function buildAllToolDefinitions() {
                 additionalProperties: false,
             },
         },
+        {
+            name: "GrpcClient",
+            description: "Make a gRPC call to an external service. Requires a .proto file, service name, method name, and target address.",
+            parameters: {
+                type: "object",
+                properties: {
+                    protoFile: { type: "string", description: "Path to the .proto file." },
+                    service: { type: "string", description: "Fully qualified service name (e.g. 'mypackage.MyService')." },
+                    method: { type: "string", description: "Method name to call." },
+                    address: { type: "string", description: "Target address in host:port format." },
+                    payload: { type: "object", description: "Request payload as key-value pairs." },
+                    metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
+                    deadline: { type: "number", description: "Optional timeout in milliseconds (default 300000, i.e. 5 minutes)." },
+                },
+                required: ["protoFile", "service", "method", "address", "payload"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "Checkpoint",
+            description: "Pause execution and wait for user input. Use for approval confirmations, error recovery choices (retry/skip/abort), or collecting user-provided data.",
+            parameters: {
+                type: "object",
+                properties: {
+                    type: { type: "string", enum: ["approval", "error_choice", "data_input"], description: "Type of checkpoint." },
+                    message: { type: "string", description: "Message to show to the user." },
+                    options: { type: "array", items: { type: "string" }, description: "Options for error_choice type (e.g. ['retry', 'skip', 'abort'])." },
+                    schema: { type: "array", description: "Field definitions for data_input type.", items: { type: "object", properties: { name: { type: "string" }, label: { type: "string" }, type: { type: "string" }, options: { type: "array", items: { type: "string" } }, required: { type: "boolean" } } } },
+                },
+                required: ["type", "message"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "TaskCreate",
+            description: "Create a new task in the task management system.",
+            parameters: {
+                type: "object",
+                properties: {
+                    title: { type: "string", description: "Task title." },
+                    description: { type: "string", description: "Task description." },
+                    priority: { type: "string", enum: ["low", "medium", "high"], description: "Task priority." },
+                    assignee: { type: "string", description: "Agent to assign (e.g. 'general-purpose', 'grpc-worker')." },
+                    dependsOn: { type: "array", items: { type: "string" }, description: "Task IDs this task depends on." },
+                },
+                required: ["title"],
+                additionalProperties: false,
+            },
+        },
     ];
 }
 function createAssistantMessage(blocks) {
@@ -196,7 +245,8 @@ export async function runAgent(params) {
         agentType: agentDef.name,
     });
     const filteredTools = getFilteredTools(agentDef);
-    if (!getLlmConfigFromEnv()) {
+    if (!getLlmConfig()?.apiKey) {
+        console.log(`[runAgent] No LLM API key configured, returning early`);
         return [
             `Subagent "${agentDef.name}" accepted the task.`,
             `Description: ${params.description}`,
@@ -204,13 +254,31 @@ export async function runAgent(params) {
             "No LLM configured — subagent cannot execute without a model.",
         ].join("\n");
     }
+    console.log(`[runAgent] Starting agent "${agentDef.name}" for: ${params.description}`);
     const messages = [
         { id: createId("user"), type: "user", content: params.prompt },
     ];
     const systemPrompt = buildSubagentSystemPrompt(agentDef);
+    // Inject irg.md project instructions + referenced documents
+    try {
+        const { getFullInjectionContent } = await import("../../storage/irgMd");
+        const irgContent = await getFullInjectionContent(params.parentContext.cwd);
+        if (irgContent.trim()) {
+            systemPrompt.push(irgContent);
+        }
+    }
+    catch {
+        // irg.md loading is best-effort
+    }
     const toolDefs = getSubagentToolDefinitions(agentDef);
     const allResultMessages = [];
+    if (params.onMessage) {
+        for (const msg of messages) {
+            await params.onMessage(msg);
+        }
+    }
     for (let turn = 0; turn < maxTurns; turn += 1) {
+        console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`);
         const llmResponse = await runLlmTurn({
             messages,
             systemPrompt,
@@ -235,6 +303,9 @@ export async function runAgent(params) {
         const assistantMessage = createAssistantMessage(assistantBlocks);
         messages.push(assistantMessage);
         allResultMessages.push(assistantMessage);
+        if (params.onMessage) {
+            await params.onMessage(assistantMessage);
+        }
         const toolCalls = assistantBlocks.filter((block) => block.type === "tool_use");
         if (toolCalls.length === 0) {
             break;
@@ -243,8 +314,12 @@ export async function runAgent(params) {
             for await (const msg of executeSubagentToolCall(toolCall.name, toolCall.input, toolCall.id, subContext, permissionFn, filteredTools)) {
                 messages.push(msg);
                 allResultMessages.push(msg);
+                if (params.onMessage) {
+                    await params.onMessage(msg);
+                }
             }
         }
     }
+    console.log(`[runAgent] Completed, total messages: ${allResultMessages.length}`);
     return compressSubagentResult(allResultMessages);
 }

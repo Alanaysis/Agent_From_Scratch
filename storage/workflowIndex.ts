@@ -325,7 +325,7 @@ export async function importWorkflowAsProposal(
       checkpointMessage: step.checkpointMessage,
       condition: step.condition ? {
         type: step.condition.type || 'step_result',
-        source: step.condition.source,
+        source: stepIdToTempId.get(step.condition.source || '') || step.condition.source,
         field: step.condition.field || 'status',
         equals: step.condition.equals,
         prompt: step.condition.prompt,
@@ -333,10 +333,10 @@ export async function importWorkflowAsProposal(
       } : undefined,
       loop: step.loop ? {
         max: step.loop.max || 3,
-        steps: step.loop.steps || [],
+        steps: (step.loop.steps || []).map(sid => stepIdToTempId.get(sid) || sid),
         until: step.loop.until ? {
           type: step.loop.until.type || 'step_result',
-          source: step.loop.until.source,
+          source: stepIdToTempId.get(step.loop.until.source || '') || step.loop.until.source,
           field: step.loop.until.field || 'status',
           equals: step.loop.until.equals,
         } : undefined,

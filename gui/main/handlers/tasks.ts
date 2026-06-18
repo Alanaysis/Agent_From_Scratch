@@ -35,7 +35,7 @@ interface TaskUpdateInput {
   taskId: string;
   title?: string;
   description?: string;
-  status?: "todo" | "in_progress" | "verify" | "done" | "failed";
+  status?: "todo" | "in_progress" | "verify" | "done" | "failed" | "skipped";
   priority?: "low" | "medium" | "high";
   assignee?: string;
   dependsOn?: string[];

@@ -1,3 +1,4 @@
+import { loadConfig, saveConfig, mergeEnvIntoConfig } from "./config";
 function stripTrailingSlash(value) {
     return value.endsWith("/") ? value.slice(0, -1) : value;
 }
@@ -6,23 +7,28 @@ function getDefaultBaseUrl(provider) {
         ? "https://api.anthropic.com/v1"
         : "https://api.openai.com/v1";
 }
-export function getLlmConfigFromEnv() {
-    const apiKey = process.env.CCL_LLM_API_KEY?.trim();
-    const model = process.env.CCL_LLM_MODEL?.trim();
-    if (!apiKey || !model) {
-        return null;
+let cachedConfig = null;
+let configInitialized = false;
+export async function initLlmConfig() {
+    if (cachedConfig) {
+        return cachedConfig;
     }
-    const provider = process.env.CCL_LLM_PROVIDER?.trim().toLowerCase() === "anthropic"
-        ? "anthropic"
-        : "openai";
-    return {
-        provider,
-        apiKey,
-        model,
-        baseUrl: stripTrailingSlash(process.env.CCL_LLM_BASE_URL?.trim() || getDefaultBaseUrl(provider)),
-        systemPrompt: process.env.CCL_LLM_SYSTEM_PROMPT?.trim(),
-        anthropicVersion: process.env.CCL_ANTHROPIC_VERSION?.trim() || "2023-06-01",
-    };
+    const appConfig = await loadConfig();
+    const withEnv = mergeEnvIntoConfig(appConfig);
+    cachedConfig = withEnv.llm;
+    configInitialized = true;
+    return cachedConfig;
+}
+export function getLlmConfig() {
+    return cachedConfig;
+}
+export async function setLlmConfig(updates) {
+    const appConfig = await loadConfig();
+    const newLlmConfig = { ...appConfig.llm, ...updates };
+    appConfig.llm = newLlmConfig;
+    await saveConfig(appConfig);
+    cachedConfig = newLlmConfig;
+    return newLlmConfig;
 }
 export function extractOpenAiText(content) {
     if (typeof content === "string") {
@@ -91,7 +97,22 @@ export function toOpenAiMessages(messages, systemPrompt, config) {
     }
     for (const message of messages) {
         if (message.type === "user") {
-            apiMessages.push({ role: "user", content: message.content });
+            if (typeof message.content === "string") {
+                apiMessages.push({ role: "user", content: message.content });
+            }
+            else {
+                // Convert to OpenAI format content blocks
+                const openAiContent = message.content.map((block) => {
+                    if (block.type === "text") {
+                        return { type: "text", text: block.text };
+                    }
+                    else if (block.type === "image") {
+                        return { type: "image_url", image_url: { url: `data:${block.mimeType};base64,${block.data}` } };
+                    }
+                    return { type: "text", text: "" };
+                });
+                apiMessages.push({ role: "user", content: openAiContent });
+            }
             continue;
         }
         if (message.type === "tool_result") {
@@ -127,10 +148,28 @@ function toAnthropicMessages(messages) {
     const apiMessages = [];
     for (const message of messages) {
         if (message.type === "user") {
-            apiMessages.push({
-                role: "user",
-                content: [{ type: "text", text: message.content }],
-            });
+            if (typeof message.content === "string") {
+                apiMessages.push({
+                    role: "user",
+                    content: [{ type: "text", text: message.content }],
+                });
+            }
+            else {
+                // Convert to Anthropic format content blocks
+                const anthropicContent = message.content.map((block) => {
+                    if (block.type === "text") {
+                        return { type: "text", text: block.text };
+                    }
+                    else if (block.type === "image") {
+                        return { type: "image", source: { type: "base64", media_type: block.mimeType, data: block.data } };
+                    }
+                    return { type: "text", text: "" };
+                });
+                apiMessages.push({
+                    role: "user",
+                    content: anthropicContent,
+                });
+            }
             continue;
         }
         if (message.type === "tool_result") {
@@ -368,8 +407,8 @@ function getProvider(config) {
     return config.provider === "anthropic" ? anthropicProvider : openAiProvider;
 }
 export async function runLlmTurn(params) {
-    const config = getLlmConfigFromEnv();
-    if (!config) {
+    const config = getLlmConfig();
+    if (!config?.apiKey) {
         throw new Error("LLM is not configured");
     }
     return getProvider(config).runTurn(params, config);

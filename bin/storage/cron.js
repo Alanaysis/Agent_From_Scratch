@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rm, writeFile, appendFile } from "fs/promises";
 import { join } from "path";
 function getCronDir(cwd) {
-    return join(cwd, ".claude-code-lite", "cron");
+    return join(cwd, ".irg", "cron");
 }
 function getJobFilePath(cwd, jobId) {
     return join(getCronDir(cwd), `${jobId}.json`);

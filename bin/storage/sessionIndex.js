@@ -1,10 +1,10 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "fs/promises";
 import { join } from "path";
 function getSessionsDir(cwd) {
-    return join(cwd, ".claude-code-lite", "sessions");
+    return join(cwd, ".irg", "sessions");
 }
 function getTranscriptsDir(cwd) {
-    return join(cwd, ".claude-code-lite", "transcripts");
+    return join(cwd, ".irg", "transcripts");
 }
 function getSessionInfoPath(cwd, sessionId) {
     return join(getSessionsDir(cwd), `${sessionId}.json`);
@@ -25,12 +25,16 @@ function summarizeText(text, maxLength = 80) {
 function extractUserPrompts(messages) {
     return messages
         .filter((message) => message.type === "user")
-        .map((message) => summarizeText(message.content, 120));
+        .map((message) => {
+        const text = typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        return summarizeText(text, 120);
+    });
 }
 function deriveSessionTitle(messages, sessionId) {
     const firstUser = messages.find((message) => message.type === "user");
     if (firstUser) {
-        return summarizeText(firstUser.content, 72);
+        const text = typeof firstUser.content === 'string' ? firstUser.content : firstUser.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        return summarizeText(text, 72);
     }
     return `session ${sessionId}`;
 }
@@ -40,9 +44,13 @@ function deriveSessionSummary(messages, status, lastTool, errorCount) {
     const errorSuffix = errorCount && errorCount > 0
         ? ` · ${errorCount} error${errorCount > 1 ? "s" : ""}`
         : "";
-    const prefix = status === "needs_attention"
+    const prefix = status === "error"
         ? `needs attention${errorSuffix}`
-        : `ready${errorSuffix}`;
+        : status === "completed"
+            ? `done${errorSuffix}`
+            : status === "active"
+                ? `active${errorSuffix}`
+                : `idle${errorSuffix}`;
     if (lastTool && latestPrompt) {
         return summarizeText(`${prefix} · ${lastTool} · ${latestPrompt}`, 120);
     }
@@ -54,7 +62,7 @@ function deriveSessionSummary(messages, status, lastTool, errorCount) {
     }
     return status ? prefix : undefined;
 }
-function getSessionStatus(messages) {
+function getSessionMetadata(messages) {
     let lastTool;
     let lastError;
     let toolUseCount = 0;
@@ -74,19 +82,30 @@ function getSessionStatus(messages) {
             errorCount += 1;
         }
     }
-    return {
-        status: lastError ? "needs_attention" : "ready",
-        lastTool,
-        lastError,
-        toolUseCount,
-        errorCount,
-    };
+    return { lastTool, lastError, toolUseCount, errorCount };
+}
+/** Determine session status from current state */
+function deriveSessionStatus(previous, metadata, isActive, currentMessageCount = 0) {
+    // If already archived, stay archived
+    if (previous?.status === "archived")
+        return "archived";
+    // If currently being used, mark active
+    if (isActive)
+        return "active";
+    // If has errors, mark error
+    if ((metadata.errorCount ?? 0) > 0)
+        return "error";
+    // If has messages (completed conversation), mark completed
+    if (currentMessageCount > 0 || (previous?.messageCount ?? 0) > 0)
+        return "completed";
+    // Default: idle
+    return "idle";
 }
 function getConfiguredProvider() {
-    return process.env.CCL_LLM_PROVIDER?.trim() || undefined;
+    return process.env.IRG_LLM_PROVIDER?.trim() || undefined;
 }
 function getConfiguredModel() {
-    return process.env.CCL_LLM_MODEL?.trim() || undefined;
+    return process.env.IRG_LLM_MODEL?.trim() || undefined;
 }
 export async function readSessionInfo(cwd, sessionId) {
     try {
@@ -97,23 +116,43 @@ export async function readSessionInfo(cwd, sessionId) {
         return null;
     }
 }
-export async function updateSessionInfo(cwd, sessionId, messages) {
+export async function createSession(cwd, sessionId, meta) {
+    const now = new Date().toISOString();
+    const next = {
+        id: sessionId,
+        createdAt: now,
+        updatedAt: now,
+        title: meta.title || `session ${sessionId}`,
+        parentId: meta.parentId,
+        taskId: meta.taskId,
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    return next;
+}
+export async function updateSessionInfo(cwd, sessionId, messages, isActive = false) {
     const previous = await readSessionInfo(cwd, sessionId);
     const prompts = extractUserPrompts(messages);
     const now = new Date().toISOString();
-    const sessionStatus = getSessionStatus(messages);
+    const metadata = getSessionMetadata(messages);
+    const status = deriveSessionStatus(previous, metadata, isActive, messages.length);
     const next = {
         id: sessionId,
         createdAt: previous?.createdAt || now,
         updatedAt: now,
+        lastActiveAt: isActive ? now : previous?.lastActiveAt,
         messageCount: messages.length,
         title: previous?.title || deriveSessionTitle(messages, sessionId),
-        summary: deriveSessionSummary(messages, sessionStatus.status, sessionStatus.lastTool, sessionStatus.errorCount) || previous?.summary,
+        summary: deriveSessionSummary(messages, status, metadata.lastTool, metadata.errorCount) || previous?.summary,
         firstPrompt: prompts[0],
         lastPrompt: prompts[prompts.length - 1],
         provider: getConfiguredProvider() || previous?.provider,
         model: getConfiguredModel() || previous?.model,
-        ...sessionStatus,
+        parentId: previous?.parentId,
+        taskId: previous?.taskId,
+        checkedInTasks: previous?.checkedInTasks,
+        status,
+        ...metadata,
     };
     await mkdir(getSessionsDir(cwd), { recursive: true });
     await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
@@ -157,16 +196,18 @@ export async function listSessions(cwd) {
                         .filter(Boolean)
                         .map((line) => JSON.parse(line));
                     const prompts = extractUserPrompts(messages);
-                    const sessionStatus = getSessionStatus(messages);
+                    const metadata = getSessionMetadata(messages);
+                    const fallbackStatus = (metadata.errorCount ?? 0) > 0 ? "error" : "completed";
                     infos.set(sessionId, {
                         ...current,
                         title: deriveSessionTitle(messages, sessionId),
-                        summary: deriveSessionSummary(messages, sessionStatus.status, sessionStatus.lastTool, sessionStatus.errorCount),
+                        summary: deriveSessionSummary(messages, fallbackStatus, metadata.lastTool, metadata.errorCount),
                         firstPrompt: prompts[0],
                         lastPrompt: prompts[prompts.length - 1],
                         messageCount: messages.length,
                         updatedAt: (await stat(getTranscriptPath(cwd, sessionId)).catch(() => null))?.mtime.toISOString() || current.updatedAt,
-                        ...sessionStatus,
+                        status: fallbackStatus,
+                        ...metadata,
                     });
                 }
                 catch {
@@ -178,9 +219,23 @@ export async function listSessions(cwd) {
     catch {
         // ignore missing transcript dir
     }
+    // Mark stale active sessions as idle
+    for (const [id, info] of infos) {
+        if (isSessionStale(info)) {
+            infos.set(id, { ...info, status: "idle" });
+        }
+    }
+    // Sort: error first, then active, then by time
+    const statusOrder = {
+        error: 0,
+        active: 1,
+        completed: 2,
+        idle: 3,
+        archived: 4,
+    };
     return [...infos.values()].sort((left, right) => {
-        const leftRank = left.status === "needs_attention" ? 0 : 1;
-        const rightRank = right.status === "needs_attention" ? 0 : 1;
+        const leftRank = statusOrder[left.status ?? "idle"] ?? 3;
+        const rightRank = statusOrder[right.status ?? "idle"] ?? 3;
         if (leftRank !== rightRank) {
             return leftRank - rightRank;
         }
@@ -191,4 +246,79 @@ export async function listSessions(cwd) {
 }
 export async function deleteSessionInfo(cwd, sessionId) {
     await rm(getSessionInfoPath(cwd, sessionId), { force: true });
+}
+export async function touchSession(cwd, sessionId) {
+    const previous = await readSessionInfo(cwd, sessionId);
+    if (!previous)
+        return;
+    const now = new Date().toISOString();
+    const next = {
+        ...previous,
+        lastActiveAt: now,
+        status: (previous.status === "archived" ? "archived" : "active"),
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+export async function closeSession(cwd, sessionId) {
+    const previous = await readSessionInfo(cwd, sessionId);
+    if (!previous)
+        return;
+    const finalStatus = (previous.errorCount ?? 0) > 0 ? "error" : "completed";
+    const next = {
+        ...previous,
+        status: finalStatus,
+        checkedInTasks: [],
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+export async function checkinToTask(cwd, sessionId, taskId) {
+    const previous = await readSessionInfo(cwd, sessionId);
+    if (!previous)
+        return;
+    const tasks = new Set(previous.checkedInTasks || []);
+    tasks.add(taskId);
+    const now = new Date().toISOString();
+    const next = {
+        ...previous,
+        lastActiveAt: now,
+        checkedInTasks: [...tasks],
+        status: "active",
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+export async function checkoutFromTask(cwd, sessionId, taskId) {
+    const previous = await readSessionInfo(cwd, sessionId);
+    if (!previous)
+        return;
+    const tasks = (previous.checkedInTasks || []).filter((t) => t !== taskId);
+    const next = {
+        ...previous,
+        checkedInTasks: tasks,
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+export function isSessionStale(info, thresholdMs = STALE_THRESHOLD_MS) {
+    if (info.status !== "active")
+        return false;
+    if (!info.lastActiveAt)
+        return true;
+    return Date.now() - new Date(info.lastActiveAt).getTime() > thresholdMs;
+}
+/** Add an `archiveSession` function for the new archived status */
+export async function archiveSession(cwd, sessionId) {
+    const previous = await readSessionInfo(cwd, sessionId);
+    if (!previous)
+        return;
+    const next = {
+        ...previous,
+        status: "archived",
+        checkedInTasks: [],
+    };
+    await mkdir(getSessionsDir(cwd), { recursive: true });
+    await writeFile(getSessionInfoPath(cwd, sessionId), `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }

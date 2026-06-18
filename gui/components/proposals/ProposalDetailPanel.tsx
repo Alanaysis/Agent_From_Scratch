@@ -223,7 +223,9 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
         const doneCount = relatedTasks.filter(t => t.status === 'done').length
         const failedCount = relatedTasks.filter(t => t.status === 'failed').length
         const runningCount = relatedTasks.filter(t => t.status === 'in_progress').length
-        const progressPct = relatedTasks.length > 0 ? Math.round((doneCount / relatedTasks.length) * 100) : 0
+        const skippedCount = relatedTasks.filter(t => t.skipped).length
+        const activeTotal = relatedTasks.length - skippedCount
+        const progressPct = activeTotal > 0 ? Math.round((doneCount / activeTotal) * 100) : (skippedCount === relatedTasks.length ? 100 : 0)
 
         return (
           <div style={{
@@ -247,16 +249,17 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
               {runningCount > 0 && <span style={{ color: 'var(--amber)' }}>{runningCount} running</span>}
               {doneCount > 0 && <span style={{ color: 'var(--status-green)' }}>{doneCount} done</span>}
               {failedCount > 0 && <span style={{ color: 'var(--warm-red)' }}>{failedCount} failed</span>}
-              <span style={{ color: 'var(--text-faint)' }}>{relatedTasks.length - doneCount - failedCount - runningCount} pending</span>
+              {skippedCount > 0 && <span style={{ color: 'var(--text-faint)' }}>{skippedCount} skipped</span>}
+              <span style={{ color: 'var(--text-faint)' }}>{activeTotal - doneCount - failedCount - runningCount} pending</span>
             </div>
           </div>
         )
       })()}
 
-      {/* Body: Left/Right split */}
+      {/* Body: Left/Right split (only for approved) or full width (for others) */}
       <div ref={containerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         {/* Left: DAG only */}
-        <div style={{ width: `${splitRatio}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 10, flexShrink: 0, minWidth: 160 }}>
+        <div style={{ width: proposal.status === 'approved' ? `${splitRatio}%` : '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 10, flexShrink: 0, minWidth: 160 }}>
           {/* DAG Visualization - fills available space */}
           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <WorkflowProgressView
@@ -265,7 +268,7 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
               return {
                 id: draft.tempId || `step-${i}`,
                 title: draft.title || `Step ${i + 1}`,
-                status: (related?.status || 'todo') as any,
+                status: (related?.skipped ? 'skipped' : related?.status || 'todo') as any,
                 dependsOn: draft.dependsOnTempIds || [],
                 assignee: draft.agent,
                 sessionId: related?.sessionId,
@@ -273,6 +276,9 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
                 draft: isDraft ? draft : undefined,
                 condition: draft.condition,
                 loop: draft.loop,
+                checkpointAfter: draft.checkpointAfter,
+                checkpointMessage: draft.checkpointMessage,
+                skipped: related?.skipped,
               }
             })}
             onViewChat={(sessionId) => jumpToSession(sessionId)}
@@ -297,23 +303,28 @@ export function ProposalDetailPanel({ proposal, onClose }: Props) {
           </div>
         </div>
 
-        {/* Draggable divider */}
-        <div
-          onMouseDown={handleMouseDown}
-          style={{
-            width: 4,
-            cursor: 'col-resize',
-            backgroundColor: isDragging ? 'var(--amber)' : 'var(--border-subtle)',
-            flexShrink: 0,
-            transition: isDragging ? 'none' : 'background-color 0.15s',
-            zIndex: 10,
-          }}
-        />
+        {/* Only show divider and activity feed for approved */}
+        {proposal.status === 'approved' && (
+          <>
+            {/* Draggable divider */}
+            <div
+              onMouseDown={handleMouseDown}
+              style={{
+                width: 4,
+                cursor: 'col-resize',
+                backgroundColor: isDragging ? 'var(--amber)' : 'var(--border-subtle)',
+                flexShrink: 0,
+                transition: isDragging ? 'none' : 'background-color 0.15s',
+                zIndex: 10,
+              }}
+            />
 
-        {/* Right: Activity Feed */}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <ActivityFeed events={activityFeed} taskIds={relatedTaskIds} />
-        </div>
+            {/* Right: Activity Feed */}
+            <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+              <ActivityFeed events={activityFeed} taskIds={relatedTaskIds} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

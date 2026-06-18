@@ -72,7 +72,7 @@ export const ImageGenerateTool = {
         const model = args.model || "dall-e-3";
         const quality = args.quality || "standard";
         const n = args.n || 1;
-        const imageDir = join(context.cwd, ".claude-code-lite", "images");
+        const imageDir = join(context.cwd, ".irg", "images");
         await mkdir(imageDir, { recursive: true });
         let images = [];
         if (provider === "openai") {

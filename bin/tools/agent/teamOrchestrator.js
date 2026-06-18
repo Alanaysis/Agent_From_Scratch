@@ -1,5 +1,5 @@
 import { createId } from "../../shared/ids";
-import { getLlmConfigFromEnv, runLlmTurn } from "../../runtime/llm";
+import { getLlmConfig, runLlmTurn } from "../../runtime/llm";
 import { createSubagentContext } from "./subagentContext";
 import { compressSubagentResult } from "./resultCompressor";
 import { findToolByName } from "../Tool";
@@ -243,7 +243,7 @@ export async function runTeam(params) {
     const { teamName, task, parentContext } = params;
     const permissionFn = params.canUseTool ?? canUseTool;
     const maxTurnsPerMember = params.maxTurnsPerMember ?? 6;
-    if (!getLlmConfigFromEnv()) {
+    if (!getLlmConfig()?.apiKey) {
         return {
             summary: `Team "${teamName}" cannot run without LLM configuration.`,
             taskResults: {},

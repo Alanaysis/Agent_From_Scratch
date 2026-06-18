@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "fs/promises";
 import { join } from "path";
-import { getLlmConfigFromEnv } from "../../runtime/llm";
+import { getLlmConfig } from "../../runtime/llm";
 async function analyzeWithAnthropic(imageData, mimeType, prompt, config) {
     const response = await fetch(`${config.baseUrl}/messages`, {
         method: "POST",
@@ -80,11 +80,11 @@ export const ImageAnalyzeTool = {
         return "Analyze an image using LLM vision capabilities. Upload an image first with ImageUpload, then analyze it.";
     },
     async call(args, context, _canUseTool, _parentMessage) {
-        const llmConfig = getLlmConfigFromEnv();
-        if (!llmConfig) {
+        const llmConfig = getLlmConfig();
+        if (!llmConfig?.apiKey) {
             return {
                 data: {
-                    analysis: "Cannot analyze image: no LLM configured. Set CCL_LLM_API_KEY and CCL_LLM_MODEL.",
+                    analysis: "Cannot analyze image: no LLM configured. Set IRG_LLM_API_KEY and IRG_LLM_MODEL.",
                     imageUrl: "",
                     provider: "none",
                     model: "none",
@@ -115,7 +115,7 @@ export const ImageAnalyzeTool = {
             imageUrl = filePath;
         }
         else if (args.imageId) {
-            const imageDir = join(context.cwd, ".claude-code-lite", "images");
+            const imageDir = join(context.cwd, ".irg", "images");
             const files = await readdir(imageDir).catch(() => []);
             const matchingFile = files.find((f) => f.startsWith(args.imageId));
             if (!matchingFile) {

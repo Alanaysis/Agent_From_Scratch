@@ -4,8 +4,15 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __commonJS = (cb, mod) => function __require2() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -23,6 +30,159 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+
+// storage/documentIndex.ts
+import { mkdir as mkdir5, readFile as readFile4, readdir as readdir2, rm as rm4, writeFile as writeFile4 } from "fs/promises";
+import { join as join5 } from "path";
+function getDocumentsDir(cwd2) {
+  return join5(cwd2, ".irg", "documents");
+}
+function getDocumentPath(cwd2, docId) {
+  return join5(getDocumentsDir(cwd2), `${docId}.json`);
+}
+async function readDocument(cwd2, docId) {
+  try {
+    const content = await readFile4(getDocumentPath(cwd2, docId), "utf8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+var init_documentIndex = __esm({
+  "storage/documentIndex.ts"() {
+    "use strict";
+  }
+});
+
+// storage/irgMd.ts
+var irgMd_exports = {};
+__export(irgMd_exports, {
+  addDocRef: () => addDocRef,
+  getFullInjectionContent: () => getFullInjectionContent,
+  isDocInjected: () => isDocInjected,
+  parseDocRefs: () => parseDocRefs,
+  readIrgMd: () => readIrgMd,
+  removeDocRef: () => removeDocRef
+});
+import { readFile as readFile5, writeFile as writeFile5 } from "fs/promises";
+import { join as join6 } from "path";
+async function readIrgMd(cwd2) {
+  const parts = [];
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  if (homeDir) {
+    try {
+      const globalContent = await readFile5(join6(homeDir, ".irg", IRG_MD_FILENAME), "utf8");
+      if (globalContent.trim()) parts.push(globalContent.trim());
+    } catch {
+    }
+  }
+  try {
+    const projectContent = await readFile5(join6(cwd2, IRG_MD_FILENAME), "utf8");
+    if (projectContent.trim()) parts.push(projectContent.trim());
+  } catch {
+  }
+  try {
+    const localContent = await readFile5(join6(cwd2, IRG_LOCAL_FILENAME), "utf8");
+    if (localContent.trim()) parts.push(localContent.trim());
+  } catch {
+  }
+  return parts.join("\n\n");
+}
+function parseDocRefs(content) {
+  const refs = [];
+  const regex = /@doc:([\w-]+)/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    refs.push(match[1]);
+  }
+  return refs;
+}
+async function addDocRef(cwd2, docId) {
+  const filePath = join6(cwd2, IRG_MD_FILENAME);
+  let content = "";
+  try {
+    content = await readFile5(filePath, "utf8");
+  } catch {
+    content = "# IRG \u9879\u76EE\u6307\u4EE4\n";
+  }
+  const refLine = `@doc:${docId}`;
+  if (content.includes(refLine)) {
+    return;
+  }
+  const sectionHeader = "## \u5DE5\u5177\u53C2\u8003";
+  if (content.includes(sectionHeader)) {
+    const sectionIndex = content.indexOf(sectionHeader);
+    const afterHeader = sectionIndex + sectionHeader.length;
+    const nextNewline = content.indexOf("\n", afterHeader);
+    const insertAt = nextNewline === -1 ? content.length : nextNewline + 1;
+    content = content.slice(0, insertAt) + refLine + "\n" + content.slice(insertAt);
+  } else {
+    content = content.trimEnd() + "\n\n" + sectionHeader + "\n" + refLine + "\n";
+  }
+  await writeFile5(filePath, content, "utf8");
+}
+async function removeDocRef(cwd2, docId) {
+  const filePath = join6(cwd2, IRG_MD_FILENAME);
+  let content;
+  try {
+    content = await readFile5(filePath, "utf8");
+  } catch {
+    return;
+  }
+  const refLine = `@doc:${docId}`;
+  if (!content.includes(refLine)) {
+    return;
+  }
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => line.trim() !== refLine);
+  content = filtered.join("\n");
+  content = content.replace(/## 工具参考\n+$/m, "");
+  await writeFile5(filePath, content, "utf8");
+}
+async function isDocInjected(cwd2, docId) {
+  try {
+    const content = await readIrgMd(cwd2);
+    return content.includes(`@doc:${docId}`);
+  } catch {
+    return false;
+  }
+}
+async function getFullInjectionContent(cwd2) {
+  const irgContent = await readIrgMd(cwd2);
+  if (!irgContent.trim()) return "";
+  const docRefs = parseDocRefs(irgContent);
+  if (docRefs.length === 0) return irgContent;
+  const docContents = [];
+  for (const docId of docRefs) {
+    try {
+      const doc = await readDocument(cwd2, docId);
+      if (doc) {
+        docContents.push(`### ${doc.title}
+
+${doc.content}`);
+      }
+    } catch {
+    }
+  }
+  if (docContents.length === 0) return irgContent;
+  let result = irgContent;
+  for (const docId of docRefs) {
+    const refLine = `@doc:${docId}`;
+    result = result.replace(refLine, `<!-- injected: ${docId} -->`);
+  }
+  result += "\n\n## Injected Tool Reference Documents\n\n";
+  result += docContents.join("\n\n---\n\n");
+  return result;
+}
+var IRG_MD_FILENAME, IRG_LOCAL_FILENAME;
+var init_irgMd = __esm({
+  "storage/irgMd.ts"() {
+    "use strict";
+    init_documentIndex();
+    IRG_MD_FILENAME = "irg.md";
+    IRG_LOCAL_FILENAME = "irg.local.md";
+  }
+});
 
 // node_modules/picocolors/picocolors.js
 var require_picocolors = __commonJS({
@@ -150,7 +310,7 @@ import { cwd } from "process";
 import { pathToFileURL } from "url";
 
 // app/headless.ts
-import { writeFile as writeFile9 } from "fs/promises";
+import { writeFile as writeFile12 } from "fs/promises";
 import readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 
@@ -184,9 +344,14 @@ async function appendTranscript(cwd2, sessionId, messages) {
 `, "utf8");
 }
 async function readTranscriptMessages(cwd2, sessionId) {
-  const { readFile: readFile12 } = await import("fs/promises");
+  const { readFile: readFile15, access: access2 } = await import("fs/promises");
   const filePath = getTranscriptPath(cwd2, sessionId);
-  const content = await readFile12(filePath, "utf8");
+  try {
+    await access2(filePath);
+  } catch {
+    return [];
+  }
+  const content = await readFile15(filePath, "utf8");
   return content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
 async function deleteTranscript(cwd2, sessionId) {
@@ -221,14 +386,18 @@ function summarizeText(text, maxLength = 80) {
 function extractUserPrompts(messages) {
   return messages.filter(
     (message) => message.type === "user"
-  ).map((message) => summarizeText(message.content, 120));
+  ).map((message) => {
+    const text = typeof message.content === "string" ? message.content : message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    return summarizeText(text, 120);
+  });
 }
 function deriveSessionTitle(messages, sessionId) {
   const firstUser = messages.find(
     (message) => message.type === "user"
   );
   if (firstUser) {
-    return summarizeText(firstUser.content, 72);
+    const text = typeof firstUser.content === "string" ? firstUser.content : firstUser.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    return summarizeText(text, 72);
   }
   return `session ${sessionId}`;
 }
@@ -236,7 +405,7 @@ function deriveSessionSummary(messages, status, lastTool, errorCount) {
   const prompts = extractUserPrompts(messages);
   const latestPrompt = prompts[prompts.length - 1];
   const errorSuffix = errorCount && errorCount > 0 ? ` \xB7 ${errorCount} error${errorCount > 1 ? "s" : ""}` : "";
-  const prefix = status === "needs_attention" ? `needs attention${errorSuffix}` : `ready${errorSuffix}`;
+  const prefix = status === "error" ? `needs attention${errorSuffix}` : status === "completed" ? `done${errorSuffix}` : status === "active" ? `active${errorSuffix}` : `idle${errorSuffix}`;
   if (lastTool && latestPrompt) {
     return summarizeText(`${prefix} \xB7 ${lastTool} \xB7 ${latestPrompt}`, 120);
   }
@@ -248,7 +417,7 @@ function deriveSessionSummary(messages, status, lastTool, errorCount) {
   }
   return status ? prefix : void 0;
 }
-function getSessionStatus(messages) {
+function getSessionMetadata(messages) {
   let lastTool;
   let lastError;
   let toolUseCount = 0;
@@ -268,13 +437,14 @@ function getSessionStatus(messages) {
       errorCount += 1;
     }
   }
-  return {
-    status: lastError ? "needs_attention" : "ready",
-    lastTool,
-    lastError,
-    toolUseCount,
-    errorCount
-  };
+  return { lastTool, lastError, toolUseCount, errorCount };
+}
+function deriveSessionStatus(previous, metadata, isActive, currentMessageCount = 0) {
+  if (previous?.status === "archived") return "archived";
+  if (isActive) return "active";
+  if ((metadata.errorCount ?? 0) > 0) return "error";
+  if (currentMessageCount > 0 || (previous?.messageCount ?? 0) > 0) return "completed";
+  return "idle";
 }
 function getConfiguredProvider() {
   return process.env.IRG_LLM_PROVIDER?.trim() || void 0;
@@ -290,28 +460,34 @@ async function readSessionInfo(cwd2, sessionId) {
     return null;
   }
 }
-async function updateSessionInfo(cwd2, sessionId, messages) {
+async function updateSessionInfo(cwd2, sessionId, messages, isActive = false) {
   const previous = await readSessionInfo(cwd2, sessionId);
   const prompts = extractUserPrompts(messages);
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const sessionStatus = getSessionStatus(messages);
+  const metadata = getSessionMetadata(messages);
+  const status = deriveSessionStatus(previous, metadata, isActive, messages.length);
   const next = {
     id: sessionId,
     createdAt: previous?.createdAt || now,
     updatedAt: now,
+    lastActiveAt: isActive ? now : previous?.lastActiveAt,
     messageCount: messages.length,
     title: previous?.title || deriveSessionTitle(messages, sessionId),
     summary: deriveSessionSummary(
       messages,
-      sessionStatus.status,
-      sessionStatus.lastTool,
-      sessionStatus.errorCount
+      status,
+      metadata.lastTool,
+      metadata.errorCount
     ) || previous?.summary,
     firstPrompt: prompts[0],
     lastPrompt: prompts[prompts.length - 1],
     provider: getConfiguredProvider() || previous?.provider,
     model: getConfiguredModel() || previous?.model,
-    ...sessionStatus
+    parentId: previous?.parentId,
+    taskId: previous?.taskId,
+    checkedInTasks: previous?.checkedInTasks,
+    status,
+    ...metadata
   };
   await mkdir2(getSessionsDir(cwd2), { recursive: true });
   await writeFile(
@@ -357,21 +533,23 @@ async function listSessions(cwd2) {
           );
           const messages = content.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
           const prompts = extractUserPrompts(messages);
-          const sessionStatus = getSessionStatus(messages);
+          const metadata = getSessionMetadata(messages);
+          const fallbackStatus = (metadata.errorCount ?? 0) > 0 ? "error" : "completed";
           infos.set(sessionId, {
             ...current,
             title: deriveSessionTitle(messages, sessionId),
             summary: deriveSessionSummary(
               messages,
-              sessionStatus.status,
-              sessionStatus.lastTool,
-              sessionStatus.errorCount
+              fallbackStatus,
+              metadata.lastTool,
+              metadata.errorCount
             ),
             firstPrompt: prompts[0],
             lastPrompt: prompts[prompts.length - 1],
             messageCount: messages.length,
             updatedAt: (await stat(getTranscriptPath2(cwd2, sessionId)).catch(() => null))?.mtime.toISOString() || current.updatedAt,
-            ...sessionStatus
+            status: fallbackStatus,
+            ...metadata
           });
         } catch {
         }
@@ -379,9 +557,21 @@ async function listSessions(cwd2) {
     }
   } catch {
   }
+  for (const [id, info] of infos) {
+    if (isSessionStale(info)) {
+      infos.set(id, { ...info, status: "idle" });
+    }
+  }
+  const statusOrder = {
+    error: 0,
+    active: 1,
+    completed: 2,
+    idle: 3,
+    archived: 4
+  };
   return [...infos.values()].sort((left, right) => {
-    const leftRank = left.status === "needs_attention" ? 0 : 1;
-    const rightRank = right.status === "needs_attention" ? 0 : 1;
+    const leftRank = statusOrder[left.status ?? "idle"] ?? 3;
+    const rightRank = statusOrder[right.status ?? "idle"] ?? 3;
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
     }
@@ -393,6 +583,104 @@ async function listSessions(cwd2) {
 async function deleteSessionInfo(cwd2, sessionId) {
   await rm2(getSessionInfoPath(cwd2, sessionId), { force: true });
 }
+async function touchSession(cwd2, sessionId) {
+  const previous = await readSessionInfo(cwd2, sessionId);
+  if (!previous) return;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...previous,
+    lastActiveAt: now,
+    status: previous.status === "archived" ? "archived" : "active"
+  };
+  await mkdir2(getSessionsDir(cwd2), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd2, sessionId),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function closeSession(cwd2, sessionId) {
+  const previous = await readSessionInfo(cwd2, sessionId);
+  if (!previous) return;
+  const finalStatus = (previous.errorCount ?? 0) > 0 ? "error" : "completed";
+  const next = {
+    ...previous,
+    status: finalStatus,
+    checkedInTasks: []
+  };
+  await mkdir2(getSessionsDir(cwd2), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd2, sessionId),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function checkinToTask(cwd2, sessionId, taskId) {
+  const previous = await readSessionInfo(cwd2, sessionId);
+  if (!previous) return;
+  const tasks = new Set(previous.checkedInTasks || []);
+  tasks.add(taskId);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...previous,
+    lastActiveAt: now,
+    checkedInTasks: [...tasks],
+    status: "active"
+  };
+  await mkdir2(getSessionsDir(cwd2), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd2, sessionId),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function checkoutFromTask(cwd2, sessionId, taskId) {
+  const previous = await readSessionInfo(cwd2, sessionId);
+  if (!previous) return;
+  const tasks = (previous.checkedInTasks || []).filter((t) => t !== taskId);
+  const next = {
+    ...previous,
+    checkedInTasks: tasks
+  };
+  await mkdir2(getSessionsDir(cwd2), { recursive: true });
+  await writeFile(
+    getSessionInfoPath(cwd2, sessionId),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf8"
+  );
+}
+var STALE_THRESHOLD_MS = 60 * 60 * 1e3;
+function isSessionStale(info, thresholdMs = STALE_THRESHOLD_MS) {
+  if (info.status !== "active") return false;
+  if (!info.lastActiveAt) return true;
+  return Date.now() - new Date(info.lastActiveAt).getTime() > thresholdMs;
+}
+
+// shared/eventBus.ts
+import { EventEmitter } from "events";
+var TypedEventBus = class extends EventEmitter {
+  constructor() {
+    super();
+    this.setMaxListeners(0);
+  }
+  emit(event, data) {
+    return super.emit(event, data);
+  }
+  on(event, listener) {
+    return super.on(event, listener);
+  }
+  off(event, listener) {
+    return super.off(event, listener);
+  }
+  once(event, listener) {
+    return super.once(event, listener);
+  }
+};
+var eventBus = new TypedEventBus();
 
 // runtime/usage.ts
 function emptyUsage() {
@@ -602,9 +890,10 @@ function extractKnowledgeFromMessages(messages) {
   }
   const userMessages = messages.filter((m) => m.type === "user");
   if (userMessages.length > 3) {
-    const userContents = userMessages.map(
-      (m) => m.type === "user" ? m.content : ""
-    );
+    const userContents = userMessages.map((m) => {
+      if (m.type !== "user") return "";
+      return typeof m.content === "string" ? m.content : m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    });
     const hasCorrection = userContents.some((c, i) => {
       if (i === 0) return false;
       const lower = c.toLowerCase();
@@ -667,6 +956,26 @@ var SessionEngine = class {
   getUsage() {
     return { ...this.usage };
   }
+  async touch() {
+    await touchSession(this.config.cwd, this.sessionId);
+    eventBus.emit("session:heartbeat", {
+      sessionId: this.sessionId,
+      timestamp: Date.now()
+    });
+  }
+  async close() {
+    await closeSession(this.config.cwd, this.sessionId);
+    eventBus.emit("session:closed", {
+      sessionId: this.sessionId,
+      timestamp: Date.now()
+    });
+  }
+  async checkinTask(taskId) {
+    await checkinToTask(this.config.cwd, this.sessionId, taskId);
+  }
+  async checkoutTask(taskId) {
+    await checkoutFromTask(this.config.cwd, this.sessionId, taskId);
+  }
   async extractAndPersistKnowledge() {
     const insights = extractKnowledgeFromMessages(this.messages);
     let added = 0;
@@ -715,6 +1024,13 @@ function matchesRule(rule, tool, input3) {
   }
   return getInputPattern(input3) === rule.pattern;
 }
+function checkMatrix(matrix, tool) {
+  if (!matrix || !tool.resourceType || !tool.actionType) return void 0;
+  const resource = matrix[tool.resourceType];
+  if (!resource) return void 0;
+  const allowed = resource[tool.actionType];
+  return allowed;
+}
 function rememberPermissionRule(context, tool, input3) {
   const rule = {
     toolName: tool.name,
@@ -751,6 +1067,16 @@ var canUseTool = async (tool, input3, context, _parentMessage, _toolUseId) => {
     return {
       behavior: "allow",
       updatedInput: input3
+    };
+  }
+  const matrixResult = checkMatrix(permissionContext.matrix, tool);
+  if (matrixResult === true) {
+    return { behavior: "allow", updatedInput: input3 };
+  }
+  if (matrixResult === false) {
+    return {
+      behavior: "deny",
+      message: `Tool ${tool.name} is blocked by permission matrix (${tool.resourceType}:${tool.actionType})`
     };
   }
   if (permissionContext.denyRules.some((rule) => matchesRule(rule, tool, input3))) {
@@ -792,10 +1118,7 @@ var canUseTool = async (tool, input3, context, _parentMessage, _toolUseId) => {
 // runtime/llm.ts
 var cachedConfig = null;
 function getLlmConfig() {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
-  return getDefaultConfig().llm;
+  return cachedConfig;
 }
 function extractOpenAiText(content) {
   if (typeof content === "string") {
@@ -849,7 +1172,19 @@ function toOpenAiMessages(messages, systemPrompt, config) {
   }
   for (const message of messages) {
     if (message.type === "user") {
-      apiMessages.push({ role: "user", content: message.content });
+      if (typeof message.content === "string") {
+        apiMessages.push({ role: "user", content: message.content });
+      } else {
+        const openAiContent = message.content.map((block) => {
+          if (block.type === "text") {
+            return { type: "text", text: block.text };
+          } else if (block.type === "image") {
+            return { type: "image_url", image_url: { url: `data:${block.mimeType};base64,${block.data}` } };
+          }
+          return { type: "text", text: "" };
+        });
+        apiMessages.push({ role: "user", content: openAiContent });
+      }
       continue;
     }
     if (message.type === "tool_result") {
@@ -883,10 +1218,25 @@ function toAnthropicMessages(messages) {
   const apiMessages = [];
   for (const message of messages) {
     if (message.type === "user") {
-      apiMessages.push({
-        role: "user",
-        content: [{ type: "text", text: message.content }]
-      });
+      if (typeof message.content === "string") {
+        apiMessages.push({
+          role: "user",
+          content: [{ type: "text", text: message.content }]
+        });
+      } else {
+        const anthropicContent = message.content.map((block) => {
+          if (block.type === "text") {
+            return { type: "text", text: block.text };
+          } else if (block.type === "image") {
+            return { type: "image", source: { type: "base64", media_type: block.mimeType, data: block.data } };
+          }
+          return { type: "text", text: "" };
+        });
+        apiMessages.push({
+          role: "user",
+          content: anthropicContent
+        });
+      }
       continue;
     }
     if (message.type === "tool_result") {
@@ -1203,6 +1553,68 @@ var BUILTIN_AGENTS = {
     allowedTools: ["Read", "FileTree", "SearchFiles"],
     isReadOnly: true,
     maxTurns: 4
+  },
+  pm: {
+    name: "pm",
+    description: "Project Manager agent that decomposes goals into task plans using templates and documents",
+    systemPrompt: [
+      "You are a Project Manager agent. Your job is to:",
+      "1. Understand the user's high-level goal",
+      "2. Search for matching workflow templates",
+      "3. Read relevant project documents (PRD, specs, tech designs) for context",
+      "4. Create a detailed plan with tasks, dependencies, and agent assignments",
+      "5. Present the plan as a structured proposal for user approval",
+      "",
+      "When creating plans:",
+      "- Use templates when available as starting points",
+      "- Reference project documents for technical context",
+      "- Define clear task dependencies (depends_on)",
+      "- Assign appropriate agents (general-purpose, grpc-worker, explore)",
+      "- Include acceptance criteria for verification",
+      "",
+      "Output format: Present your plan as a structured proposal with:",
+      "- Title and description",
+      "- Task list with dependencies",
+      "- Assigned agent for each task",
+      "- Any relevant document references"
+    ],
+    allowedTools: [
+      "Read",
+      "FileTree",
+      "SearchFiles",
+      "WebFetch"
+    ],
+    capabilities: ["planning", "orchestration"],
+    maxTurns: 12
+  },
+  "grpc-worker": {
+    name: "grpc-worker",
+    description: "Agent specialized in executing gRPC calls according to workflow definitions. Used for integrating with external microservices.",
+    systemPrompt: [
+      "You are a gRPC workflow execution agent. You execute gRPC calls to external microservices.",
+      "",
+      "## Critical Rules",
+      "",
+      "1. **ALWAYS use the GrpcClient tool** to make gRPC calls. Never use Shell or any other tool for gRPC operations.",
+      "2. When the task description contains gRPC parameters (protoFile, service, method, address, payload), call GrpcClient with those exact parameters.",
+      "3. If a gRPC call fails, use the Checkpoint tool to ask the user what to do (retry, skip, or abort). Do NOT retry automatically.",
+      "4. If a step requires user approval, use the Checkpoint tool to pause and wait for user input.",
+      "5. After each call, report the response clearly.",
+      "",
+      "## How to call GrpcClient",
+      "",
+      "When you see a task like: `gRPC Call: AlgoGRPC.AlgoService.SendMessage` with payload parameters,",
+      "you must call the GrpcClient tool like this:",
+      "",
+      "```",
+      'GrpcClient(protoFile="protos/AlgoService.proto", service="AlgoGRPC.AlgoService", method="SendMessage", address="192.168.25.106:9010", payload={...})',
+      "```",
+      "",
+      "Do NOT interpret gRPC task descriptions as shell commands. They are instructions for the GrpcClient tool."
+    ],
+    allowedTools: ["GrpcClient", "Read", "Checkpoint"],
+    capabilities: ["grpc", "workflow", "align"],
+    maxTurns: 20
   }
 };
 function getAgentDefinition(subagentType) {
@@ -1368,6 +1780,55 @@ function buildAllToolDefinitions() {
         required: ["mode", "pattern"],
         additionalProperties: false
       }
+    },
+    {
+      name: "GrpcClient",
+      description: "Make a gRPC call to an external service. Requires a .proto file, service name, method name, and target address.",
+      parameters: {
+        type: "object",
+        properties: {
+          protoFile: { type: "string", description: "Path to the .proto file." },
+          service: { type: "string", description: "Fully qualified service name (e.g. 'mypackage.MyService')." },
+          method: { type: "string", description: "Method name to call." },
+          address: { type: "string", description: "Target address in host:port format." },
+          payload: { type: "object", description: "Request payload as key-value pairs." },
+          metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
+          deadline: { type: "number", description: "Optional timeout in milliseconds (default 300000, i.e. 5 minutes)." }
+        },
+        required: ["protoFile", "service", "method", "address", "payload"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "Checkpoint",
+      description: "Pause execution and wait for user input. Use for approval confirmations, error recovery choices (retry/skip/abort), or collecting user-provided data.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["approval", "error_choice", "data_input"], description: "Type of checkpoint." },
+          message: { type: "string", description: "Message to show to the user." },
+          options: { type: "array", items: { type: "string" }, description: "Options for error_choice type (e.g. ['retry', 'skip', 'abort'])." },
+          schema: { type: "array", description: "Field definitions for data_input type.", items: { type: "object", properties: { name: { type: "string" }, label: { type: "string" }, type: { type: "string" }, options: { type: "array", items: { type: "string" } }, required: { type: "boolean" } } } }
+        },
+        required: ["type", "message"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "TaskCreate",
+      description: "Create a new task in the task management system.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Task title." },
+          description: { type: "string", description: "Task description." },
+          priority: { type: "string", enum: ["low", "medium", "high"], description: "Task priority." },
+          assignee: { type: "string", description: "Agent to assign (e.g. 'general-purpose', 'grpc-worker')." },
+          dependsOn: { type: "array", items: { type: "string" }, description: "Task IDs this task depends on." }
+        },
+        required: ["title"],
+        additionalProperties: false
+      }
     }
   ];
 }
@@ -1439,6 +1900,7 @@ async function runAgent(params) {
   });
   const filteredTools = getFilteredTools(agentDef);
   if (!getLlmConfig()?.apiKey) {
+    console.log(`[runAgent] No LLM API key configured, returning early`);
     return [
       `Subagent "${agentDef.name}" accepted the task.`,
       `Description: ${params.description}`,
@@ -1446,13 +1908,28 @@ async function runAgent(params) {
       "No LLM configured \u2014 subagent cannot execute without a model."
     ].join("\n");
   }
+  console.log(`[runAgent] Starting agent "${agentDef.name}" for: ${params.description}`);
   const messages = [
     { id: createId("user"), type: "user", content: params.prompt }
   ];
   const systemPrompt = buildSubagentSystemPrompt(agentDef);
+  try {
+    const { getFullInjectionContent: getFullInjectionContent2 } = await Promise.resolve().then(() => (init_irgMd(), irgMd_exports));
+    const irgContent = await getFullInjectionContent2(params.parentContext.cwd);
+    if (irgContent.trim()) {
+      systemPrompt.push(irgContent);
+    }
+  } catch {
+  }
   const toolDefs = getSubagentToolDefinitions(agentDef);
   const allResultMessages = [];
+  if (params.onMessage) {
+    for (const msg of messages) {
+      await params.onMessage(msg);
+    }
+  }
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`);
     const llmResponse = await runLlmTurn({
       messages,
       systemPrompt,
@@ -1477,6 +1954,9 @@ async function runAgent(params) {
     const assistantMessage = createAssistantMessage(assistantBlocks);
     messages.push(assistantMessage);
     allResultMessages.push(assistantMessage);
+    if (params.onMessage) {
+      await params.onMessage(assistantMessage);
+    }
     const toolCalls = assistantBlocks.filter(
       (block) => block.type === "tool_use"
     );
@@ -1494,9 +1974,13 @@ async function runAgent(params) {
       )) {
         messages.push(msg);
         allResultMessages.push(msg);
+        if (params.onMessage) {
+          await params.onMessage(msg);
+        }
       }
     }
   }
+  console.log(`[runAgent] Completed, total messages: ${allResultMessages.length}`);
   return compressSubagentResult(allResultMessages);
 }
 
@@ -2049,23 +2533,35 @@ var TeamTool = {
 };
 
 // shared/fs.ts
-import { mkdir as mkdir5, readFile as readFile4, writeFile as writeFile4 } from "fs/promises";
-import { dirname, resolve } from "path";
-function resolvePathFromCwd(cwd2, inputPath) {
-  return resolve(cwd2, inputPath);
+import { mkdir as mkdir7, readFile as readFile6, writeFile as writeFile6 } from "fs/promises";
+import { dirname as dirname2, resolve, normalize } from "path";
+function resolvePathSafe(inputPath, cwd2, allowedRoots) {
+  const roots = allowedRoots ?? [cwd2];
+  const resolved = normalize(resolve(cwd2, inputPath));
+  const isAllowed = roots.some((root) => {
+    const normalizedRoot = normalize(resolve(cwd2, root));
+    return resolved === normalizedRoot || resolved.startsWith(normalizedRoot + "/");
+  });
+  if (!isAllowed) {
+    throw new Error(
+      `Path outside allowed scope: ${resolved}
+Allowed roots: ${roots.join(", ")}`
+    );
+  }
+  return resolved;
 }
 async function readTextFile(path) {
-  return readFile4(path, "utf8");
+  return readFile6(path, "utf8");
 }
 async function writeTextFile(path, content) {
-  await mkdir5(dirname(path), { recursive: true });
-  await writeFile4(path, content, "utf8");
+  await mkdir7(dirname2(path), { recursive: true });
+  await writeFile6(path, content, "utf8");
   return Buffer.byteLength(content, "utf8");
 }
 
 // tools/files/editTool.ts
-import { mkdir as mkdir6, writeFile as writeFile5 } from "fs/promises";
-import { join as join5 } from "path";
+import { mkdir as mkdir8, writeFile as writeFile7 } from "fs/promises";
+import { join as join7 } from "path";
 function generateUnifiedDiff(oldLines, newLines, filename) {
   let diff = `--- a/${filename}
 +++ b/${filename}
@@ -2108,7 +2604,7 @@ var EditTool = {
     return "Edit a file in place with diff display and automatic backup.";
   },
   async call(args, context, _canUseTool, _parentMessage) {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const content = await readTextFile(absolutePath);
     if (!content.includes(args.oldString)) {
       throw new Error(`Could not find target string in ${args.path}`);
@@ -2117,10 +2613,10 @@ var EditTool = {
     const newContent = content.replace(args.oldString, args.newString);
     const newLines = newContent.split("\n");
     const diff = generateUnifiedDiff(oldLines, newLines, args.path);
-    const backupDir = join5(context.cwd, ".irg", "backups");
-    const backupPath = join5(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
-    await mkdir6(backupDir, { recursive: true });
-    await writeFile5(backupPath, content, "utf8");
+    const backupDir = join7(context.cwd, ".irg", "backups");
+    const backupPath = join7(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
+    await mkdir8(backupDir, { recursive: true });
+    await writeFile7(backupPath, content, "utf8");
     await writeTextFile(absolutePath, newContent);
     return {
       data: {
@@ -2174,7 +2670,7 @@ var ReadTool = {
     return "Read a file";
   },
   async call(args, context, _canUseTool, _parentMessage) {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const content = await readTextFile(absolutePath);
     return {
       data: {
@@ -2211,7 +2707,7 @@ var WriteTool = {
     return "Write a file";
   },
   async call(args, context, _canUseTool, _parentMessage) {
-    const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+    const absolutePath = resolvePathSafe(args.path, context.cwd);
     const bytesWritten = await writeTextFile(absolutePath, args.content);
     return {
       data: {
@@ -2250,6 +2746,76 @@ var WriteTool = {
 
 // tools/shell/shellTool.ts
 import { spawn } from "child_process";
+var SAFE_COMMANDS = [
+  "ls",
+  "pwd",
+  "whoami",
+  "date",
+  "echo",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+  "grep",
+  "find",
+  "which",
+  "env",
+  "printenv",
+  "uname",
+  "hostname",
+  "git",
+  "npm",
+  "node",
+  "npx",
+  "bun",
+  "pnpm",
+  "yarn",
+  "python",
+  "python3",
+  "pip",
+  "pip3",
+  "tsc",
+  "eslint",
+  "prettier",
+  "curl",
+  "wget",
+  "mkdir",
+  "touch",
+  "cp",
+  "ps",
+  "top",
+  "df",
+  "du",
+  "free"
+];
+var DANGEROUS_PATTERNS = [
+  /\brm\b/,
+  /\bkill\b/,
+  /\bpkill\b/,
+  /\bshutdown\b/,
+  /\breboot\b/,
+  /\bchmod\b/,
+  /\bchown\b/,
+  /\bsudo\b/,
+  /\bsu\b/,
+  /\bmkfs\b/,
+  /\bdd\b/,
+  /\bformat\b/,
+  /\b>\s*\/\w/,
+  /\b>>\s*\/\w/,
+  // Redirect to system paths
+  /\|\s*sh/,
+  /\|\s*bash/,
+  // Pipe to shell
+  /\bcurl\b.*\|\s*(sh|bash|python)/
+  // curl pipe to interpreter
+];
+function isWhitelistedCommand(command) {
+  const trimmed = command.trim();
+  const firstWord = trimmed.split(/\s+/)[0];
+  if (!firstWord || !SAFE_COMMANDS.includes(firstWord)) return false;
+  return !DANGEROUS_PATTERNS.some((p) => p.test(trimmed));
+}
 var ShellTool = {
   name: "Shell",
   inputSchema: null,
@@ -2293,6 +2859,9 @@ var ShellTool = {
   },
   async checkPermissions(input3, context) {
     if (context.getAppState().permissionContext.mode === "default") {
+      if (isWhitelistedCommand(input3.command)) {
+        return { behavior: "allow", updatedInput: input3 };
+      }
       return {
         behavior: "ask",
         message: `Shell requires confirmation for "${input3.command}"`
@@ -2363,6 +2932,7 @@ async function web_fetch(url) {
     `);
     const html = await page.content();
     console.log(`[WebFetch] Successfully fetched ${html.length} bytes from ${url}`);
+    await browser.close();
     return html;
   } catch (error) {
     if (browser) {
@@ -2436,7 +3006,7 @@ ${errorMsg}`
 };
 
 // tools/files/fileTreeTool.ts
-import { readdir as readdir2, stat as stat2 } from "fs/promises";
+import { readdir as readdir3, stat as stat2 } from "fs/promises";
 import { resolve as resolve2 } from "path";
 function getFileType(mode) {
   if (mode & 40960) return "symlink";
@@ -2451,7 +3021,7 @@ async function buildTree(dirPath, cwd2, relativePath, maxDepth, depth, fileLimit
   };
   let entries = [];
   try {
-    const rawEntries = await readdir2(dirPath, { withFileTypes: true });
+    const rawEntries = await readdir3(dirPath, { withFileTypes: true });
     for (const re of rawEntries) {
       if (!includeHidden && re.name.startsWith(".")) continue;
       const st = await stat2(resolve2(dirPath, re.name)).catch(() => null);
@@ -2570,8 +3140,8 @@ var FileTreeTool = {
 };
 
 // tools/files/searchFilesTool.ts
-import { readdir as readdir3, stat as stat3, readFile as readFile5 } from "fs/promises";
-import { resolve as resolve3, relative as relative2, dirname as dirname2 } from "path";
+import { readdir as readdir4, stat as stat3, readFile as readFile7 } from "fs/promises";
+import { resolve as resolve3, relative as relative2, dirname as dirname3 } from "path";
 function getFileType2(mode) {
   if (mode & 40960) return "symlink";
   if (mode & 16384) return "directory";
@@ -2597,7 +3167,7 @@ async function searchFilesInDir(dirPath, cwd2, glob, pattern, limit, counter, ty
   const results = [];
   let entries = [];
   try {
-    const rawEntries = await readdir3(dirPath, { withFileTypes: true });
+    const rawEntries = await readdir4(dirPath, { withFileTypes: true });
     for (const re of rawEntries) {
       if (re.name.startsWith(".")) continue;
       const st = await stat3(resolve3(dirPath, re.name)).catch(() => null);
@@ -2614,7 +3184,7 @@ async function searchFilesInDir(dirPath, cwd2, glob, pattern, limit, counter, ty
     const fileType = getFileType2(e.mode);
     if (glob) {
       const fileName = e.name;
-      const dirName = dirname2(relPath);
+      const dirName = dirname3(relPath);
       const fullRelPath = dirName ? `${dirName}/${fileName}` : fileName;
       const nameMatches = matchesGlob(fileName, glob);
       const pathMatches = glob.includes("/") ? matchesGlob(fullRelPath, glob) : false;
@@ -2642,7 +3212,7 @@ async function searchFilesInDir(dirPath, cwd2, glob, pattern, limit, counter, ty
         });
       } else if (type === "content" && pattern) {
         try {
-          const content = await readFile5(fullPath, "utf8");
+          const content = await readFile7(fullPath, "utf8");
           const lines = content.split("\n");
           const regex = new RegExp(pattern, "i");
           for (let i = 0; i < lines.length; i++) {
@@ -2747,11 +3317,12 @@ async function duckduckgoSearch(query2, maxResults = 10) {
   const snippetRegex = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]+href="[^"]+"[^>]*>([^<]+)<\/a>/g;
   let titleMatch;
   while ((titleMatch = titleRegex.exec(html)) !== null && results.length < maxResults) {
-    const href = titleMatch[1].replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
+    const matchUrl = titleMatch[1];
+    const href = matchUrl.replace(/^https?:\/\/duckduckgo\.com\/l\/\?u=(.+)$/, (_, u) => {
       try {
         return decodeURIComponent(u);
       } catch {
-        return titleMatch[1];
+        return matchUrl;
       }
     });
     results.push({
@@ -2866,8 +3437,8 @@ var WebSearchTool = {
 };
 
 // tools/web/imageUploadTool.ts
-import { mkdir as mkdir7, writeFile as writeFile6 } from "fs/promises";
-import { join as join6 } from "path";
+import { mkdir as mkdir9, writeFile as writeFile8 } from "fs/promises";
+import { join as join8 } from "path";
 var ImageUploadTool = {
   name: "ImageUpload",
   inputSchema: null,
@@ -2886,11 +3457,11 @@ var ImageUploadTool = {
     else if (mimeType.includes("png")) ext = "png";
     const timestamp = Date.now();
     const filename = `image_${timestamp}.${ext}`;
-    const imageDir = join6(context.cwd, ".irg", "images");
-    await mkdir7(imageDir, { recursive: true });
-    const filePath = join6(imageDir, filename);
+    const imageDir = join8(context.cwd, ".irg", "images");
+    await mkdir9(imageDir, { recursive: true });
+    const filePath = join8(imageDir, filename);
     const buffer = Buffer.from(imageData, "base64");
-    await writeFile6(filePath, buffer);
+    await writeFile8(filePath, buffer);
     return {
       data: {
         path: filePath,
@@ -2927,8 +3498,8 @@ var ImageUploadTool = {
 };
 
 // tools/web/imageAnalyzeTool.ts
-import { readdir as readdir4, readFile as readFile6, stat as stat4 } from "fs/promises";
-import { join as join7 } from "path";
+import { readdir as readdir5, readFile as readFile8, stat as stat4 } from "fs/promises";
+import { join as join9 } from "path";
 async function analyzeWithAnthropic(imageData, mimeType, prompt, config) {
   const response = await fetch(`${config.baseUrl}/messages`, {
     method: "POST",
@@ -3021,7 +3592,7 @@ var ImageAnalyzeTool = {
     let mimeType;
     let imageUrl;
     if (args.imagePath) {
-      const filePath = args.imagePath.startsWith("/") ? args.imagePath : join7(context.cwd, args.imagePath);
+      const filePath = args.imagePath.startsWith("/") ? args.imagePath : join9(context.cwd, args.imagePath);
       const fileStat = await stat4(filePath).catch(() => null);
       if (!fileStat) {
         return {
@@ -3033,13 +3604,13 @@ var ImageAnalyzeTool = {
           }
         };
       }
-      const buffer = await readFile6(filePath);
+      const buffer = await readFile8(filePath);
       imageData = buffer.toString("base64");
       mimeType = fileStat.mode & 32767 ? "image/png" : "image/png";
       imageUrl = filePath;
     } else if (args.imageId) {
-      const imageDir = join7(context.cwd, ".irg", "images");
-      const files = await readdir4(imageDir).catch(() => []);
+      const imageDir = join9(context.cwd, ".irg", "images");
+      const files = await readdir5(imageDir).catch(() => []);
       const matchingFile = files.find((f) => f.startsWith(args.imageId));
       if (!matchingFile) {
         return {
@@ -3051,8 +3622,8 @@ var ImageAnalyzeTool = {
           }
         };
       }
-      const filePath = join7(imageDir, matchingFile);
-      const buffer = await readFile6(filePath);
+      const filePath = join9(imageDir, matchingFile);
+      const buffer = await readFile8(filePath);
       imageData = buffer.toString("base64");
       mimeType = matchingFile.endsWith(".jpg") || matchingFile.endsWith(".jpeg") ? "image/jpeg" : "image/png";
       imageUrl = filePath;
@@ -3112,8 +3683,8 @@ var ImageAnalyzeTool = {
 };
 
 // tools/web/imageGenerateTool.ts
-import { mkdir as mkdir8, writeFile as writeFile7 } from "fs/promises";
-import { join as join8 } from "path";
+import { mkdir as mkdir10, writeFile as writeFile9 } from "fs/promises";
+import { join as join10 } from "path";
 async function generateWithOpenAI(prompt, size, model, quality, apiKey, n) {
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -3184,8 +3755,8 @@ var ImageGenerateTool = {
     const model = args.model || "dall-e-3";
     const quality = args.quality || "standard";
     const n = args.n || 1;
-    const imageDir = join8(context.cwd, ".irg", "images");
-    await mkdir8(imageDir, { recursive: true });
+    const imageDir = join10(context.cwd, ".irg", "images");
+    await mkdir10(imageDir, { recursive: true });
     let images = [];
     if (provider === "openai") {
       images = await generateWithOpenAI(
@@ -3204,9 +3775,9 @@ var ImageGenerateTool = {
         if (img.b64_json) {
           const timestamp = Date.now();
           const filename = `generated_${timestamp}_${i}.png`;
-          const filePath = join8(imageDir, filename);
+          const filePath = join10(imageDir, filename);
           const buffer = Buffer.from(img.b64_json, "base64");
-          await writeFile7(filePath, buffer);
+          await writeFile9(filePath, buffer);
           return { path: filePath, b64_json: img.b64_json };
         }
         return { url: img.url };
@@ -3253,8 +3824,8 @@ var ImageGenerateTool = {
 };
 
 // skills/loader.ts
-import { readFile as readFile7, readdir as readdir5, access } from "fs/promises";
-import { join as join9, dirname as dirname3 } from "path";
+import { readFile as readFile9, readdir as readdir6, access } from "fs/promises";
+import { join as join11, dirname as dirname4 } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { platform } from "os";
@@ -3415,7 +3986,7 @@ function replaceBaseDir(content, dirPath) {
 }
 async function parseSkillFile(skillPath, dirPath) {
   try {
-    const content = await readFile7(skillPath, "utf-8");
+    const content = await readFile9(skillPath, "utf-8");
     const parts = content.split("---");
     if (parts.length < 3) {
       console.error(`Invalid skill file format: ${skillPath}`);
@@ -3472,16 +4043,16 @@ async function registerSkill(skillPath, dirPath) {
 }
 async function registerSkillsFromDirectory(dirPath) {
   try {
-    const entries = await readdir5(dirPath, { withFileTypes: true });
+    const entries = await readdir6(dirPath, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = join9(dirPath, entry.name);
+      const fullPath = join11(dirPath, entry.name);
       if (entry.isDirectory()) {
-        const skillMdPath = join9(fullPath, "SKILL.md");
+        const skillMdPath = join11(fullPath, "SKILL.md");
         try {
           await access(skillMdPath);
           await registerSkill(skillMdPath, fullPath);
         } catch {
-          const altMdPath = join9(fullPath, entry.name + ".md");
+          const altMdPath = join11(fullPath, entry.name + ".md");
           try {
             await access(altMdPath);
             await registerSkill(altMdPath, fullPath);
@@ -3507,11 +4078,11 @@ async function directoryExists(path) {
 async function loadSkills() {
   LoadedSkills = [];
   const currentFilePath = fileURLToPath(import.meta.url);
-  const currentDir = dirname3(currentFilePath);
+  const currentDir = dirname4(currentFilePath);
   const possiblePaths = [
-    join9(currentDir, "bundled"),
-    join9(dirname3(dirname3(currentDir)), "skills", "bundled"),
-    join9(process.cwd(), "skills", "bundled")
+    join11(currentDir, "bundled"),
+    join11(dirname4(dirname4(currentDir)), "skills", "bundled"),
+    join11(process.cwd(), "skills", "bundled")
   ];
   let skillsLoaded = false;
   for (const skillsPath of possiblePaths) {
@@ -3526,7 +4097,7 @@ async function loadSkills() {
     console.warn("Could not find skills directory in any of the expected locations");
     console.warn("Tried paths:", possiblePaths);
   }
-  const userSkillsPath = join9(process.cwd(), ".irg", "skills");
+  const userSkillsPath = join11(process.cwd(), ".irg", "skills");
   if (await directoryExists(userSkillsPath)) {
     console.log(`Loading user skills from: ${userSkillsPath}`);
     await registerSkillsFromDirectory(userSkillsPath);
@@ -3589,11 +4160,11 @@ async function loadSkillInstruction(skill) {
   const references = [];
   if (skill.dirPath) {
     try {
-      const refDir = join9(skill.dirPath, "references");
-      const entries = await readdir5(refDir);
+      const refDir = join11(skill.dirPath, "references");
+      const entries = await readdir6(refDir);
       for (const entry of entries) {
         if (entry.endsWith(".md") || entry.endsWith(".txt")) {
-          references.push(join9(refDir, entry));
+          references.push(join11(refDir, entry));
         }
       }
     } catch {
@@ -3714,8 +4285,8 @@ User arguments: ${args.arguments}`;
 };
 
 // discovery/moduleDiscovery.ts
-import { readdir as readdir6, stat as stat6 } from "fs/promises";
-import { join as join10, extname } from "path";
+import { readdir as readdir7, stat as stat6 } from "fs/promises";
+import { join as join12, extname } from "path";
 var SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cs",
   ".cpp",
@@ -3757,12 +4328,12 @@ async function collectSourceFiles(dirPath, maxFiles = 200) {
     const current = stack.pop();
     let entries;
     try {
-      entries = await readdir6(current);
+      entries = await readdir7(current);
     } catch {
       continue;
     }
     for (const entry of entries) {
-      const fullPath = join10(current, entry);
+      const fullPath = join12(current, entry);
       let st;
       try {
         st = await stat6(fullPath);
@@ -3782,16 +4353,16 @@ async function collectSourceFiles(dirPath, maxFiles = 200) {
 }
 async function discoverModules(cwd2, targetPaths = []) {
   const modules = [];
-  const scanDirs = targetPaths.length > 0 ? targetPaths.map((p) => join10(cwd2, p)) : [cwd2];
+  const scanDirs = targetPaths.length > 0 ? targetPaths.map((p) => join12(cwd2, p)) : [cwd2];
   for (const scanDir of scanDirs) {
     let entries;
     try {
-      entries = await readdir6(scanDir);
+      entries = await readdir7(scanDir);
     } catch {
       continue;
     }
     for (const entry of entries) {
-      const fullPath = join10(scanDir, entry);
+      const fullPath = join12(scanDir, entry);
       let st;
       try {
         st = await stat6(fullPath);
@@ -3811,8 +4382,8 @@ async function discoverModules(cwd2, targetPaths = []) {
       let manifestFile;
       for (const mc of manifestCandidates) {
         try {
-          await stat6(join10(fullPath, mc));
-          manifestFile = join10(fullPath, mc);
+          await stat6(join12(fullPath, mc));
+          manifestFile = join12(fullPath, mc);
           break;
         } catch {
         }
@@ -3835,7 +4406,7 @@ async function discoverModules(cwd2, targetPaths = []) {
 }
 
 // discovery/parsers/csharpParser.ts
-import { readFile as readFile9 } from "fs/promises";
+import { readFile as readFile11 } from "fs/promises";
 function extractDocComment(lines, declLineIdx) {
   const docLines = [];
   let i = declLineIdx - 1;
@@ -3936,7 +4507,7 @@ var CS_FIELD_RE = /((?:public|private|protected|internal|static|readonly|const|v
 var CS_USING_RE = /using\s+(\S+(?:\s*=\s*\S+)?)\s*;/g;
 var CS_ENUM_RE = /((?:public|private|protected|internal)\s+)?enum\s+(\w+)\s*(?::\s*(\w+))?\s*\{([^}]*)\}/gs;
 async function parseCSharpFile(filePath) {
-  const source = await readFile9(filePath, "utf8");
+  const source = await readFile11(filePath, "utf8");
   const lines = source.split("\n");
   const imports = [];
   let match;
@@ -4071,7 +4642,7 @@ function extractCSharpFields(body) {
 }
 
 // discovery/parsers/cppParser.ts
-import { readFile as readFile10 } from "fs/promises";
+import { readFile as readFile12 } from "fs/promises";
 function extractDocComment2(lines, declLineIdx) {
   const docLines = [];
   let i = declLineIdx - 1;
@@ -4199,7 +4770,7 @@ var CPP_TEMPLATE_CLASS_RE = /template\s*<[^>]*>\s*\n?\s*\b(class|struct)\s+(\w+(
 var CPP_INCLUDE_RE = /#include\s+[<"]([^>"]+)[>"]/g;
 var CPP_ENUM_RE = /\benum\s+(?:class\s+)?(\w+)\s*(?::\s*(\w+))?\s*\{([^}]*)\}/gs;
 async function parseCppFile(filePath) {
-  const source = await readFile10(filePath, "utf8");
+  const source = await readFile12(filePath, "utf8");
   const lines = source.split("\n");
   const imports = [];
   let match;
@@ -4834,26 +5405,26 @@ ${moduleWiki.dependencies.map((d) => `- ${d}`).join("\n")}` : ""
 }
 
 // discovery/cache.ts
-import { mkdir as mkdir9, readFile as readFile11, writeFile as writeFile8 } from "fs/promises";
-import { join as join11 } from "path";
+import { mkdir as mkdir11, readFile as readFile13, writeFile as writeFile10 } from "fs/promises";
+import { join as join13 } from "path";
 import { createHash } from "crypto";
 function getCachePath(cwd2) {
-  return join11(cwd2, ".irg", "discovery_cache.json");
+  return join13(cwd2, ".irg", "discovery_cache.json");
 }
 function computeSourceHash2(filePaths) {
   return createHash("md5").update([...filePaths].sort().join("\n")).digest("hex").slice(0, 16);
 }
 async function loadCache(cwd2) {
   try {
-    const content = await readFile11(getCachePath(cwd2), "utf8");
+    const content = await readFile13(getCachePath(cwd2), "utf8");
     return JSON.parse(content);
   } catch {
     return {};
   }
 }
 async function saveCache(cwd2, store) {
-  await mkdir9(join11(cwd2, ".irg"), { recursive: true });
-  await writeFile8(getCachePath(cwd2), JSON.stringify(store, null, 2), "utf8");
+  await mkdir11(join13(cwd2, ".irg"), { recursive: true });
+  await writeFile10(getCachePath(cwd2), JSON.stringify(store, null, 2), "utf8");
 }
 async function getCachedWiki(cwd2, moduleName, sourceFiles) {
   const store = await loadCache(cwd2);
@@ -5044,6 +5615,291 @@ var DiscoveryTool = {
   }
 };
 
+// tools/grpc/grpcClientTool.ts
+import { join as join14 } from "path";
+import { existsSync } from "fs";
+import { createRequire } from "module";
+var __require = createRequire(import.meta.url);
+var grpc = null;
+var protoLoader = null;
+async function ensureGrpcLoaded() {
+  if (!grpc) {
+    grpc = __require("@grpc/grpc-js");
+  }
+  if (!protoLoader) {
+    protoLoader = __require("@grpc/proto-loader");
+  }
+}
+var protoCache = /* @__PURE__ */ new Map();
+async function loadProto(protoPath) {
+  await ensureGrpcLoaded();
+  const { stat: stat7 } = await import("fs/promises");
+  const fileStat = await stat7(protoPath).catch(() => null);
+  const mtimeMs = fileStat?.mtimeMs || 0;
+  const cached = protoCache.get(protoPath);
+  if (cached && cached.mtimeMs === mtimeMs) return cached.def;
+  const packageDef = await protoLoader.load(protoPath, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true
+  });
+  protoCache.set(protoPath, { def: packageDef, mtimeMs });
+  return packageDef;
+}
+function getServiceClient(packageDef, serviceName, address) {
+  const proto = grpc.loadPackageDefinition(packageDef);
+  const parts = serviceName.split(".");
+  let current = proto;
+  for (const part of parts) {
+    if (current[part]) {
+      current = current[part];
+    } else {
+      throw new Error(`Service "${serviceName}" not found in proto definition. Available: ${Object.keys(current).join(", ")}`);
+    }
+  }
+  if (typeof current !== "function") {
+    throw new Error(`"${serviceName}" is not a gRPC service constructor`);
+  }
+  return new current(address, grpc.credentials.createInsecure());
+}
+function callMethod(client, methodName, payload, metadata, deadlineMs) {
+  return new Promise((resolve5, reject) => {
+    const method = client[methodName];
+    if (typeof method !== "function") {
+      const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(client)).filter((m) => typeof client[m] === "function" && !m.startsWith("_")).filter((m) => !["close", "getChannel", "waitForReady"].includes(m));
+      reject(new Error(`Method "${methodName}" not found. Available: ${methods.join(", ")}`));
+      return;
+    }
+    const meta = new grpc.Metadata();
+    for (const [key, value] of Object.entries(metadata)) {
+      meta.add(key, value);
+    }
+    const deadline = new Date(Date.now() + deadlineMs);
+    const timer = setTimeout(() => {
+      reject(new Error(`gRPC call timed out after ${deadlineMs}ms (is this a streaming RPC? Only unary calls are supported)`));
+    }, deadlineMs + 1e3);
+    method.call(client, payload, meta, { deadline }, (error, response) => {
+      clearTimeout(timer);
+      if (error) {
+        reject(new Error(`gRPC error [${error.code}]: ${error.details || error.message}`));
+      } else {
+        resolve5(response);
+      }
+    });
+  });
+}
+var GrpcClientTool = {
+  name: "GrpcClient",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Execute a gRPC call to an external microservice. Use this tool (NOT Shell) when a task requires calling a gRPC service. Parameters: protoFile (path to .proto), service (e.g. 'AlgoGRPC.AlgoService'), method (e.g. 'SendMessage'), address (host:port), payload (JSON object). Example: GrpcClient(protoFile='protos/AlgoService.proto', service='AlgoGRPC.AlgoService', method='SendMessage', address='192.168.25.106:9010', payload={Module:'WaferMapTool', Method:'DrawWaferMap', StringParas:['All']})";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const startTime = Date.now();
+    const deadline = args.deadline || 3e5;
+    const metadata = args.metadata || {};
+    try {
+      const protoPath = args.protoFile.startsWith("/") ? args.protoFile : join14(context.cwd, args.protoFile);
+      if (!existsSync(protoPath)) {
+        throw new Error(`Proto file not found: ${protoPath}`);
+      }
+      const packageDef = await loadProto(protoPath);
+      const client = getServiceClient(packageDef, args.service, args.address);
+      try {
+        const response = await callMethod(client, args.method, args.payload, metadata, deadline);
+        return {
+          data: {
+            success: true,
+            response,
+            durationMs: Date.now() - startTime
+          }
+        };
+      } finally {
+        client.close();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`gRPC call failed: ${message}`);
+    }
+  },
+  async validateInput(input3) {
+    if (!input3.protoFile || typeof input3.protoFile !== "string") {
+      return { result: false, message: "protoFile is required" };
+    }
+    if (!input3.service || typeof input3.service !== "string") {
+      return { result: false, message: "service is required" };
+    }
+    if (!input3.method || typeof input3.method !== "string") {
+      return { result: false, message: "method is required" };
+    }
+    if (!input3.address || typeof input3.address !== "string") {
+      return { result: false, message: "address is required (host:port)" };
+    }
+    if (!input3.address.match(/^[a-zA-Z0-9._-]+:\d+$/)) {
+      return { result: false, message: "address must be in format host:port" };
+    }
+    if (!input3.payload || typeof input3.payload !== "object") {
+      return { result: false, message: "payload is required (object)" };
+    }
+    return { result: true };
+  },
+  async checkPermissions() {
+    return { behavior: "ask", message: "gRPC call requires confirmation" };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  }
+};
+
+// tools/workflow/checkpointTool.ts
+var pendingResponses = /* @__PURE__ */ new Map();
+function getCheckpointResponse(checkpointId) {
+  const response = pendingResponses.get(checkpointId);
+  if (response) pendingResponses.delete(checkpointId);
+  return response;
+}
+var CheckpointTool = {
+  name: "Checkpoint",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Pause execution and wait for user input. Use this for: approval confirmations, error recovery choices (retry/skip/abort), or collecting user-provided data. The workflow will pause until the user responds.";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const checkpointId = args.__checkpointId;
+    if (checkpointId) {
+      const stored = getCheckpointResponse(checkpointId);
+      if (stored) {
+        return { data: stored };
+      }
+    }
+    throw new Error(
+      `Checkpoint "${args.type}" has no response and no checkpointId was injected. The permission flow may have failed. Message: ${args.message}`
+    );
+  },
+  async validateInput(input3) {
+    if (!input3.type || !["approval", "error_choice", "data_input"].includes(input3.type)) {
+      return { result: false, message: "type must be 'approval', 'error_choice', or 'data_input'" };
+    }
+    if (!input3.message || typeof input3.message !== "string") {
+      return { result: false, message: "message is required" };
+    }
+    if (input3.type === "error_choice" && (!input3.options || input3.options.length === 0)) {
+      return { result: false, message: "options are required for error_choice type" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(input3) {
+    return {
+      behavior: "ask",
+      message: input3.message || "Waiting for user input...",
+      updatedInput: input3
+    };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  }
+};
+
+// storage/taskIndex.ts
+import { mkdir as mkdir12, readFile as readFile14, readdir as readdir8, rm as rm5, writeFile as writeFile11 } from "fs/promises";
+import { join as join15 } from "path";
+function getTasksDir(cwd2) {
+  return join15(cwd2, ".irg", "tasks");
+}
+function getTaskInfoPath(cwd2, taskId) {
+  return join15(getTasksDir(cwd2), `${taskId}.json`);
+}
+async function createTask(cwd2, task) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const newTask = {
+    ...task,
+    createdAt: now,
+    updatedAt: now,
+    activities: [{
+      id: `activity-${Date.now()}`,
+      action: "created",
+      actor: task.createdBy,
+      details: `Task created: ${task.title}`,
+      timestamp: now
+    }],
+    statusHistory: [{
+      status: task.status || "todo",
+      timestamp: now,
+      actor: task.createdBy
+    }]
+  };
+  await mkdir12(getTasksDir(cwd2), { recursive: true });
+  await writeFile11(
+    getTaskInfoPath(cwd2, task.id),
+    `${JSON.stringify(newTask, null, 2)}
+`,
+    "utf8"
+  );
+  return newTask;
+}
+
+// tools/task/taskCreateTool.ts
+var TaskCreateTool = {
+  name: "TaskCreate",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Create a new task in the task management system";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    if (!args.title?.trim()) {
+      throw new Error("Task title is required");
+    }
+    const task = await createTask(context.cwd, {
+      id: createId("task"),
+      title: args.title.trim(),
+      description: args.description,
+      status: "todo",
+      priority: args.priority || "medium",
+      assignee: args.assignee || "general-purpose",
+      dependsOn: args.dependsOn
+    });
+    return {
+      data: {
+        taskId: task.id,
+        title: task.title,
+        status: task.status
+      }
+    };
+  },
+  async validateInput(input3) {
+    if (!input3?.title || typeof input3.title !== "string" || !input3.title.trim()) {
+      return { result: false, message: "Task title is required" };
+    }
+    return { result: true };
+  },
+  async checkPermissions(_input, context) {
+    if (context.getAppState().permissionContext.mode === "default") {
+      return {
+        behavior: "ask",
+        message: "Create a new task?"
+      };
+    }
+    return { behavior: "allow", updatedInput: _input };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
 // tools/registry.ts
 function getTools() {
   return [
@@ -5061,7 +5917,10 @@ function getTools() {
     ImageUploadTool,
     ImageAnalyzeTool,
     ImageGenerateTool,
-    DiscoveryTool
+    DiscoveryTool,
+    GrpcClientTool,
+    CheckpointTool,
+    TaskCreateTool
   ];
 }
 
@@ -5168,9 +6027,9 @@ function planPrompt(prompt) {
     text: [
       "\u6211\u73B0\u5728\u652F\u6301\u4E00\u7EC4\u672C\u5730 agent \u52A8\u4F5C\uFF0C\u4F46\u5F53\u524D\u6CA1\u6709\u53EF\u7528\u7684\u8FDC\u7A0B LLM \u914D\u7F6E\u3002",
       "\u4F60\u53EF\u4EE5\u8BBE\u7F6E\u8FD9\u4E9B\u73AF\u5883\u53D8\u91CF\u6765\u63A5\u5165\u517C\u5BB9 OpenAI Chat Completions \u7684\u6A21\u578B\uFF1A",
-      "- `IRG_LLM_API_KEY`",
-      "- `IRG_LLM_MODEL`",
-      "- `IRG_LLM_BASE_URL` \u53EF\u9009\uFF0C\u9ED8\u8BA4 `https://api.openai.com/v1`",
+      "- `CCL_LLM_API_KEY`",
+      "- `CCL_LLM_MODEL`",
+      "- `CCL_LLM_BASE_URL` \u53EF\u9009\uFF0C\u9ED8\u8BA4 `https://api.openai.com/v1`",
       "\u5728\u672A\u914D\u7F6E LLM \u65F6\uFF0C\u4E5F\u53EF\u4EE5\u76F4\u63A5\u7ED9\u6211\u8FD9\u4E9B\u683C\u5F0F\u7684\u63D0\u793A\uFF1A",
       "- `read README.md`",
       "- `run pwd`",
@@ -5183,7 +6042,7 @@ function planPrompt(prompt) {
 }
 function getDefaultSystemPrompt() {
   return [
-    "You are IRG (Intelligent Robot Guide), a local CLI AI programming assistant.",
+    "You are Claude Code-lite, a local CLI coding assistant.",
     "Use tools when the user asks you to inspect files, edit files, run shell commands, fetch URLs, or delegate to an agent.",
     "Prefer concise Chinese responses for user-facing text.",
     "When a tool is needed, emit tool calls instead of describing what you would do.",
@@ -5525,12 +6384,7 @@ async function* queryWithPlanner(params) {
   yield createAssistantTextMessage(planned.summarizeResult(result));
 }
 async function* queryWithLlm(params) {
-  const lastMsg = params.messages[params.messages.length - 1];
-  const alreadyHasPrompt = lastMsg?.type === "user" && lastMsg.content === params.prompt;
-  const conversation = alreadyHasPrompt ? [...params.messages] : [
-    ...params.messages,
-    { id: createId("user"), type: "user", content: params.prompt }
-  ];
+  const conversation = [...params.messages];
   const maxTurns = params.maxTurns ?? 8;
   const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
   try {
@@ -5547,11 +6401,10 @@ async function* queryWithLlm(params) {
     systemPrompt.push(skillsMeta);
   }
   for (let turn = 0; turn < maxTurns; turn += 1) {
-    const defs = getToolDefinitions();
     const llmResponse = await runLlmTurn({
       messages: conversation,
       systemPrompt,
-      tools: defs,
+      tools: getToolDefinitions(),
       onTextDelta: params.onAssistantTextDelta
     });
     if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
@@ -5717,7 +6570,7 @@ ${formatSkillInstructionForPrompt(skill)}`
       ...params,
       systemPrompt: enhancedSystemPrompt
     };
-    if (!getLlmConfig()?.apiKey) {
+    if (!getLlmConfig()) {
       yield* queryWithPlanner(enhancedParams);
       return;
     }
@@ -5734,7 +6587,7 @@ ${message}`
     }
     return;
   }
-  if (!getLlmConfig()?.apiKey) {
+  if (!getLlmConfig()) {
     yield* queryWithPlanner(params);
     return;
   }
@@ -5766,7 +6619,7 @@ function formatSessionList(sessions, options) {
     return "No sessions found.";
   }
   const lines = sessions.map((session) => {
-    const marker = session.status === "needs_attention" ? "!" : "-";
+    const marker = session.status === "error" ? "!" : "-";
     const updated = session.updatedAt || session.createdAt || "-";
     const title = session.title || session.id;
     const model = session.provider || session.model ? ` \xB7 ${session.provider || "?"}/${session.model || "?"}` : "";
@@ -5817,7 +6670,8 @@ function clipText(text, maxLength) {
 }
 function formatExportMessageEntry(message) {
   if (message.type === "user") {
-    return `user: ${clipText(message.content, 240)}`;
+    const text = typeof message.content === "string" ? message.content : message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    return `user: ${clipText(text, 240)}`;
   }
   if (message.type === "tool_result") {
     const status = message.isError ? "tool_error" : "tool_result";
@@ -5896,7 +6750,7 @@ function formatJsonExport(session, messages) {
       session,
       messages: messages.map((message) => ({
         ...message,
-        ...message.type === "user" ? { content: clipText(message.content, 240) } : message.type === "tool_result" ? { content: summarizeUnknown(message.content, 400) } : {
+        ...message.type === "user" ? { content: clipText(typeof message.content === "string" ? message.content : message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n"), 240) } : message.type === "tool_result" ? { content: summarizeUnknown(message.content, 400) } : {
           content: message.content.map(
             (block) => block.type === "text" ? {
               ...block,
@@ -6148,7 +7002,7 @@ async function resolveSessionIdArg(cwd2, rawSession) {
   }
   if (rawSession === "failed") {
     const sessions = await listSessions(cwd2);
-    return sessions.find((session) => session.status === "needs_attention")?.id;
+    return sessions.find((session) => session.status === "error")?.id;
   }
   return rawSession;
 }
@@ -6280,9 +7134,9 @@ function parseCleanupCommandOptions(args) {
     }
     if (arg === "--status") {
       const value = args[index + 1];
-      if (value !== "ready" && value !== "needs_attention") {
+      if (value !== "idle" && value !== "completed" && value !== "error") {
         throw new Error(
-          'cleanup-sessions --status requires "ready" or "needs_attention"'
+          'cleanup-sessions --status requires "idle", "completed", or "error"'
         );
       }
       status = value;
@@ -6316,9 +7170,9 @@ function parseSessionsCommandOptions(args) {
     }
     if (arg === "--status") {
       const value = args[index + 1];
-      if (value !== "ready" && value !== "needs_attention") {
+      if (value !== "idle" && value !== "completed" && value !== "error") {
         throw new Error(
-          'sessions --status requires "ready" or "needs_attention"'
+          'sessions --status requires "idle", "completed", or "error"'
         );
       }
       status = value;
@@ -6441,7 +7295,7 @@ async function executeCliCommand(cwd2, argv, autoApprove = false, hooks) {
       }
       const content = options.format === "json" ? formatJsonExport(info, messages) : formatMarkdownExport(info, messages);
       if (options.outputPath) {
-        await writeFile9(options.outputPath, `${content}
+        await writeFile12(options.outputPath, `${content}
 `, "utf8");
       }
       return {
@@ -7294,7 +8148,8 @@ function shouldCollapse(text) {
 }
 function makeConversationEntries(state, message) {
   if (message.type === "user") {
-    return [{ kind: "user", text: message.content }];
+    const text = typeof message.content === "string" ? message.content : message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    return [{ kind: "user", text }];
   }
   if (message.type === "tool_result") {
     const text = formatUnknown(message.content);
@@ -7640,7 +8495,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef, re
   if (!commandLine) {
     state.entries.push({
       kind: "system",
-      text: "\u53EF\u7528\u547D\u4EE4\uFF1A/help /tools /skills /sessions [--limit N] [--status ready|needs_attention] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
+      text: "\u53EF\u7528\u547D\u4EE4\uFF1A/help /tools /skills /sessions [--limit N] [--status idle|completed|error] /inspect <id> /export-session <id> [--format markdown|json] [--output path] /transcript <id> /rm-session <id> /cleanup-sessions --keep N [--dry-run] /expand [n|all] /collapse [n|all] /filter [all|failed|tools] /resume [id|latest|failed] /new /clear /quit"
     });
     return;
   }
@@ -7670,7 +8525,7 @@ async function runSlashCommand(line, options, state, runtimeRef, appStateRef, re
         "",
         "TUI commands:",
         "  /skills",
-        "  /sessions [--limit N] [--status ready|needs_attention]",
+        "  /sessions [--limit N] [--status idle|completed|error]",
         "  /inspect <id>",
         "  /export-session <id> [--format markdown|json] [--output path]",
         "  /rm-session <id>",
@@ -7851,7 +8706,7 @@ ${skillsText}`
   if (commandLine.startsWith("resume")) {
     const [, rawTarget] = commandLine.split(/\s+/, 2);
     const sessions = await listSessions(options.cwd);
-    const target = !rawTarget || rawTarget === "latest" ? sessions[0]?.id : rawTarget === "failed" ? sessions.find((session) => session.status === "needs_attention")?.id : rawTarget;
+    const target = !rawTarget || rawTarget === "latest" ? sessions[0]?.id : rawTarget === "failed" ? sessions.find((session) => session.status === "error")?.id : rawTarget;
     if (!target) {
       state.entries.push({
         kind: "error",
@@ -8576,8 +9431,91 @@ async function startTui(options) {
   cleanup();
 }
 
+// tools/hooks.ts
+var registeredHooks = {};
+function registerHooks(hooks) {
+  registeredHooks = { ...registeredHooks, ...hooks };
+}
+
+// tools/knowledgeHook.ts
+var ERROR_PATTERNS = [
+  { pattern: /ENOENT.*no such file/i, insight: "File not found errors often indicate wrong path or missing file" },
+  { pattern: /EACCES.*permission denied/i, insight: "Permission denied errors indicate insufficient access rights" },
+  { pattern: /timeout/i, insight: "Timeout errors may indicate network issues or overloaded services" },
+  { pattern: /ECONNREFUSED/i, insight: "Connection refused errors indicate service is not running or wrong address" },
+  { pattern: /gRPC.*failed/i, insight: "gRPC failures should be checked for service availability and correct proto definitions" }
+];
+var toolErrorCounts = /* @__PURE__ */ new Map();
+var toolUsageCounts = /* @__PURE__ */ new Map();
+function registerKnowledgeHook(cwd2) {
+  registerHooks({
+    afterToolCall: async (ctx, result, error) => {
+      try {
+        if (error) {
+          await handleError(cwd2, ctx, error);
+        } else {
+          await handleSuccess(cwd2, ctx);
+        }
+      } catch (hookError) {
+        console.error("[KnowledgeHook] Error:", hookError);
+      }
+      return {};
+    }
+  });
+}
+async function handleError(cwd2, ctx, error) {
+  const errorMessage = error.message;
+  const toolKey = ctx.toolName;
+  toolErrorCounts.set(toolKey, (toolErrorCounts.get(toolKey) || 0) + 1);
+  for (const { pattern, insight } of ERROR_PATTERNS) {
+    if (pattern.test(errorMessage)) {
+      await addKnowledge(
+        cwd2,
+        "anti_pattern",
+        `${ctx.toolName}: ${insight} (Error: ${errorMessage.slice(0, 100)})`,
+        "user_implicit",
+        [ctx.toolName.toLowerCase(), "error"],
+        0.7
+      );
+      break;
+    }
+  }
+  const errorCount = toolErrorCounts.get(toolKey) || 0;
+  if (errorCount >= 3) {
+    await addKnowledge(
+      cwd2,
+      "anti_pattern",
+      `Tool "${ctx.toolName}" has failed ${errorCount} times in this session. Consider alternative approaches.`,
+      "user_implicit",
+      [ctx.toolName.toLowerCase(), "recurring-error"],
+      0.8
+    );
+    toolErrorCounts.set(toolKey, 0);
+  }
+  await rebuildMemoryFromKnowledge(cwd2).catch(() => {
+  });
+}
+async function handleSuccess(cwd2, ctx) {
+  const toolKey = ctx.toolName;
+  toolUsageCounts.set(toolKey, (toolUsageCounts.get(toolKey) || 0) + 1);
+  const usageCount = toolUsageCounts.get(toolKey) || 0;
+  if (usageCount === 15) {
+    await addKnowledge(
+      cwd2,
+      "pattern",
+      `Tool "${ctx.toolName}" used 15+ times in session - complex workflow detected`,
+      "user_implicit",
+      [ctx.toolName.toLowerCase(), "efficiency"],
+      0.6
+    );
+    await rebuildMemoryFromKnowledge(cwd2).catch(() => {
+    });
+  }
+}
+
 // app/main.ts
 async function main(argv = process.argv.slice(2)) {
+  registerKnowledgeHook(cwd());
   const autoApprove = argv.includes("--yes");
   const streamOutput = argv.includes("--stream") ? true : argv.includes("--no-stream") ? false : void 0;
   const filteredArgs = argv.filter(

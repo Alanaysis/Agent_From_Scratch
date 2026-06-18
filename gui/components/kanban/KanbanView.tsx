@@ -13,7 +13,7 @@ import type { Task } from '@/types'
 const statusGroups = [
   { id: 'active', label: 'Active', color: 'var(--amber)', icon: <Loader2 size={10} />, statuses: ['in_progress'] as Task['status'][] },
   { id: 'pending', label: 'Pending', color: 'var(--status-blue)', icon: <ChevronRight size={10} />, statuses: ['todo'] as Task['status'][] },
-  { id: 'complete', label: 'Complete', color: 'var(--status-green)', icon: <CheckCircle2 size={10} />, statuses: ['verify', 'done', 'failed'] as Task['status'][] },
+  { id: 'complete', label: 'Complete', color: 'var(--status-green)', icon: <CheckCircle2 size={10} />, statuses: ['verify', 'done', 'failed', 'skipped'] as Task['status'][] },
 ]
 
 const priorityConfig: Record<string, { label: string; color: string; bg: string }> = {
@@ -28,6 +28,7 @@ const statusBadge: Record<string, { label: string; color: string }> = {
   verify: { label: 'VRF', color: 'var(--status-purple)' },
   done: { label: 'DONE', color: 'var(--status-green)' },
   failed: { label: 'FAIL', color: 'var(--warm-red)' },
+  skipped: { label: 'SKIP', color: 'var(--text-faint)' },
 }
 
 export function KanbanView() {

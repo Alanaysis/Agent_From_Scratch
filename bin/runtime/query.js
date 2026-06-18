@@ -1,7 +1,7 @@
 import { createId } from "../shared/ids";
 import { findToolByName, } from "../tools/Tool";
 import { getTools } from "../tools/registry";
-import { getLlmConfigFromEnv, runLlmTurn } from "./llm";
+import { getLlmConfig, runLlmTurn } from "./llm";
 import { detectRelevantSkills, formatSkillMetadataForPrompt, formatSkillInstructionForPrompt, loadSkillInstruction, getLoadedSkills } from "../skills/loader";
 import { getMemoryForSystemPrompt } from "../storage/memory";
 export { executeToolCall, executeWorkMap };
@@ -486,14 +486,7 @@ async function* queryWithPlanner(params) {
     yield createAssistantTextMessage(planned.summarizeResult(result));
 }
 async function* queryWithLlm(params) {
-    const lastMsg = params.messages[params.messages.length - 1];
-    const alreadyHasPrompt = lastMsg?.type === "user" && lastMsg.content === params.prompt;
-    const conversation = alreadyHasPrompt
-        ? [...params.messages]
-        : [
-            ...params.messages,
-            { id: createId("user"), type: "user", content: params.prompt },
-        ];
+    const conversation = [...params.messages];
     const maxTurns = params.maxTurns ?? 8;
     const systemPrompt = [...getDefaultSystemPrompt(), ...params.systemPrompt];
     try {
@@ -512,11 +505,10 @@ async function* queryWithLlm(params) {
         systemPrompt.push(skillsMeta);
     }
     for (let turn = 0; turn < maxTurns; turn += 1) {
-        const defs = getToolDefinitions();
         const llmResponse = await runLlmTurn({
             messages: conversation,
             systemPrompt,
-            tools: defs,
+            tools: getToolDefinitions(),
             onTextDelta: params.onAssistantTextDelta,
         });
         if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
@@ -667,7 +659,7 @@ export async function* query(params) {
             ...params,
             systemPrompt: enhancedSystemPrompt,
         };
-        if (!getLlmConfigFromEnv()) {
+        if (!getLlmConfig()) {
             yield* queryWithPlanner(enhancedParams);
             return;
         }
@@ -681,7 +673,7 @@ export async function* query(params) {
         }
         return;
     }
-    if (!getLlmConfigFromEnv()) {
+    if (!getLlmConfig()) {
         yield* queryWithPlanner(params);
         return;
     }

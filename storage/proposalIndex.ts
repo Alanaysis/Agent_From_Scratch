@@ -247,30 +247,70 @@ export async function approveProposal(
         checkpointAfter: draft.checkpointAfter || false,
         checkpointMessage: draft.checkpointMessage,
         grpcConfig: draft.grpcConfig,
+        condition: draft.condition,
+        loop: draft.loop,
       });
 
       createdTasks.push({ id: taskId, title: draft.title });
     }
 
-    // Phase 2: Resolve dependencies
+    // Phase 2: Resolve dependencies and conditions/loops
     for (const draft of proposal.taskDrafts) {
-      if (!draft.dependsOnTempIds || draft.dependsOnTempIds.length === 0) continue;
-
       const taskId = tempIdToTaskId.get(draft.tempId);
       if (!taskId) continue;
 
-      const resolvedDependsOn: string[] = [];
-      for (const tempId of draft.dependsOnTempIds) {
-        const depTaskId = tempIdToTaskId.get(tempId);
-        if (depTaskId) {
-          resolvedDependsOn.push(depTaskId);
-        } else {
-          console.warn(`[approveProposal] Unresolvable dependsOnTempId "${tempId}" in draft "${draft.title}"`)
+      const updateData: any = {};
+
+      // Resolve dependencies
+      if (draft.dependsOnTempIds && draft.dependsOnTempIds.length > 0) {
+        const resolvedDependsOn: string[] = [];
+        for (const tempId of draft.dependsOnTempIds) {
+          const depTaskId = tempIdToTaskId.get(tempId);
+          if (depTaskId) {
+            resolvedDependsOn.push(depTaskId);
+          } else {
+            console.warn(`[approveProposal] Unresolvable dependsOnTempId "${tempId}" in draft "${draft.title}"`)
+          }
+        }
+
+        if (resolvedDependsOn.length > 0) {
+          updateData.dependsOn = resolvedDependsOn;
         }
       }
 
-      if (resolvedDependsOn.length > 0) {
-        await updateTaskInfo(cwd, taskId, { dependsOn: resolvedDependsOn }, proposal.createdBy);
+      // Resolve condition source
+      if (draft.condition && draft.condition.source) {
+        const resolvedCondition = { ...draft.condition };
+        const newSource = tempIdToTaskId.get(draft.condition.source);
+        if (newSource) {
+          resolvedCondition.source = newSource;
+        }
+        updateData.condition = resolvedCondition;
+      }
+
+      // Resolve loop configuration
+      if (draft.loop) {
+        const resolvedLoop = { ...draft.loop };
+        // Resolve steps array
+        if (resolvedLoop.steps && resolvedLoop.steps.length > 0) {
+          const resolvedSteps = resolvedLoop.steps.map((stepId: string) => {
+            const newId = tempIdToTaskId.get(stepId);
+            return newId || stepId;
+          });
+          resolvedLoop.steps = resolvedSteps;
+        }
+        // Resolve until condition source
+        if (resolvedLoop.until && resolvedLoop.until.source) {
+          const newUntilSource = tempIdToTaskId.get(resolvedLoop.until.source);
+          if (newUntilSource) {
+            resolvedLoop.until = { ...resolvedLoop.until, source: newUntilSource };
+          }
+        }
+        updateData.loop = resolvedLoop;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await updateTaskInfo(cwd, taskId, updateData, proposal.createdBy);
       }
     }
 

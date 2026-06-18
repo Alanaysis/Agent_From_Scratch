@@ -29,6 +29,15 @@ function matchesRule(rule, tool, input) {
     }
     return getInputPattern(input) === rule.pattern;
 }
+function checkMatrix(matrix, tool) {
+    if (!matrix || !tool.resourceType || !tool.actionType)
+        return undefined;
+    const resource = matrix[tool.resourceType];
+    if (!resource)
+        return undefined;
+    const allowed = resource[tool.actionType];
+    return allowed;
+}
 export function rememberPermissionRule(context, tool, input) {
     const rule = {
         toolName: tool.name,
@@ -64,6 +73,16 @@ export const canUseTool = async (tool, input, context, _parentMessage, _toolUseI
         return {
             behavior: "allow",
             updatedInput: input,
+        };
+    }
+    const matrixResult = checkMatrix(permissionContext.matrix, tool);
+    if (matrixResult === true) {
+        return { behavior: "allow", updatedInput: input };
+    }
+    if (matrixResult === false) {
+        return {
+            behavior: "deny",
+            message: `Tool ${tool.name} is blocked by permission matrix (${tool.resourceType}:${tool.actionType})`,
         };
     }
     if (permissionContext.denyRules.some((rule) => matchesRule(rule, tool, input))) {

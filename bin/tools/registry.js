@@ -13,6 +13,9 @@ import { ImageAnalyzeTool } from "./web/imageAnalyzeTool";
 import { ImageGenerateTool } from "./web/imageGenerateTool";
 import { SkillTool } from "../skills/skillTool";
 import { DiscoveryTool } from "../discovery/DiscoveryTool";
+import { GrpcClientTool } from "./grpc/grpcClientTool";
+import { CheckpointTool } from "./workflow/checkpointTool";
+import { TaskCreateTool } from "./task/taskCreateTool";
 export function getTools() {
     return [
         ReadTool,
@@ -30,5 +33,8 @@ export function getTools() {
         ImageAnalyzeTool,
         ImageGenerateTool,
         DiscoveryTool,
+        GrpcClientTool,
+        CheckpointTool,
+        TaskCreateTool,
     ];
 }

@@ -1,4 +1,4 @@
-import { resolvePathFromCwd, writeTextFile } from "../../shared/fs";
+import { resolvePathSafe, writeTextFile } from "../../shared/fs";
 export const WriteTool = {
     name: "Write",
     inputSchema: null,
@@ -7,7 +7,7 @@ export const WriteTool = {
         return "Write a file";
     },
     async call(args, context, _canUseTool, _parentMessage) {
-        const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+        const absolutePath = resolvePathSafe(args.path, context.cwd);
         const bytesWritten = await writeTextFile(absolutePath, args.content);
         return {
             data: {

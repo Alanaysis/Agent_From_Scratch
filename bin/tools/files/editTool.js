@@ -1,4 +1,4 @@
-import { readTextFile, resolvePathFromCwd, writeTextFile, } from "../../shared/fs";
+import { readTextFile, resolvePathSafe, writeTextFile, } from "../../shared/fs";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 function generateUnifiedDiff(oldLines, newLines, filename) {
@@ -41,7 +41,7 @@ export const EditTool = {
         return "Edit a file in place with diff display and automatic backup.";
     },
     async call(args, context, _canUseTool, _parentMessage) {
-        const absolutePath = resolvePathFromCwd(context.cwd, args.path);
+        const absolutePath = resolvePathSafe(args.path, context.cwd);
         const content = await readTextFile(absolutePath);
         if (!content.includes(args.oldString)) {
             throw new Error(`Could not find target string in ${args.path}`);
@@ -52,7 +52,7 @@ export const EditTool = {
         const newLines = newContent.split("\n");
         const diff = generateUnifiedDiff(oldLines, newLines, args.path);
         // Create backup before writing
-        const backupDir = join(context.cwd, ".claude-code-lite", "backups");
+        const backupDir = join(context.cwd, ".irg", "backups");
         const backupPath = join(backupDir, `${args.path.replace(/[/]/g, "_")}_${Date.now()}.bak`);
         await mkdir(backupDir, { recursive: true });
         await writeFile(backupPath, content, "utf8");

@@ -31,7 +31,7 @@ export function formatSessionList(sessions, options) {
     }
     const lines = sessions
         .map((session) => {
-        const marker = session.status === "needs_attention" ? "!" : "-";
+        const marker = session.status === "error" ? "!" : "-";
         const updated = session.updatedAt || session.createdAt || "-";
         const title = session.title || session.id;
         const model = session.provider || session.model
@@ -89,7 +89,8 @@ export function clipText(text, maxLength) {
 }
 export function formatExportMessageEntry(message) {
     if (message.type === "user") {
-        return `user: ${clipText(message.content, 240)}`;
+        const text = typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        return `user: ${clipText(text, 240)}`;
     }
     if (message.type === "tool_result") {
         const status = message.isError ? "tool_error" : "tool_result";
@@ -174,7 +175,7 @@ export function formatJsonExport(session, messages) {
         messages: messages.map((message) => ({
             ...message,
             ...(message.type === "user"
-                ? { content: clipText(message.content, 240) }
+                ? { content: clipText(typeof message.content === 'string' ? message.content : message.content.filter(b => b.type === 'text').map(b => b.text).join('\n'), 240) }
                 : message.type === "tool_result"
                     ? { content: summarizeUnknown(message.content, 400) }
                     : {
@@ -243,7 +244,7 @@ export function parseCommand(argv) {
         case "-v":
             return {
                 kind: "meta",
-                output: "claude-code-lite 0.1.0",
+                output: "irg 0.1.0",
             };
         case "tools":
             return {
@@ -356,7 +357,7 @@ export function parseCommand(argv) {
 }
 export function formatHelp() {
     return [
-        "Claude Code-lite CLI",
+        "IRG CLI",
         "",
         "Commands:",
         "  help",
@@ -384,12 +385,12 @@ export function formatHelp() {
         "  --no-stream   Disable streaming chat output",
         "",
         "LLM env:",
-        "  CCL_LLM_PROVIDER   openai | anthropic, defaults to openai",
-        "  CCL_LLM_API_KEY",
-        "  CCL_LLM_MODEL",
-        "  CCL_LLM_BASE_URL   Optional, defaults to https://api.openai.com/v1",
-        "  CCL_LLM_SYSTEM_PROMPT   Optional extra system prompt",
-        "  CCL_ANTHROPIC_VERSION   Optional, defaults to 2023-06-01",
+        "  IRG_LLM_PROVIDER   openai | anthropic, defaults to openai",
+        "  IRG_LLM_API_KEY",
+        "  IRG_LLM_MODEL",
+        "  IRG_LLM_BASE_URL   Optional, defaults to https://api.openai.com/v1",
+        "  IRG_LLM_SYSTEM_PROMPT   Optional extra system prompt",
+        "  IRG_ANTHROPIC_VERSION   Optional, defaults to 2023-06-01",
     ].join("\n");
 }
 export function summarizeUnknown(value, maxLength = 120) {
@@ -434,7 +435,7 @@ export async function resolveSessionIdArg(cwd, rawSession) {
     }
     if (rawSession === "failed") {
         const sessions = await listSessions(cwd);
-        return sessions.find((session) => session.status === "needs_attention")?.id;
+        return sessions.find((session) => session.status === "error")?.id;
     }
     return rawSession;
 }
@@ -562,8 +563,8 @@ export function parseCleanupCommandOptions(args) {
         }
         if (arg === "--status") {
             const value = args[index + 1];
-            if (value !== "ready" && value !== "needs_attention") {
-                throw new Error('cleanup-sessions --status requires "ready" or "needs_attention"');
+            if (value !== "idle" && value !== "completed" && value !== "error") {
+                throw new Error('cleanup-sessions --status requires "idle", "completed", or "error"');
             }
             status = value;
             index += 1;
@@ -596,8 +597,8 @@ export function parseSessionsCommandOptions(args) {
         }
         if (arg === "--status") {
             const value = args[index + 1];
-            if (value !== "ready" && value !== "needs_attention") {
-                throw new Error('sessions --status requires "ready" or "needs_attention"');
+            if (value !== "idle" && value !== "completed" && value !== "error") {
+                throw new Error('sessions --status requires "idle", "completed", or "error"');
             }
             status = value;
             index += 1;

@@ -41,13 +41,13 @@ export function SessionsView() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif', minWidth: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--text-primary)', fontFamily: 'IBM Plex Sans, sans-serif', minWidth: 0, overflow: 'hidden' }}>
       {/* Session List */}
       <div style={{
-        width: '35%',
-        minWidth: 160,
-        maxWidth: 340,
-        borderRight: '1px solid var(--border-subtle)',
+        height: '45%',
+        minHeight: 200,
+        maxHeight: 400,
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: 'var(--surface-1)',

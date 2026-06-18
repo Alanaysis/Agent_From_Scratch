@@ -33,11 +33,37 @@ export type AcceptanceCriterion = {
   evidence?: string;
 }
 
+export type StepCondition = {
+  /** step_result: based on a previous step's output; llm_judge: LLM decides */
+  type: "step_result" | "llm_judge";
+  /** For step_result: which step to check */
+  source?: string;
+  /** For step_result: which field to check (status, result, etc.) */
+  field?: string;
+  /** For step_result: expected value */
+  equals?: string;
+  /** For llm_judge: prompt to ask the LLM */
+  prompt?: string;
+  /** For llm_judge: possible options the LLM can choose from */
+  options?: string[];
+};
+
+export type LoopConfig = {
+  /** Max iterations before forced exit */
+  max: number;
+  /** Steps to repeat (by ID) */
+  steps: string[];
+  /** Exit condition: stop looping when condition met */
+  until?: StepCondition;
+  /** What to do when max iterations exhausted: abort | continue | skip */
+  onExhausted?: "abort" | "continue" | "skip";
+};
+
 export type TaskInfo = {
   id: string;
   title: string;
   description?: string;
-  status: "todo" | "in_progress" | "verify" | "done" | "failed";
+  status: "todo" | "in_progress" | "verify" | "done" | "failed" | "skipped";
   priority: "low" | "medium" | "high";
   assignee?: string;
   dependsOn?: string[];
@@ -66,18 +92,56 @@ export type TaskInfo = {
   };
   activities: TaskActivity[];
   statusHistory: Array<{ status: string; timestamp: string; actor?: string }>;
+  /** Conditional execution: task only runs if condition is met */
+  condition?: StepCondition
+  /** Loop configuration: repeat steps until condition or max count */
+  loop?: LoopConfig
+  /** Whether this task was skipped due to condition not met */
+  skipped?: boolean
+  /** Whether checkpoint_after is awaiting user confirmation */
+  checkpointAwaiting?: boolean;
 };
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  todo: ["in_progress", "failed"],
+  todo: ["in_progress", "failed", "skipped"],
   in_progress: ["verify", "failed"],
   verify: ["done", "in_progress"],  // can reject back to in_progress
   done: [],
   failed: ["todo"],  // can retry
+  skipped: [],  // terminal state
 };
 
 export function isValidTransition(from: string, to: string): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+export function evaluateCondition(
+  condition: StepCondition,
+  allTasks: TaskInfo[],
+): boolean {
+  if (condition.type === 'llm_judge') {
+    // For llm_judge, we need to defer to runtime, default to true for now
+    console.warn('[evaluateCondition] llm_judge condition not implemented in static check, defaulting to true');
+    return true;
+  }
+
+  if (condition.type !== 'step_result') {
+    return true;
+  }
+
+  const sourceTask = allTasks.find(t => t.id === condition.source);
+  if (!sourceTask) {
+    console.warn(`[evaluateCondition] Source task "${condition.source}" not found, defaulting to false`);
+    return false;
+  }
+
+  const field = condition.field || 'status';
+  const actualValue = (sourceTask as any)[field];
+  const expectedValue = condition.equals;
+
+  const match = actualValue === expectedValue;
+  console.log(`[evaluateCondition] Task "${sourceTask.title}" ${field}: "${actualValue}" vs expected "${expectedValue}" → ${match}`);
+  return match;
 }
 
 function getTasksDir(cwd: string): string {
@@ -300,42 +364,57 @@ export async function listTasks(cwd: string): Promise<TaskInfo[]> {
 export async function getUnblockedTasks(cwd: string): Promise<TaskInfo[]> {
   const allTasks = await listTasks(cwd);
   const taskMap = new Map<string, TaskInfo>();
-  const blockedCount = new Map<string, number>();
 
   for (const task of allTasks) {
     taskMap.set(task.id, task);
-    if (task.dependsOn && task.dependsOn.length > 0) {
-      for (const depId of task.dependsOn) {
-        blockedCount.set(task.id, (blockedCount.get(task.id) || 0) + 1);
-      }
-    } else if (task.status === "todo") {
-      blockedCount.set(task.id, 0);
-    }
-  }
-
-  for (const task of allTasks) {
-    if (task.status !== "todo" && task.status !== "failed") continue;
-    if (!task.dependsOn || task.dependsOn.length === 0) continue;
-
-    let allDepsDone = true;
-    for (const depId of task.dependsOn) {
-      const depTask = taskMap.get(depId);
-      if (!depTask || (depTask.status !== "done" && depTask.status !== "failed")) {
-        allDepsDone = false;
-        break;
-      }
-    }
-
-    if (allDepsDone) {
-      blockedCount.set(task.id, 0);
-    }
   }
 
   return allTasks
     .filter((task) => {
       if (task.status !== "todo") return false;
-      const blocked = blockedCount.get(task.id) || 0;
-      return blocked === 0;
+      if (task.skipped) return false;
+
+      // Check dependencies
+      if (task.dependsOn && task.dependsOn.length > 0) {
+        // Special logic for OR condition: if any dependency is done/failed/skipped, we can proceed
+        // But also need to make sure NO dependencies are still in progress/checkpoint waiting
+        let anyDepComplete = false;
+        let hasBlockingDep = false;
+
+        for (const depId of task.dependsOn) {
+          const depTask = taskMap.get(depId);
+          if (!depTask) continue;
+
+          // Check if dep is complete
+          if (depTask.status === "done" || depTask.status === "failed" || depTask.skipped) {
+            anyDepComplete = true;
+          }
+
+          // Check if dep is blocking
+          if (depTask.checkpointAwaiting || 
+              !(depTask.status === "done" || depTask.status === "failed" || depTask.skipped)) {
+            hasBlockingDep = true;
+          }
+        }
+
+        if (hasBlockingDep) {
+          return false;
+        }
+
+        if (!anyDepComplete) {
+          return false;
+        }
+      }
+
+      // Check condition if exists
+      if (task.condition) {
+        const conditionMet = evaluateCondition(task.condition, allTasks);
+        if (!conditionMet) {
+          return false;
+        }
+      }
+
+      return true;
     })
     .sort((a, b) => {
       const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
