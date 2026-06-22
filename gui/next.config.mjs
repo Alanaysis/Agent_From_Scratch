@@ -7,6 +7,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  devIndicators: false,
   env: {
     APP_NAME: 'IRG',
   },
