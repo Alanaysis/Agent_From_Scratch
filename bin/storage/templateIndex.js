@@ -2,8 +2,11 @@ import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import * as yaml from "js-yaml";
 import { parseWorkflowYaml } from "./workflowIndex";
-function getTemplatesDir(cwd) {
-    return join(cwd, ".irg", "templates");
+function getTemplatesDirs(cwd) {
+    return [
+        join(cwd, ".irg", "templates"),
+        join(cwd, "workflows"),
+    ];
 }
 function extractTriggers(template, name, tags) {
     const triggers = new Set();
@@ -30,48 +33,57 @@ function extractParams(template) {
 }
 export async function listTemplates(cwd) {
     const templates = [];
-    try {
-        const entries = await readdir(getTemplatesDir(cwd));
-        for (const entry of entries) {
-            if (!entry.endsWith(".yaml") && !entry.endsWith(".yml"))
-                continue;
-            const t = await readTemplate(cwd, entry);
-            if (t)
-                templates.push(t);
+    const seen = new Set();
+    for (const dir of getTemplatesDirs(cwd)) {
+        try {
+            const entries = await readdir(dir);
+            for (const entry of entries) {
+                if (!entry.endsWith(".yaml") && !entry.endsWith(".yml"))
+                    continue;
+                if (seen.has(entry))
+                    continue;
+                seen.add(entry);
+                const t = await readTemplate(cwd, entry);
+                if (t)
+                    templates.push(t);
+            }
         }
-    }
-    catch {
-        // templates dir may not exist
+        catch {
+            // dir may not exist
+        }
     }
     return templates;
 }
 export async function readTemplate(cwd, filename) {
-    try {
-        const filePath = join(getTemplatesDir(cwd), filename);
-        const rawYaml = await readFile(filePath, "utf8");
-        const parsed = yaml.load(rawYaml, { schema: yaml.JSON_SCHEMA });
-        if (!parsed || !parsed.name || !Array.isArray(parsed.steps))
-            return null;
-        const tags = Array.isArray(parsed.tags) ? parsed.tags.map(String) : [];
-        const triggers = extractTriggers(parsed, parsed.name, tags);
-        const params = extractParams(parsed);
-        const workflow = parseWorkflowYaml(rawYaml);
-        return {
-            id: filename.replace(/\.(ya?ml)$/, ""),
-            filename,
-            name: parsed.name,
-            description: parsed.description,
-            tags,
-            useCase: parsed.use_case,
-            triggers,
-            params,
-            workflow,
-            rawYaml,
-        };
+    for (const dir of getTemplatesDirs(cwd)) {
+        try {
+            const filePath = join(dir, filename);
+            const rawYaml = await readFile(filePath, "utf8");
+            const parsed = yaml.load(rawYaml, { schema: yaml.JSON_SCHEMA });
+            if (!parsed || !parsed.name || !Array.isArray(parsed.steps))
+                return null;
+            const tags = Array.isArray(parsed.tags) ? parsed.tags.map(String) : [];
+            const triggers = extractTriggers(parsed, parsed.name, tags);
+            const params = extractParams(parsed);
+            const workflow = parseWorkflowYaml(rawYaml);
+            return {
+                id: filename.replace(/\.(ya?ml)$/, ""),
+                filename,
+                name: parsed.name,
+                description: parsed.description,
+                tags,
+                useCase: parsed.use_case,
+                triggers,
+                params,
+                workflow,
+                rawYaml,
+            };
+        }
+        catch {
+            // try next dir
+        }
     }
-    catch {
-        return null;
-    }
+    return null;
 }
 export async function findTemplateByIntent(cwd, userMessage) {
     const templates = await listTemplates(cwd);

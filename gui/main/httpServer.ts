@@ -724,17 +724,24 @@ routes.set("POST /api/workflows/import-and-execute", async (_req, body) => {
 routes.set("POST /api/compact/start", async (_req, body) => {
   const input = JSON.parse(body);
   const { readFile: readFileFs } = await import("fs/promises");
-  const { join: joinPath } = await import("path");
 
   let yaml;
   if (input.filePath) {
-    // Try templates dir first (for template filenames), then validate as path
-    const templatesDir = joinPath(cwd(), ".irg", "templates");
-    const templatePath = joinPath(templatesDir, input.filePath);
-    try {
-      yaml = await readFileFs(templatePath, "utf8");
-    } catch {
-      // Not in templates dir, try as validated path
+    // Try templates dirs first (.irg/templates and workflows), then validate as path
+    const { join: joinPath } = await import("path");
+    const candidateDirs = [
+      joinPath(cwd(), ".irg", "templates"),
+      joinPath(cwd(), "workflows"),
+    ];
+    for (const dir of candidateDirs) {
+      try {
+        yaml = await readFileFs(joinPath(dir, input.filePath), "utf8");
+        break;
+      } catch {
+        // try next dir
+      }
+    }
+    if (!yaml) {
       const safePath = validateFilePath(input.filePath, cwd());
       yaml = await readFileFs(safePath, "utf8");
     }
