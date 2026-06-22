@@ -18,11 +18,11 @@ async function withTaskLock(taskId, fn) {
 }
 const VALID_TRANSITIONS = {
     todo: ["in_progress", "failed", "skipped", "cancelled"],
-    in_progress: ["verify", "failed", "pausing", "cancelling"],
+    in_progress: ["verify", "failed", "pausing", "paused", "cancelling", "cancelled"],
     pausing: ["paused", "failed"],
-    paused: ["in_progress", "cancelling"],
+    paused: ["in_progress", "cancelling", "cancelled"],
     cancelling: ["cancelled", "failed"],
-    verify: ["done", "in_progress"],
+    verify: ["done", "in_progress", "paused", "cancelled"],
     done: [],
     failed: ["todo"],
     cancelled: [],

@@ -589,6 +589,7 @@ export function CompactWorkflowView() {
     // Intent recognition: check if message matches a template
     if (!sessionIdRef.current && tasks.length === 0) {
       try {
+        setIsLoading(true)
         const intentRes = await fetch(`${API_BASE}/api/chat/intent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -610,6 +611,8 @@ export function CompactWorkflowView() {
         }
       } catch (e) {
         console.error('[Compact] intent recognition failed:', e)
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -1514,6 +1517,27 @@ export function CompactWorkflowView() {
                   </div>
                 )
               })}
+            </div>
+
+            {/* PM agent status indicator */}
+            <div style={{
+              marginBottom: 8, padding: '6px 10px',
+              backgroundColor: templateConfirm.enhancement ? 'rgba(125,211,252,0.08)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${templateConfirm.enhancement ? 'rgba(125,211,252,0.3)' : 'rgba(255,255,255,0.1)'}`,
+              borderLeft: `3px solid ${templateConfirm.enhancement ? '#7dd3fc' : '#71717a'}`,
+              borderRadius: 2,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <Bot size={12} color={templateConfirm.enhancement ? '#7dd3fc' : '#71717a'} />
+              <span style={{
+                fontSize: 10, fontFamily: mono, fontWeight: 600,
+                color: templateConfirm.enhancement ? '#7dd3fc' : '#71717a',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {templateConfirm.enhancement
+                  ? `PM Agent: ${Object.keys(templateConfirm.enhancement.enrichedDescriptions || {}).length} nodes enriched`
+                  : 'PM Agent: not active (LLM not configured or enhancement skipped)'}
+              </span>
             </div>
 
             {/* PM warnings/suggestions */}

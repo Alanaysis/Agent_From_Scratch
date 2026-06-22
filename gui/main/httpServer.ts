@@ -980,6 +980,9 @@ routes.set("POST /api/chat/intent", async (_req, body) => {
   const template = await findTemplateByIntent(cwd(), message);
   if (!template) return { matched: false };
 
+  // Ensure LLM config is loaded before PM enhancement
+  await initLlmConfig();
+
   const nodes = extractTemplateNodes(template);
   const enhancement = await enhanceTemplateWithPm(
     template.name,
@@ -1783,7 +1786,11 @@ async function enhanceTemplateWithPm(
 ): Promise<PmEnhancement | null> {
   try {
     const config = getLlmConfig();
-    if (!config?.apiKey) return null;
+    if (!config?.apiKey) {
+      log("WARN", "PMEnhance", "No LLM config/apiKey, skipping PM enhancement");
+      return null;
+    }
+    log("INFO", "PMEnhance", `Enhancing template "${templateName}" with ${nodes.length} nodes, provider=${config.provider}, model=${config.model}`);
 
     const nodesText = nodes.map((n, i) =>
       `Node ${i + 1}: ${n.name} (id=${n.id}, agent=${n.agent || 'general-purpose'})\n  desc: ${n.description || 'N/A'}\n  grpc: ${n.grpc ? `${n.grpc.service}.${n.grpc.method}` : 'N/A'}`
@@ -1853,11 +1860,13 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
     if (!responseText) return null;
     const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
-    return {
+    const result = {
       enrichedDescriptions: parsed.enrichedDescriptions || {},
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
       suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
     };
+    log("INFO", "PMEnhance", `Success: ${Object.keys(result.enrichedDescriptions).length} enriched, ${result.warnings.length} warnings, ${result.suggestions.length} suggestions`);
+    return result;
   } catch (e) {
     log("ERROR", "PMEnhance", `Failed to enhance template: ${e}`);
     return null;
