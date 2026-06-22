@@ -888,6 +888,101 @@ routes.set("POST /api/plans/:id/confirm", async (_req, _body, params?: Record<st
   return result;
 });
 
+// ====== Templates ======
+
+import { listTemplates, readTemplate, findTemplateByIntent, extractTemplateNodes } from "../../storage/templateIndex";
+
+routes.set("GET /api/templates", async () => {
+  const templates = await listTemplates(cwd());
+  return { templates: templates.map(t => ({
+    id: t.id,
+    filename: t.filename,
+    name: t.name,
+    description: t.description,
+    tags: t.tags,
+    triggers: t.triggers,
+    useCase: t.useCase,
+    params: t.params,
+  })) };
+});
+
+routes.set("GET /api/templates/:id", async (_req, _body, params?: Record<string, string>) => {
+  const filename = params!.id!.endsWith(".yaml") ? params!.id! : `${params!.id}.yaml`;
+  const template = await readTemplate(cwd(), filename);
+  if (!template) return { error: "Template not found" };
+  return {
+    template: {
+      id: template.id,
+      filename: template.filename,
+      name: template.name,
+      description: template.description,
+      tags: template.tags,
+      triggers: template.triggers,
+      useCase: template.useCase,
+      params: template.params,
+      nodes: extractTemplateNodes(template),
+      rawYaml: template.rawYaml,
+    }
+  };
+});
+
+routes.set("POST /api/templates/match", async (_req, body) => {
+  const input = JSON.parse(body);
+  const message = input.message || "";
+  const template = await findTemplateByIntent(cwd(), message);
+  if (!template) return { matched: false };
+  return {
+    matched: true,
+    template: {
+      id: template.id,
+      filename: template.filename,
+      name: template.name,
+      description: template.description,
+      tags: template.tags,
+      triggers: template.triggers,
+      useCase: template.useCase,
+      params: template.params,
+      nodes: extractTemplateNodes(template),
+      rawYaml: template.rawYaml,
+    }
+  };
+});
+
+// Chat intent recognition: matches user message to template, runs PM enhancement
+routes.set("POST /api/chat/intent", async (_req, body) => {
+  const input = JSON.parse(body);
+  const message = input.message || "";
+  if (!message.trim()) return { matched: false };
+
+  const template = await findTemplateByIntent(cwd(), message);
+  if (!template) return { matched: false };
+
+  const nodes = extractTemplateNodes(template);
+  const enhancement = await enhanceTemplateWithPm(
+    template.name,
+    template.description,
+    nodes,
+    message,
+  );
+
+  return {
+    matched: true,
+    template: {
+      id: template.id,
+      filename: template.filename,
+      name: template.name,
+      description: template.description,
+      tags: template.tags,
+      triggers: template.triggers,
+      useCase: template.useCase,
+      params: template.params,
+      nodes,
+      rawYaml: template.rawYaml,
+    },
+    enhancement,
+  };
+});
+
 // ====== Executor ======
 
 routes.set("POST /api/executor/start", async () => {
@@ -1648,6 +1743,101 @@ Summarize the failure reason concisely:`;
   } catch (e) {
     log("ERROR", "ErrorSummary", `Failed to generate summary: ${e}`);
     return errorMessage.slice(0, 200);
+  }
+}
+
+type PmEnhancement = {
+  enrichedDescriptions: Record<string, string>;
+  warnings: string[];
+  suggestions: string[];
+};
+
+async function enhanceTemplateWithPm(
+  templateName: string,
+  templateDescription: string | undefined,
+  nodes: Array<{ id: string; name: string; description?: string; agent?: string; grpc?: any }>,
+  userMessage: string,
+): Promise<PmEnhancement | null> {
+  try {
+    const config = getLlmConfig();
+    if (!config?.apiKey) return null;
+
+    const nodesText = nodes.map((n, i) =>
+      `Node ${i + 1}: ${n.name} (id=${n.id}, agent=${n.agent || 'general-purpose'})\n  desc: ${n.description || 'N/A'}\n  grpc: ${n.grpc ? `${n.grpc.service}.${n.grpc.method}` : 'N/A'}`
+    ).join('\n');
+
+    const systemPrompt = `You are a PM agent. Analyze the workflow template and enrich it. Output STRICT JSON only, no markdown.
+Schema:
+{
+  "enrichedDescriptions": { "<nodeId>": "<improved description with context>" },
+  "warnings": ["<risk or issue>", ...],
+  "suggestions": ["<improvement suggestion>", ...]
+}
+Reply in the same language as the user message.`;
+
+    const userContent = `User intent: ${userMessage}
+Template: ${templateName}
+Description: ${templateDescription || 'N/A'}
+
+Nodes:
+${nodesText}
+
+Enrich each node description, identify risks, suggest improvements. Output JSON:`;
+
+    const isAnthropic = config.provider === 'anthropic' || (config.baseUrl && config.baseUrl.includes('anthropic'));
+    const baseUrl = config.baseUrl || (isAnthropic ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1');
+
+    let responseText: string | null = null;
+    if (isAnthropic) {
+      const response = await fetch(`${baseUrl}/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': config.apiKey,
+          'anthropic-version': config.anthropicVersion || '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      responseText = data.content?.[0]?.text;
+    } else {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: 1024,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+          ],
+        }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      responseText = data.choices?.[0]?.message?.content;
+    }
+
+    if (!responseText) return null;
+    const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      enrichedDescriptions: parsed.enrichedDescriptions || {},
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    };
+  } catch (e) {
+    log("ERROR", "PMEnhance", `Failed to enhance template: ${e}`);
+    return null;
   }
 }
 

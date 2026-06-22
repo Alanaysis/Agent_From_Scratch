@@ -111,6 +111,12 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'tasks:cancel':           { method: 'POST', path: '/api/tasks/{0}/cancel' },
   'tasks:resume':           { method: 'POST', path: '/api/tasks/{0}/resume' },
 
+  // Templates & intent
+  'templates:list':         { method: 'GET',  path: '/api/templates' },
+  'templates:get':          { method: 'GET',  path: '/api/templates/{0}' },
+  'templates:match':        { method: 'POST', path: '/api/templates/match' },
+  'chat:intent':            { method: 'POST', path: '/api/chat/intent' },
+
   // Chat
   'chat:send':              { method: 'POST', path: '/api/chat' },
   'chat:cancel':            { method: 'POST', path: '/api/chat/cancel' },

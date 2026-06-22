@@ -1,134 +1,108 @@
-/**
- * Template Library for PM Agent
- *
- * Stores reusable workflow templates that PM can reference when creating proposals.
- * Templates are YAML files in .irg/templates/ with metadata.
- */
-import { mkdir, readFile, readdir, writeFile } from "fs/promises";
+import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import * as yaml from "js-yaml";
+import { parseWorkflowYaml } from "./workflowIndex";
 function getTemplatesDir(cwd) {
     return join(cwd, ".irg", "templates");
 }
-function getTemplatePath(cwd, templateId) {
-    return join(getTemplatesDir(cwd), `${templateId}.yaml`);
+function extractTriggers(template, name, tags) {
+    const triggers = new Set();
+    triggers.add(name.toLowerCase());
+    for (const tag of tags)
+        triggers.add(tag.toLowerCase());
+    if (Array.isArray(template.triggers)) {
+        for (const t of template.triggers)
+            triggers.add(String(t).toLowerCase());
+    }
+    return [...triggers];
 }
-/** Load all templates from .irg/templates/ */
+function extractParams(template) {
+    if (!Array.isArray(template.required_params))
+        return [];
+    return template.required_params.map((p) => ({
+        name: p.name,
+        label: p.label || p.name,
+        type: p.type || "text",
+        options: p.options,
+        required: p.required !== false,
+        default: p.default,
+    }));
+}
 export async function listTemplates(cwd) {
     const templates = [];
     try {
-        const dir = getTemplatesDir(cwd);
-        await mkdir(dir, { recursive: true });
-        const entries = await readdir(dir);
+        const entries = await readdir(getTemplatesDir(cwd));
         for (const entry of entries) {
             if (!entry.endsWith(".yaml") && !entry.endsWith(".yml"))
                 continue;
-            try {
-                const content = await readFile(join(dir, entry), "utf8");
-                const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
-                if (parsed && parsed.name) {
-                    templates.push({
-                        id: entry.replace(/\.(yaml|yml)$/, ""),
-                        name: parsed.name,
-                        description: parsed.description || "",
-                        tags: parsed.tags || [],
-                        steps: parsed.steps || [],
-                        useCase: parsed.use_case || parsed.useCase,
-                        requiredParams: parsed.required_params || parsed.requiredParams || [],
-                        createdAt: parsed.createdAt || "",
-                        updatedAt: parsed.updatedAt || "",
-                    });
-                }
-            }
-            catch {
-                // Skip invalid template files
-            }
+            const t = await readTemplate(cwd, entry);
+            if (t)
+                templates.push(t);
         }
     }
     catch {
-        // Directory doesn't exist yet
+        // templates dir may not exist
     }
-    return templates.sort((a, b) => a.name.localeCompare(b.name));
+    return templates;
 }
-/** Find templates matching a query (keyword match on name, description, tags) */
-export async function findTemplates(cwd, query) {
-    const all = await listTemplates(cwd);
-    const lowerQuery = query.toLowerCase();
-    const words = lowerQuery.split(/\s+/).filter(Boolean);
-    return all
-        .map((t) => {
-        let score = 0;
-        const searchText = `${t.name} ${t.description} ${t.tags.join(" ")} ${t.useCase || ""}`.toLowerCase();
-        for (const word of words) {
-            if (searchText.includes(word))
-                score += 2;
-            if (t.tags.some((tag) => tag.toLowerCase().includes(word)))
-                score += 1;
-        }
-        // Exact name match bonus
-        if (t.name.toLowerCase() === lowerQuery)
-            score += 10;
-        return { template: t, score };
-    })
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.template);
-}
-/** Get a single template by ID */
-export async function getTemplate(cwd, templateId) {
+export async function readTemplate(cwd, filename) {
     try {
-        const content = await readFile(getTemplatePath(cwd, templateId), "utf8");
-        const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
-        if (!parsed || !parsed.name)
+        const filePath = join(getTemplatesDir(cwd), filename);
+        const rawYaml = await readFile(filePath, "utf8");
+        const parsed = yaml.load(rawYaml, { schema: yaml.JSON_SCHEMA });
+        if (!parsed || !parsed.name || !Array.isArray(parsed.steps))
             return null;
+        const tags = Array.isArray(parsed.tags) ? parsed.tags.map(String) : [];
+        const triggers = extractTriggers(parsed, parsed.name, tags);
+        const params = extractParams(parsed);
+        const workflow = parseWorkflowYaml(rawYaml);
         return {
-            id: templateId,
+            id: filename.replace(/\.(ya?ml)$/, ""),
+            filename,
             name: parsed.name,
-            description: parsed.description || "",
-            tags: parsed.tags || [],
-            steps: parsed.steps || [],
-            useCase: parsed.use_case || parsed.useCase,
-            requiredParams: parsed.required_params || parsed.requiredParams || [],
-            createdAt: parsed.createdAt || "",
-            updatedAt: parsed.updatedAt || "",
+            description: parsed.description,
+            tags,
+            useCase: parsed.use_case,
+            triggers,
+            params,
+            workflow,
+            rawYaml,
         };
     }
     catch {
         return null;
     }
 }
-/** Save a template */
-export async function saveTemplate(cwd, template) {
-    const dir = getTemplatesDir(cwd);
-    await mkdir(dir, { recursive: true });
-    const now = new Date().toISOString();
-    const data = {
-        name: template.name,
-        description: template.description,
-        tags: template.tags,
-        use_case: template.useCase,
-        required_params: template.requiredParams,
-        steps: template.steps,
-        createdAt: template.createdAt || now,
-        updatedAt: now,
-    };
-    await writeFile(getTemplatePath(cwd, template.id), yaml.dump(data, { lineWidth: 120 }), "utf8");
-}
-/** Format templates for prompt injection */
-export function formatTemplatesForPrompt(templates) {
+export async function findTemplateByIntent(cwd, userMessage) {
+    const templates = await listTemplates(cwd);
     if (templates.length === 0)
-        return "";
-    const parts = ["<available_templates>"];
-    for (const t of templates) {
-        parts.push(`## ${t.name} (${t.id})`);
-        parts.push(`Description: ${t.description}`);
-        if (t.tags.length > 0)
-            parts.push(`Tags: ${t.tags.join(", ")}`);
-        if (t.useCase)
-            parts.push(`Use when: ${t.useCase}`);
-        parts.push(`Steps: ${t.steps.length}`);
-        parts.push("");
-    }
-    parts.push("</available_templates>");
-    return parts.join("\n");
+        return null;
+    const message = userMessage.toLowerCase();
+    const scored = templates.map((t) => {
+        let score = 0;
+        for (const trigger of t.triggers) {
+            if (message.includes(trigger)) {
+                score += trigger.length > 3 ? 3 : 1;
+            }
+        }
+        if (t.useCase && message.includes(t.useCase.toLowerCase()))
+            score += 2;
+        return { template: t, score };
+    }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
+    return scored[0]?.template ?? null;
+}
+export function extractTemplateNodes(template) {
+    return template.workflow.steps.map((step) => ({
+        id: step.id,
+        name: step.name,
+        description: step.description,
+        agent: step.agent,
+        dependsOn: step.dependsOn,
+        grpc: step.grpc,
+        shell: step.shell,
+        requiresApproval: step.requiresApproval,
+        checkpointAfter: step.checkpointAfter,
+        condition: step.condition,
+        loop: step.loop,
+    }));
 }
