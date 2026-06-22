@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   Plus, History, Play, Pause, Send, Square, Loader2,
   CheckCircle, XCircle, Clock, ChevronRight, ChevronDown,
-  Wrench, Cpu, Bot, ChevronLeft, Maximize2
+  Wrench, Cpu, Bot, ChevronLeft, Maximize2, FileText
 } from 'lucide-react'
 import { WorkflowRail } from './WorkflowRail'
 import { ProposalPicker } from './ProposalPicker'
@@ -252,6 +252,13 @@ export function CompactWorkflowView() {
     isCheckpoint: boolean
     resolving: boolean
   } | null>(null)
+  const [templateConfirm, setTemplateConfirm] = React.useState<{
+    template: any
+    enhancement: any
+    params: Record<string, string>
+    loading: boolean
+  } | null>(null)
+  const [stopChoice, setStopChoice] = React.useState(false)
   const approvalPopupRef = React.useRef<typeof approvalPopup>(null)
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
@@ -534,14 +541,15 @@ export function CompactWorkflowView() {
     } catch {}
   }
 
-  async function handleStart(filePath: string) {
+  async function handleStart(filePath: string, params?: Record<string, string>) {
     try {
       setIsLoading(true)
+      setTemplateConfirm(prev => prev ? { ...prev, loading: true } : null)
       // Always create a new session — don't reuse old one
       const res = await fetch(`${API_BASE}/api/compact/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath }),
+        body: JSON.stringify({ filePath, params }),
       })
       const data = await res.json()
       if (data.error) {
@@ -564,9 +572,11 @@ export function CompactWorkflowView() {
       setTasks(newTasks)
       taskIdsRef.current = new Set(newTasks.map(t => t.id))
       setWorkflowExpanded(true)
+      setTemplateConfirm(null)
     } catch (e) {
       console.error('[Compact] start error:', e)
       alert('Failed to start workflow')
+      setTemplateConfirm(prev => prev ? { ...prev, loading: false } : null)
     } finally {
       setIsLoading(false)
     }
@@ -575,6 +585,34 @@ export function CompactWorkflowView() {
   async function handleSend() {
     if (!input.trim() || isLoading) return
     const text = input.trim()
+
+    // Intent recognition: check if message matches a template
+    if (!sessionIdRef.current && tasks.length === 0) {
+      try {
+        const intentRes = await fetch(`${API_BASE}/api/chat/intent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        })
+        const intentData = await intentRes.json()
+        if (intentData.matched && intentData.template) {
+          const defaultParams: Record<string, string> = {}
+          for (const p of intentData.template.params || []) {
+            defaultParams[p.name] = p.default != null ? String(p.default) : 'localhost'
+          }
+          setTemplateConfirm({
+            template: intentData.template,
+            enhancement: intentData.enhancement,
+            params: defaultParams,
+            loading: false,
+          })
+          return
+        }
+      } catch (e) {
+        console.error('[Compact] intent recognition failed:', e)
+      }
+    }
+
     setInput('')
 
     const userMsgId = `user-${Date.now()}`
@@ -736,15 +774,35 @@ export function CompactWorkflowView() {
   async function handleToggleExecutor() {
     try {
       if (executorRunning) {
+        // Show pause/cancel choice instead of immediately stopping
+        setStopChoice(true)
+        return
+      }
+      const res = await fetch(`${API_BASE}/api/executor/start`, { method: 'POST' })
+      const data = await res.json()
+      setExecutorRunning(data.running !== false)
+    } catch (e) {
+      console.error('[Compact] executor toggle error:', e)
+    }
+  }
+
+  async function handleStopChoice(choice: 'pause' | 'cancel') {
+    setStopChoice(false)
+    try {
+      if (choice === 'pause') {
         await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
         setExecutorRunning(false)
       } else {
-        const res = await fetch(`${API_BASE}/api/executor/start`, { method: 'POST' })
-        const data = await res.json()
-        setExecutorRunning(data.running !== false)
+        // Cancel all running tasks
+        const runningTasks = tasks.filter(t => t.status === 'in_progress')
+        for (const t of runningTasks) {
+          await fetch(`${API_BASE}/api/tasks/${t.id}/cancel`, { method: 'POST' })
+        }
+        await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
+        setExecutorRunning(false)
       }
     } catch (e) {
-      console.error('[Compact] executor toggle error:', e)
+      console.error('[Compact] stop choice error:', e)
     }
   }
 
@@ -1324,6 +1382,256 @@ export function CompactWorkflowView() {
                 }}
               >
                 ✕ Abort
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template Confirmation Popup */}
+      {templateConfirm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999,
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #7dd3fc',
+            borderRadius: 4,
+            padding: '20px 24px',
+            maxWidth: 460,
+            width: '90%',
+            maxHeight: '80vh', overflowY: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.8), 0 0 20px rgba(125,211,252,0.3)',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginBottom: 12,
+            }}>
+              <FileText size={18} color="#7dd3fc" />
+              <span style={{
+                fontSize: 14, fontWeight: 700, color: '#7dd3fc',
+                fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                Template Matched
+              </span>
+            </div>
+            <div style={{
+              fontSize: 15, color: '#ffffff', fontWeight: 600,
+              fontFamily: sans, marginBottom: 4,
+            }}>
+              {templateConfirm.template.name}
+            </div>
+            {templateConfirm.template.description && (
+              <div style={{
+                fontSize: 11, color: '#a1a1aa', fontFamily: mono,
+                marginBottom: 12, lineHeight: 1.4,
+              }}>
+                {templateConfirm.template.description}
+              </div>
+            )}
+
+            {/* Params */}
+            {templateConfirm.template.params?.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 600, color: '#7dd3fc',
+                  fontFamily: mono, textTransform: 'uppercase',
+                  marginBottom: 6, letterSpacing: '0.1em',
+                }}>
+                  Parameters (defaults shown, edit if needed)
+                </div>
+                {templateConfirm.template.params.map((p: any) => (
+                  <div key={p.name} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    marginBottom: 4,
+                  }}>
+                    <label style={{
+                      fontSize: 11, color: '#d4d4d4', fontFamily: mono,
+                      minWidth: 100,
+                    }}>{p.label}</label>
+                    <input
+                      type="text"
+                      value={templateConfirm.params[p.name] || ''}
+                      onChange={(e) => setTemplateConfirm(prev => prev ? {
+                        ...prev,
+                        params: { ...prev.params, [p.name]: e.target.value },
+                      } : null)}
+                      style={{
+                        flex: 1, padding: '4px 8px', fontSize: 11,
+                        fontFamily: mono, color: '#ffffff',
+                        backgroundColor: 'rgba(0,0,0,0.4)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 2, outline: 'none',
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Nodes */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 600, color: '#7dd3fc',
+                fontFamily: mono, textTransform: 'uppercase',
+                marginBottom: 6, letterSpacing: '0.1em',
+              }}>
+                Workflow Nodes ({templateConfirm.template.nodes?.length || 0})
+              </div>
+              {templateConfirm.template.nodes?.map((node: any, i: number) => {
+                const enriched = templateConfirm.enhancement?.enrichedDescriptions?.[node.id]
+                return (
+                  <div key={node.id} style={{
+                    padding: '6px 8px', marginBottom: 3,
+                    backgroundColor: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 2,
+                  }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 11, fontWeight: 600, color: '#ffffff',
+                      fontFamily: mono,
+                    }}>
+                      <span style={{ color: '#7dd3fc' }}>{i + 1}.</span>
+                      {node.name}
+                      {node.agent && (
+                        <span style={{
+                          fontSize: 9, color: '#a1a1aa',
+                          backgroundColor: 'rgba(255,255,255,0.05)',
+                          padding: '1px 4px', borderRadius: 2,
+                        }}>{node.agent}</span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: 10, color: '#a1a1aa', fontFamily: mono,
+                      marginTop: 2, lineHeight: 1.4,
+                    }}>
+                      {enriched || node.description || 'No description'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* PM warnings/suggestions */}
+            {(templateConfirm.enhancement?.warnings?.length > 0 || templateConfirm.enhancement?.suggestions?.length > 0) && (
+              <div style={{
+                marginBottom: 12, padding: '8px 10px',
+                backgroundColor: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.3)',
+                borderLeft: '3px solid #fbbf24',
+                borderRadius: 2,
+              }}>
+                {templateConfirm.enhancement.warnings?.map((w: string, i: number) => (
+                  <div key={`w${i}`} style={{
+                    fontSize: 10, color: '#fbbf24', fontFamily: mono,
+                    marginBottom: 2, lineHeight: 1.4,
+                  }}>⚠ {w}</div>
+                ))}
+                {templateConfirm.enhancement.suggestions?.map((s: string, i: number) => (
+                  <div key={`s${i}`} style={{
+                    fontSize: 10, color: '#86efac', fontFamily: mono,
+                    marginBottom: 2, lineHeight: 1.4,
+                  }}>✓ {s}</div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handleStart(templateConfirm.template.filename, templateConfirm.params)}
+                disabled={templateConfirm.loading}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: '#86efac', color: '#000',
+                  border: '1px solid #86efac', borderRadius: 2,
+                }}
+              >
+                {templateConfirm.loading ? '...' : '✓ Confirm & Start'}
+              </button>
+              <button
+                onClick={() => setTemplateConfirm(null)}
+                style={{
+                  padding: '8px 12px', fontSize: 12, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#d4d4d4',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stop Choice Popup */}
+      {stopChoice && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999,
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #fbbf24',
+            borderRadius: 4,
+            padding: '20px 24px',
+            maxWidth: 340,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.8), 0 0 20px rgba(251,191,36,0.3)',
+          }}>
+            <div style={{
+              fontSize: 14, fontWeight: 700, color: '#fbbf24',
+              fontFamily: mono, textTransform: 'uppercase',
+              marginBottom: 8, letterSpacing: '0.05em',
+            }}>
+              Stop Execution
+            </div>
+            <div style={{
+              fontSize: 12, color: '#d4d4d4', fontFamily: mono,
+              marginBottom: 16, lineHeight: 1.5,
+            }}>
+              Choose how to stop. Pause keeps tasks resumable; Cancel marks them as cancelled (terminal).
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handleStopChoice('pause')}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: '#60a5fa', color: '#000',
+                  border: '1px solid #60a5fa', borderRadius: 2,
+                }}
+              >
+                ⏸ Pause
+              </button>
+              <button
+                onClick={() => handleStopChoice('cancel')}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: '#fca5a5', color: '#000',
+                  border: '1px solid #fca5a5', borderRadius: 2,
+                }}
+              >
+                ✕ Cancel
+              </button>
+              <button
+                onClick={() => setStopChoice(false)}
+                style={{
+                  padding: '8px 12px', fontSize: 12, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#d4d4d4',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2,
+                }}
+              >
+                Back
               </button>
             </div>
           </div>

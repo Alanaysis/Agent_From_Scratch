@@ -732,6 +732,13 @@ routes.set("POST /api/compact/start", async (_req, body) => {
   }
   if (!yaml) return { error: "No filePath provided" };
 
+  // Substitute {{param}} variables with user-provided values (default localhost)
+  if (input.params && typeof input.params === 'object') {
+    yaml = yaml.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
+      return input.params[key] != null ? String(input.params[key]) : 'localhost';
+    });
+  }
+
   const workflow = parseWorkflowYaml(yaml);
   if (input.filePath) workflow.sourceFile = input.filePath;
 
