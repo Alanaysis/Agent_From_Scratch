@@ -238,6 +238,8 @@ export function CompactWorkflowView() {
   const [workflowExpanded, setWorkflowExpanded] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(false)
   const [intentLoading, setIntentLoading] = React.useState(false)
+  const [intentProgress, setIntentProgress] = React.useState(0)
+  const [intentBanner, setIntentBanner] = React.useState(0)
   const [streamingText, setStreamingText] = React.useState('')
   const [input, setInput] = React.useState('')
   const [showPicker, setShowPicker] = React.useState(false)
@@ -275,6 +277,26 @@ export function CompactWorkflowView() {
   React.useEffect(() => {
     sessionIdRef.current = sessionId
   }, [sessionId])
+
+  React.useEffect(() => {
+    if (!intentLoading) {
+      setIntentProgress(0)
+      setIntentBanner(0)
+      return
+    }
+    setIntentProgress(0)
+    setIntentBanner(0)
+    const progressTimer = setInterval(() => {
+      setIntentProgress(p => Math.min(p + Math.random() * 8, 92))
+    }, 300)
+    const bannerTimer = setInterval(() => {
+      setIntentBanner(b => b + 1)
+    }, 1800)
+    return () => {
+      clearInterval(progressTimer)
+      clearInterval(bannerTimer)
+    }
+  }, [intentLoading])
 
   React.useEffect(() => {
     tasksRef.current = tasks
@@ -975,32 +997,61 @@ export function CompactWorkflowView() {
             </div>
           )}
 
-          {intentLoading && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(12,12,12,0.85)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 100,
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              gap: 12,
-            }}>
-              <Loader2 size={32} color="#7dd3fc" style={{ animation: 'spin 1s linear infinite' }} />
+          {intentLoading && (() => {
+            const banners = [
+              '正在分析用户意图...',
+              'PM Agent 正在解析 workflow 节点...',
+              '正在生成增强描述...',
+              '正在识别潜在风险与建议...',
+              '正在优化 workflow 方案...',
+            ]
+            const currentBanner = banners[intentBanner % banners.length]
+            return (
               <div style={{
-                fontSize: 13, fontFamily: mono, color: '#7dd3fc',
-                fontWeight: 600, textAlign: 'center',
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(12,12,12,0.88)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 100,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 16, padding: 20,
               }}>
-                正在分析意图
+                <Loader2 size={36} color="#7dd3fc" style={{ animation: 'spin 1s linear infinite' }} />
+                <div style={{
+                  fontSize: 14, fontFamily: mono, color: '#7dd3fc',
+                  fontWeight: 700, textAlign: 'center',
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  Intent Analysis
+                </div>
+                <div style={{
+                  fontSize: 12, fontFamily: mono, color: '#ffffff',
+                  textAlign: 'center', minHeight: 18,
+                  transition: 'opacity 0.3s',
+                }}>
+                  {currentBanner}
+                </div>
+                <div style={{
+                  width: '80%', maxWidth: 300, height: 4,
+                  backgroundColor: 'rgba(255,255,255,0.1)',
+                  borderRadius: 2, overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: `${intentProgress}%`, height: '100%',
+                    background: 'linear-gradient(90deg, #7dd3fc, #60a5fa)',
+                    borderRadius: 2,
+                    transition: 'width 0.3s ease-out',
+                  }} />
+                </div>
+                <div style={{
+                  fontSize: 10, fontFamily: mono, color: '#71717a',
+                }}>
+                  {Math.round(intentProgress)}%
+                </div>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
               </div>
-              <div style={{
-                fontSize: 11, fontFamily: mono, color: '#a1a1aa',
-                textAlign: 'center', maxWidth: 280, lineHeight: 1.5,
-              }}>
-                PM Agent 正在增强 workflow 节点描述，请稍候...
-              </div>
-              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-            </div>
-          )}
+            )
+          })()}
 
           {isLoading && !streamingText && (
             <div style={{ padding: '2px 10px', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 11, fontFamily: mono }}>

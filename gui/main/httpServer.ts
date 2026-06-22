@@ -1867,7 +1867,6 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent },
           ],
-          response_format: { type: "json_object" },
         }),
       });
       if (!response.ok) {
