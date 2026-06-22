@@ -262,6 +262,7 @@ const openAiProvider = {
                     },
                 })),
             }),
+            signal: params.signal,
         });
         if (!response.ok) {
             const payload = (await response.json());
@@ -336,6 +337,7 @@ const anthropicProvider = {
                     input_schema: tool.parameters,
                 })),
             }),
+            signal: params.signal,
         });
         if (!response.ok) {
             const payload = (await response.json());

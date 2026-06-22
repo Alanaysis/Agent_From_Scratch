@@ -34,6 +34,7 @@ type LlmTurnParams = {
   systemPrompt: string[];
   tools: LlmToolDefinition[];
   onTextDelta?: (text: string) => void;
+  signal?: AbortSignal;
 };
 
 type OpenAiToolCall = {
@@ -420,6 +421,7 @@ const openAiProvider: LlmProvider = {
           },
         })),
       }),
+      signal: params.signal,
     });
 
     if (!response.ok) {
@@ -520,6 +522,7 @@ const anthropicProvider: LlmProvider = {
           input_schema: tool.parameters,
         })),
       }),
+      signal: params.signal,
     });
 
     if (!response.ok) {

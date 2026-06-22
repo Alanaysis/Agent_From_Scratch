@@ -290,7 +290,9 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
 
   const subContext = createSubagentContext(params.parentContext, {
     agentType: agentDef.name,
+    shareAbortController: true,
   });
+  const signal = subContext.abortController.signal;
 
   const filteredTools = getFilteredTools(agentDef);
 
@@ -333,13 +335,23 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
   }
 
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    if (signal.aborted) {
+      console.log(`[runAgent] Aborted before turn ${turn + 1}`);
+      break;
+    }
     console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`)
     const llmResponse = await runLlmTurn({
       messages,
       systemPrompt,
       tools: toolDefs,
       onTextDelta: params.onProgress,
+      signal,
     });
+
+    if (signal.aborted) {
+      console.log(`[runAgent] Aborted during LLM turn ${turn + 1}`);
+      break;
+    }
 
     if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
       break;
@@ -374,6 +386,10 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     }
 
     for (const toolCall of toolCalls) {
+      if (signal.aborted) {
+        console.log(`[runAgent] Aborted before tool ${toolCall.name}`);
+        break;
+      }
       for await (const msg of executeSubagentToolCall(
         toolCall.name,
         toolCall.input,

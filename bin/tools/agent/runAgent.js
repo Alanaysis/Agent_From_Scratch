@@ -243,7 +243,9 @@ export async function runAgent(params) {
     const permissionFn = params.canUseTool ?? canUseTool;
     const subContext = createSubagentContext(params.parentContext, {
         agentType: agentDef.name,
+        shareAbortController: true,
     });
+    const signal = subContext.abortController.signal;
     const filteredTools = getFilteredTools(agentDef);
     if (!getLlmConfig()?.apiKey) {
         console.log(`[runAgent] No LLM API key configured, returning early`);
@@ -278,13 +280,22 @@ export async function runAgent(params) {
         }
     }
     for (let turn = 0; turn < maxTurns; turn += 1) {
+        if (signal.aborted) {
+            console.log(`[runAgent] Aborted before turn ${turn + 1}`);
+            break;
+        }
         console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`);
         const llmResponse = await runLlmTurn({
             messages,
             systemPrompt,
             tools: toolDefs,
             onTextDelta: params.onProgress,
+            signal,
         });
+        if (signal.aborted) {
+            console.log(`[runAgent] Aborted during LLM turn ${turn + 1}`);
+            break;
+        }
         if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
             break;
         }
@@ -311,6 +322,10 @@ export async function runAgent(params) {
             break;
         }
         for (const toolCall of toolCalls) {
+            if (signal.aborted) {
+                console.log(`[runAgent] Aborted before tool ${toolCall.name}`);
+                break;
+            }
             for await (const msg of executeSubagentToolCall(toolCall.name, toolCall.input, toolCall.id, subContext, permissionFn, filteredTools)) {
                 messages.push(msg);
                 allResultMessages.push(msg);
