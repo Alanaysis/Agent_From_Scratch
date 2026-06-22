@@ -233,6 +233,7 @@ export function CompactWorkflowView() {
   const taskIdsRef = React.useRef<Set<string>>(new Set())
   const sessionIdRef = React.useRef<string | null>(null)
   const seenMsgIdsRef = React.useRef<Set<string>>(new Set())
+  const taskOrderRef = React.useRef<string[]>([])
 
   React.useEffect(() => {
     sessionIdRef.current = sessionId
@@ -243,6 +244,10 @@ export function CompactWorkflowView() {
     if (saved) {
       setSessionId(saved)
       sessionIdRef.current = saved
+      const savedOrder = localStorage.getItem('compact-task-order')
+      if (savedOrder) {
+        try { taskOrderRef.current = JSON.parse(savedOrder) } catch {}
+      }
       restoreSession(saved)
     }
     connectSSE()
@@ -262,6 +267,12 @@ export function CompactWorkflowView() {
   React.useEffect(() => {
     if (sessionId) localStorage.setItem('compact-session-id', sessionId)
   }, [sessionId])
+
+  React.useEffect(() => {
+    if (taskOrderRef.current.length > 0) {
+      localStorage.setItem('compact-task-order', JSON.stringify(taskOrderRef.current))
+    }
+  }, [tasks.length])
 
   React.useEffect(() => {
     if (input.length > 0 && workflowExpanded && !autoCollapsed) {
@@ -408,6 +419,14 @@ export function CompactWorkflowView() {
           assignee: t.assignee,
           dependsOn: t.dependsOn,
         }))
+        if (taskOrderRef.current.length > 0) {
+          const orderMap = new Map(taskOrderRef.current.map((id, idx) => [id, idx]))
+          compact.sort((a, b) => {
+            const oa = orderMap.get(a.id) ?? 9999
+            const ob = orderMap.get(b.id) ?? 9999
+            return oa - ob
+          })
+        }
         setTasks(compact)
         taskIdsRef.current = new Set(compact.map(t => t.id))
 
@@ -439,6 +458,7 @@ export function CompactWorkflowView() {
       const newTasks: CompactTask[] = data.tasks.map((t: any) => ({
         id: t.id, title: t.title, status: t.status, assignee: t.assignee, dependsOn: t.dependsOn,
       }))
+      taskOrderRef.current = newTasks.map(t => t.id)
       setTasks(newTasks)
       taskIdsRef.current = new Set(newTasks.map(t => t.id))
       setWorkflowExpanded(true)
@@ -579,12 +599,14 @@ export function CompactWorkflowView() {
     sessionIdRef.current = null
     setMessages([])
     setTasks([])
+    taskOrderRef.current = []
     setWorkflowName(null)
     setWorkflowExpanded(false)
     setStreamingText('')
     setInput('')
     seenMsgIdsRef.current = new Set()
     localStorage.removeItem('compact-session-id')
+    localStorage.removeItem('compact-task-order')
   }
 
   async function handleHistory() {
@@ -601,6 +623,7 @@ export function CompactWorkflowView() {
     sessionIdRef.current = sid
     setMessages([])
     setTasks([])
+    taskOrderRef.current = []
     setWorkflowName(null)
     setWorkflowExpanded(false)
     setShowHistory(false)
