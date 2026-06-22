@@ -17,7 +17,6 @@ export type Plan = {
   id: string;
   title: string;
   description?: string;
-  recipeId?: string;
   status: "draft" | "confirmed" | "executing" | "completed" | "cancelled";
   tasks: PlanTaskDraft[];
   createdAt: string;

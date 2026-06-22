@@ -835,19 +835,6 @@ routes.set("POST /api/compact/start", async (_req, body) => {
   return { sessionId, workflow: workflow.name, tasks: createdTasks };
 });
 
-// ====== Recipes ======
-
-import { readRecipe, createRecipe, updateRecipe, deleteRecipe, listRecipes, findRecipesByTrigger } from "../../storage/recipeIndex";
-
-routes.set("GET /api/recipes", async () => {
-  return { recipes: await listRecipes(cwd()) };
-});
-
-routes.set("GET /api/recipes/:id", async (_req, _body, params?: Record<string, string>) => {
-  const recipe = await readRecipe(cwd(), params!.id!);
-  return { recipe };
-});
-
 // Save proposal as YAML file
 routes.set("POST /api/workflows/save-yaml", async (_req, body) => {
   const input = JSON.parse(body);
@@ -868,29 +855,6 @@ routes.set("POST /api/workflows/save-yaml", async (_req, body) => {
   return { filePath, fileName };
 });
 
-routes.set("POST /api/recipes", async (_req, body) => {
-  const input = JSON.parse(body);
-  const recipe = await createRecipe(cwd(), { id: createId("recipe"), name: input.name, description: input.description, triggers: input.triggers || [], tasks: input.tasks || [] });
-  return { recipe };
-});
-
-routes.set("PATCH /api/recipes/:id", async (_req, body, params?: Record<string, string>) => {
-  const input = JSON.parse(body);
-  const recipe = await updateRecipe(cwd(), params!.id!, input);
-  return { recipe };
-});
-
-routes.set("DELETE /api/recipes/:id", async (_req, _body, params?: Record<string, string>) => {
-  await deleteRecipe(cwd(), params!.id!);
-  return { ok: true };
-});
-
-routes.set("POST /api/recipes/find", async (_req, body) => {
-  const input = JSON.parse(body);
-  const recipes = await findRecipesByTrigger(cwd(), input.trigger);
-  return { recipes };
-});
-
 // ====== Plans ======
 
 import { readPlan, createPlan, updatePlan, deletePlan, listPlans, confirmPlan } from "../../storage/planIndex";
@@ -906,7 +870,7 @@ routes.set("GET /api/plans/:id", async (_req, _body, params?: Record<string, str
 
 routes.set("POST /api/plans", async (_req, body) => {
   const input = JSON.parse(body);
-  const plan = await createPlan(cwd(), { id: createId("plan"), title: input.title, description: input.description, tasks: input.tasks || [], recipeId: input.recipeId, createdBy: input.createdBy });
+  const plan = await createPlan(cwd(), { id: createId("plan"), title: input.title, description: input.description, tasks: input.tasks || [], status: "draft", createdBy: input.createdBy });
   return { plan };
 });
 
@@ -940,74 +904,6 @@ routes.set("POST /api/executor/stop", async () => {
 
 routes.set("GET /api/executor/status", async () => {
   return { running: taskPollInterval !== null };
-});
-
-// ====== PM ======
-
-routes.set("POST /api/pm/create-plan", async (_req, body) => {
-  const input = JSON.parse(body);
-  const { findRecipesByTrigger } = await import("../../storage/recipeIndex");
-
-  const goal = input.goal || "Untitled goal";
-  const keywords = goal.toLowerCase().replace(/[^a-z0-9\s-]/g, "").split(/\s+/).filter((w: string) => w.length > 1);
-
-  // Search recipes by keywords
-  const matchedRecipes = new Map<string, any>();
-  for (const keyword of keywords) {
-    const recipes = await findRecipesByTrigger(cwd(), keyword);
-    for (const recipe of recipes) {
-      matchedRecipes.set(recipe.id, recipe);
-    }
-  }
-
-  let taskDrafts: any[] = [];
-  let title = `Plan: ${goal}`;
-  let description = `Proposal for goal: ${goal}`;
-
-  if (matchedRecipes.size > 0) {
-    const sortedRecipes = [...matchedRecipes.values()].sort((a, b) => {
-      const aMatches = a.triggers.filter((t: string) => keywords.some((k: string) => t.toLowerCase().includes(k))).length;
-      const bMatches = b.triggers.filter((t: string) => keywords.some((k: string) => t.toLowerCase().includes(k))).length;
-      return bMatches - aMatches;
-    });
-    const recipe = sortedRecipes[0];
-    title = `Plan: ${goal}`;
-    description = `Auto-generated proposal from recipe "${recipe.name}" for goal: ${goal}`;
-
-    const tempIdMap = new Map<number, string>();
-    taskDrafts = recipe.tasks.map((template: any, index: number) => {
-      const tempId = `draft-${index}`;
-      tempIdMap.set(index, tempId);
-      return {
-        tempId,
-        title: template.title,
-        description: template.description,
-        agent: template.agent,
-        priority: template.priority,
-        dependsOnTempIds: template.dependsOnIndex?.map((depIndex: number) => tempIdMap.get(depIndex)).filter(Boolean),
-      };
-    });
-  } else {
-    taskDrafts = [{
-      tempId: "draft-0",
-      title: goal,
-      description: `Complete the following goal: ${goal}`,
-      priority: "medium",
-    }];
-  }
-
-  const proposal = await createProposal(cwd(), {
-    id: createId("proposal"),
-    title,
-    description,
-    inputType: "manual",
-    status: "draft",
-    taskDrafts,
-    documentDrafts: [],
-    createdBy: input.createdBy,
-  });
-
-  return { proposal };
 });
 
 // ====== Config (read-only, API key masked) ======

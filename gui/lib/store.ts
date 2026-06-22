@@ -88,14 +88,6 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   // Skills
   'skills:list':            { method: 'GET',  path: '/api/skills' },
 
-  // Recipes
-  'recipes:list':           { method: 'GET',  path: '/api/recipes' },
-  'recipes:get':            { method: 'GET',  path: '/api/recipes/{0}' },
-  'recipes:create':         { method: 'POST', path: '/api/recipes' },
-  'recipes:update':         { method: 'PATCH', path: '/api/recipes/{0}' },
-  'recipes:delete':         { method: 'DELETE', path: '/api/recipes/{0}' },
-  'recipes:find':           { method: 'POST', path: '/api/recipes/find' },
-
   // Plans
   'plans:list':             { method: 'GET',  path: '/api/plans' },
   'plans:get':              { method: 'GET',  path: '/api/plans/{0}' },
@@ -118,9 +110,6 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'chat:send':              { method: 'POST', path: '/api/chat' },
   'chat:cancel':            { method: 'POST', path: '/api/chat/cancel' },
   'chat:permission-response': { method: 'POST', path: '/api/chat/permission-response' },
-
-  // PM
-  'pm:create_plan_from_goal': { method: 'POST', path: '/api/pm/create-plan' },
 }
 
 async function sendViaHttp(channel: string, data?: unknown): Promise<any> {

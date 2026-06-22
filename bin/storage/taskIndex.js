@@ -17,11 +17,12 @@ async function withTaskLock(taskId, fn) {
     }
 }
 const VALID_TRANSITIONS = {
-    todo: ["in_progress", "failed"],
+    todo: ["in_progress", "failed", "skipped"],
     in_progress: ["verify", "failed"],
     verify: ["done", "in_progress"], // can reject back to in_progress
     done: [],
     failed: ["todo"], // can retry
+    skipped: [], // terminal state
 };
 export function isValidTransition(from, to) {
     return VALID_TRANSITIONS[from]?.includes(to) ?? false;
@@ -215,34 +216,8 @@ export async function listTasks(cwd) {
 export async function getUnblockedTasks(cwd) {
     const allTasks = await listTasks(cwd);
     const taskMap = new Map();
-    const blockedCount = new Map();
     for (const task of allTasks) {
         taskMap.set(task.id, task);
-        if (task.dependsOn && task.dependsOn.length > 0) {
-            for (const depId of task.dependsOn) {
-                blockedCount.set(task.id, (blockedCount.get(task.id) || 0) + 1);
-            }
-        }
-        else if (task.status === "todo") {
-            blockedCount.set(task.id, 0);
-        }
-    }
-    for (const task of allTasks) {
-        if (task.status !== "todo" && task.status !== "failed")
-            continue;
-        if (!task.dependsOn || task.dependsOn.length === 0)
-            continue;
-        let allDepsDone = true;
-        for (const depId of task.dependsOn) {
-            const depTask = taskMap.get(depId);
-            if (!depTask || !(depTask.status === "done" || depTask.status === "failed" || depTask.skipped) || depTask.checkpointAwaiting) {
-                allDepsDone = false;
-                break;
-            }
-        }
-        if (allDepsDone) {
-            blockedCount.set(task.id, 0);
-        }
     }
     return allTasks
         .filter((task) => {
@@ -250,9 +225,33 @@ export async function getUnblockedTasks(cwd) {
             return false;
         if (task.skipped)
             return false;
-        const blocked = blockedCount.get(task.id) || 0;
-        if (blocked !== 0)
-            return false;
+        // Check dependencies
+        if (task.dependsOn && task.dependsOn.length > 0) {
+            // Special logic for OR condition: if any dependency is done/failed/skipped, we can proceed
+            // But also need to make sure NO dependencies are still in progress/checkpoint waiting
+            let anyDepComplete = false;
+            let hasBlockingDep = false;
+            for (const depId of task.dependsOn) {
+                const depTask = taskMap.get(depId);
+                if (!depTask)
+                    continue;
+                // Check if dep is complete
+                if (depTask.status === "done" || depTask.status === "failed" || depTask.skipped) {
+                    anyDepComplete = true;
+                }
+                // Check if dep is blocking
+                if (depTask.checkpointAwaiting ||
+                    !(depTask.status === "done" || depTask.status === "failed" || depTask.skipped)) {
+                    hasBlockingDep = true;
+                }
+            }
+            if (hasBlockingDep) {
+                return false;
+            }
+            if (!anyDepComplete) {
+                return false;
+            }
+        }
         // Check condition if exists
         if (task.condition) {
             const conditionMet = evaluateCondition(task.condition, allTasks);

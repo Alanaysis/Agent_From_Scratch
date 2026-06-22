@@ -15,7 +15,6 @@ import { log } from "../logger";
 interface PlanCreateInput {
   title: string;
   description?: string;
-  recipeId?: string;
   tasks: PlanTaskDraft[];
   createdBy?: string;
 }
@@ -25,7 +24,6 @@ interface PlanUpdateInput {
   updates: {
     title?: string;
     description?: string;
-    recipeId?: string;
     tasks?: PlanTaskDraft[];
     status?: "draft" | "confirmed" | "executing" | "completed" | "cancelled";
   };
@@ -65,7 +63,6 @@ export function registerPlanHandlers() {
         id: createId("plan"),
         title: input.title,
         description: input.description,
-        recipeId: input.recipeId,
         status: "draft",
         tasks: input.tasks,
         createdBy: input.createdBy,
