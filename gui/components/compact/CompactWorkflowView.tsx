@@ -976,9 +976,28 @@ export function CompactWorkflowView() {
           )}
 
           {intentLoading && (
-            <div style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, color: '#7dd3fc', fontSize: 11, fontFamily: mono }}>
-              <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-              正在分析意图，PM Agent 增强 workflow 中...
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(12,12,12,0.85)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 100,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: 12,
+            }}>
+              <Loader2 size={32} color="#7dd3fc" style={{ animation: 'spin 1s linear infinite' }} />
+              <div style={{
+                fontSize: 13, fontFamily: mono, color: '#7dd3fc',
+                fontWeight: 600, textAlign: 'center',
+              }}>
+                正在分析意图
+              </div>
+              <div style={{
+                fontSize: 11, fontFamily: mono, color: '#a1a1aa',
+                textAlign: 'center', maxWidth: 280, lineHeight: 1.5,
+              }}>
+                PM Agent 正在增强 workflow 节点描述，请稍候...
+              </div>
               <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
           )}

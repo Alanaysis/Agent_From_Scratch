@@ -1867,6 +1867,7 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent },
           ],
+          response_format: { type: "json_object" },
         }),
       });
       if (!response.ok) {
@@ -1891,27 +1892,40 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
     let cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
     // Some reasoning models (e.g. qwen3) put thinking process before the JSON.
-    // Try to extract the JSON object from the text.
+    // Try multiple extraction strategies.
     let parsed: any;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (firstErr) {
-      // Try to find a JSON object in the text (first { to last })
+    const tryParse = (text: string): any | null => {
+      try { return JSON.parse(text); } catch { return null; }
+    };
+
+    // Strategy 1: direct parse
+    parsed = tryParse(cleaned);
+    if (parsed) {
+      log("INFO", "PMEnhance", "Parsed JSON directly");
+    }
+
+    // Strategy 2: find JSON object containing enrichedDescriptions
+    if (!parsed) {
+      const match = cleaned.match(/\{[\s\S]*?"enrichedDescriptions"[\s\S]*?\}/);
+      if (match) {
+        parsed = tryParse(match[0]);
+        if (parsed) log("INFO", "PMEnhance", "Extracted JSON via enrichedDescriptions regex");
+      }
+    }
+
+    // Strategy 3: first { to last }
+    if (!parsed) {
       const jsonStart = cleaned.indexOf('{');
       const jsonEnd = cleaned.lastIndexOf('}');
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        const jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
-        try {
-          parsed = JSON.parse(jsonStr);
-          log("INFO", "PMEnhance", `Extracted JSON from reasoning text (offset ${jsonStart}-${jsonEnd})`);
-        } catch (e) {
-          log("ERROR", "PMEnhance", `JSON parse failed even after extraction: ${e}\nRaw: ${cleaned.slice(0, 300)}`);
-          return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
-        }
-      } else {
-        log("ERROR", "PMEnhance", `JSON parse failed: ${firstErr}\nRaw: ${cleaned.slice(0, 300)}`);
-        return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
+        parsed = tryParse(cleaned.slice(jsonStart, jsonEnd + 1));
+        if (parsed) log("INFO", "PMEnhance", `Extracted JSON via first/last brace (offset ${jsonStart}-${jsonEnd})`);
       }
+    }
+
+    if (!parsed) {
+      log("ERROR", "PMEnhance", `All JSON extraction strategies failed.\nRaw: ${cleaned.slice(0, 500)}`);
+      return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
     }
     const result = {
       enrichedDescriptions: parsed.enrichedDescriptions || {},
