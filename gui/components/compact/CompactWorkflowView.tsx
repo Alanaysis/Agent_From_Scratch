@@ -49,6 +49,7 @@ interface CompactTask {
   requiresApproval?: boolean
   approvalMessage?: string
   description?: string
+  lastError?: string
 }
 
 interface CompactMessage {
@@ -283,6 +284,7 @@ export function CompactWorkflowView() {
       }
       restoreSession(saved)
     }
+    syncExecutorStatus()
     connectSSE()
     return () => disconnectSSE()
   }, [])
@@ -514,6 +516,7 @@ export function CompactWorkflowView() {
           requiresApproval: t.requiresApproval,
           approvalMessage: t.approvalMessage,
           description: t.description,
+          lastError: t.lastError,
         }))
         if (taskOrderRef.current.length > 0) {
           const orderMap = new Map(taskOrderRef.current.map((id, idx) => [id, idx]))
@@ -729,13 +732,26 @@ export function CompactWorkflowView() {
   }
 
   async function handleToggleExecutor() {
-    if (executorRunning) {
-      await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
-      setExecutorRunning(false)
-    } else {
-      await fetch(`${API_BASE}/api/executor/start`, { method: 'POST' })
-      setExecutorRunning(true)
+    try {
+      if (executorRunning) {
+        await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
+        setExecutorRunning(false)
+      } else {
+        const res = await fetch(`${API_BASE}/api/executor/start`, { method: 'POST' })
+        const data = await res.json()
+        setExecutorRunning(data.running !== false)
+      }
+    } catch (e) {
+      console.error('[Compact] executor toggle error:', e)
     }
+  }
+
+  async function syncExecutorStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/executor/status`)
+      const data = await res.json()
+      setExecutorRunning(data.running === true)
+    } catch {}
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -817,6 +833,8 @@ export function CompactWorkflowView() {
           icon={executorRunning ? <Pause size={12} /> : <Play size={12} />}
           label={executorRunning ? 'Pause' : 'Run'}
           onClick={handleToggleExecutor}
+          disabled={!hasWorkflow}
+          accent={executorRunning}
         />
       </div>
 
@@ -1089,6 +1107,25 @@ export function CompactWorkflowView() {
                             border: '1px solid rgba(255,255,255,0.15)',
                           }}>
                             {task.description.slice(0, 400)}
+                          </div>
+                        )}
+
+                        {/* Error summary for failed tasks */}
+                        {task.status === 'failed' && task.lastError && (
+                          <div style={{
+                            marginTop: 5, fontSize: 11, fontFamily: mono,
+                            color: '#fca5a5', lineHeight: 1.45,
+                            padding: '5px 8px',
+                            backgroundColor: 'rgba(252,165,165,0.1)',
+                            borderRadius: 2,
+                            border: '1px solid rgba(252,165,165,0.3)',
+                            borderLeft: '3px solid #fca5a5',
+                            display: 'flex', alignItems: 'flex-start', gap: 5,
+                          }}>
+                            <XCircle size={11} color="#fca5a5" style={{ marginTop: 1, flexShrink: 0 }} />
+                            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                              {task.lastError}
+                            </span>
                           </div>
                         )}
                       </div>

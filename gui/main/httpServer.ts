@@ -929,11 +929,17 @@ routes.set("POST /api/plans/:id/confirm", async (_req, _body, params?: Record<st
 // ====== Executor ======
 
 routes.set("POST /api/executor/start", async () => {
-  return { ok: true, message: "Executor start via HTTP not yet implemented" };
+  startTaskAutoExec();
+  return { ok: true, running: true };
 });
 
 routes.set("POST /api/executor/stop", async () => {
-  return { ok: true, message: "Executor stop via HTTP not yet implemented" };
+  stopTaskAutoExec();
+  return { ok: true, running: false };
+});
+
+routes.set("GET /api/executor/status", async () => {
+  return { running: taskPollInterval !== null };
 });
 
 // ====== PM ======
@@ -1045,7 +1051,7 @@ import { query } from "../../runtime/query";
 import { canUseTool } from "../../permissions/engine";
 import { createInitialAppState } from "../../runtime/state";
 import { readTranscriptMessages } from "../../storage/transcript";
-import { initLlmConfig } from "../../runtime/llm";
+import { initLlmConfig, getLlmConfig } from "../../runtime/llm";
 import type { Message } from "../../runtime/messages";
 import { eventBus } from "../../shared/eventBus";
 
@@ -1615,6 +1621,81 @@ async function assignDependentTasks(completedTaskId: string) {
   }
 }
 
+async function generateErrorSummary(taskTitle: string, taskDescription: string | undefined, errorMessage: string, sessionMessages: any[]): Promise<string> {
+  try {
+    const config = getLlmConfig();
+    if (!config?.apiKey) {
+      return errorMessage.slice(0, 200);
+    }
+
+    const recentMessages = sessionMessages.slice(-10).map((m: any) => {
+      if (typeof m.content === 'string') return `${m.type}: ${m.content.slice(0, 500)}`;
+      if (Array.isArray(m.content)) {
+        const texts = m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text);
+        const tools = m.content.filter((c: any) => c.type === 'tool_use').map((c: any) => `${c.name}(${JSON.stringify(c.input).slice(0, 200)})`);
+        const results = m.content.filter((c: any) => c.type === 'tool_result').map((c: any) => typeof c.content === 'string' ? c.content.slice(0, 300) : JSON.stringify(c.content).slice(0, 300));
+        return `${m.type}: ${[...texts, ...tools, ...results].join(' | ')}`;
+      }
+      return '';
+    }).join('\n');
+
+    const systemPrompt = `You are an error analyst. Summarize why the task failed in 1-2 concise sentences. Focus on the root cause. Reply in the same language as the task.`;
+    const userMessage = `Task: ${taskTitle}
+Description: ${taskDescription || 'N/A'}
+Error: ${errorMessage}
+
+Recent conversation:
+${recentMessages}
+
+Summarize the failure reason concisely:`;
+
+    const isAnthropic = config.provider === 'anthropic' || (config.baseUrl && config.baseUrl.includes('anthropic'));
+    const baseUrl = config.baseUrl || (isAnthropic ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1');
+
+    if (isAnthropic) {
+      const response = await fetch(`${baseUrl}/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': config.apiKey,
+          'anthropic-version': config.anthropicVersion || '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: 256,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
+      if (!response.ok) return errorMessage.slice(0, 200);
+      const data = await response.json();
+      return data.content?.[0]?.text || errorMessage.slice(0, 200);
+    } else {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: 256,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+        }),
+      });
+      if (!response.ok) return errorMessage.slice(0, 200);
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || errorMessage.slice(0, 200);
+    }
+  } catch (e) {
+    log("ERROR", "ErrorSummary", `Failed to generate summary: ${e}`);
+    return errorMessage.slice(0, 200);
+  }
+}
+
 async function executeTaskViaHttp(taskId: string) {
   const task = await readTaskInfo(cwd(), taskId);
   if (!task) {
@@ -1727,8 +1808,15 @@ async function executeTaskViaHttp(taskId: string) {
     const hasToolErrors = allMessagesForCheck.some((m: any) => m.type === 'tool_result' && m.isError);
     if (hasToolErrors) {
       log("INFO", "AutoExec", `Task ${taskId} has tool errors, marking as failed`);
-      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Tool execution failed" });
-      eventBus.emit("executor:task-completed", { taskId, success: false, result: "Tool execution failed" });
+      const failedTask = await readTaskInfo(cwd(), taskId);
+      const errorSummary = await generateErrorSummary(
+        failedTask?.title || taskId,
+        failedTask?.description,
+        "Tool execution failed",
+        allMessagesForCheck
+      );
+      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errorSummary });
+      eventBus.emit("executor:task-completed", { taskId, success: false, result: errorSummary });
       return;
     }
 
@@ -1774,7 +1862,20 @@ async function executeTaskViaHttp(taskId: string) {
     }
     const errMsg = error instanceof Error ? error.message : String(error);
     log("ERROR", "AutoExec", `Task ${taskId} failed: ${errMsg}`);
-    await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errMsg });
+    const failedTask = await readTaskInfo(cwd(), taskId);
+    let sessionMessages: any[] = [];
+    try {
+      if (failedTask?.sessionId) {
+        sessionMessages = await readTranscriptMessages(cwd(), failedTask.sessionId);
+      }
+    } catch {}
+    const errorSummary = await generateErrorSummary(
+      failedTask?.title || taskId,
+      failedTask?.description,
+      errMsg,
+      sessionMessages
+    );
+    await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errorSummary });
 
     // Emit failure approval request — ask user what to do
     const task = await readTaskInfo(cwd(), taskId);
