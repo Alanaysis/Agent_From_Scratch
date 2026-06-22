@@ -47,7 +47,7 @@ export interface Task {
   id: string
   title: string
   description?: string
-  status: 'todo' | 'in_progress' | 'verify' | 'done' | 'failed' | 'skipped'
+  status: 'todo' | 'in_progress' | 'pausing' | 'paused' | 'cancelling' | 'cancelled' | 'verify' | 'done' | 'failed' | 'skipped'
   priority: 'low' | 'medium' | 'high'
   assignee?: string
   dependsOn?: string[]
@@ -74,7 +74,6 @@ export interface Task {
     max: number
     steps: string[]
   }
-  checkpointAwaiting?: boolean
 }
 
 export interface TaskActivity {

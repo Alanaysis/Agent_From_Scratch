@@ -59,11 +59,23 @@ export type LoopConfig = {
   onExhausted?: "abort" | "continue" | "skip";
 };
 
+export type TaskStatus =
+  | "todo"
+  | "in_progress"
+  | "pausing"
+  | "paused"
+  | "cancelling"
+  | "cancelled"
+  | "verify"
+  | "done"
+  | "failed"
+  | "skipped";
+
 export type TaskInfo = {
   id: string;
   title: string;
   description?: string;
-  status: "todo" | "in_progress" | "verify" | "done" | "failed" | "skipped";
+  status: TaskStatus;
   priority: "low" | "medium" | "high";
   assignee?: string;
   dependsOn?: string[];
@@ -98,17 +110,19 @@ export type TaskInfo = {
   loop?: LoopConfig
   /** Whether this task was skipped due to condition not met */
   skipped?: boolean
-  /** Whether checkpoint_after is awaiting user confirmation */
-  checkpointAwaiting?: boolean;
 };
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  todo: ["in_progress", "failed", "skipped"],
-  in_progress: ["verify", "failed"],
-  verify: ["done", "in_progress"],  // can reject back to in_progress
+  todo: ["in_progress", "failed", "skipped", "cancelled"],
+  in_progress: ["verify", "failed", "pausing", "cancelling"],
+  pausing: ["paused", "failed"],
+  paused: ["in_progress", "cancelling"],
+  cancelling: ["cancelled", "failed"],
+  verify: ["done", "in_progress"],
   done: [],
-  failed: ["todo"],  // can retry
-  skipped: [],  // terminal state
+  failed: ["todo"],
+  cancelled: [],
+  skipped: [],
 };
 
 export function isValidTransition(from: string, to: string): boolean {
@@ -391,7 +405,7 @@ export async function getUnblockedTasks(cwd: string): Promise<TaskInfo[]> {
           }
 
           // Check if dep is blocking
-          if (depTask.checkpointAwaiting || 
+          if (depTask.status === "paused" || 
               !(depTask.status === "done" || depTask.status === "failed" || depTask.skipped)) {
             hasBlockingDep = true;
           }

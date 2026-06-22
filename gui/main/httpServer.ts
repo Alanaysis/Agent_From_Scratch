@@ -248,8 +248,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
 
   if (action === 'later') {
     eventBus.emit("approval:resolved", { taskId, action });
-    // Do not delete from pendingApprovalTasks or set checkpointAwaiting to false!
-    // We keep it so that the next poll will re-trigger the approval prompt
+    // Keep pending so next poll re-triggers the approval prompt
     pendingApprovalTasks.set(taskId, pendingReq!);
     return { ok: true, action: "later" };
   }
@@ -257,12 +256,11 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   // action === 'execute'
   eventBus.emit("approval:resolved", { taskId, action });
 
-  // Check if this is a checkpoint_after confirmation (task already completed)
+  // Check if this is a checkpoint_after confirmation (task paused waiting for confirm)
   const task = await readTaskInfo(cwd(), taskId);
-  if (task?.status === 'done' && task?.checkpointAfter) {
-    // This is a checkpoint confirmation — trigger downstream tasks
-    log("INFO", "AutoExec", `Checkpoint confirmed for task ${taskId}, triggering downstream tasks`);
-    await updateTaskInfo(cwd(), taskId, { checkpointAwaiting: false });
+  if (task?.status === 'paused' && task?.checkpointAfter) {
+    log("INFO", "AutoExec", `Checkpoint confirmed for task ${taskId}, marking done and triggering downstream`);
+    await updateTaskInfo(cwd(), taskId, { status: "done" });
     await assignDependentTasks(taskId);
     return { ok: true, action: "execute" };
   }
@@ -1343,7 +1341,7 @@ function isTaskBlocked(task: any, allTasks: any[]): boolean {
     }
     
     // Check if dep is blocking
-    if (dep.checkpointAwaiting || 
+    if (dep.status === "paused" || 
         !(dep.status === "done" || dep.status === "failed" || dep.skipped)) {
       hasBlockingDep = true;
     }
@@ -1359,7 +1357,7 @@ async function pollAndExecuteTasks() {
     // Re-emit pending checkpoint approvals (for "later" action)
     for (const [taskId, req] of pendingApprovalTasks.entries()) {
       const task = await readTaskInfo(cwd(), taskId);
-      if (task?.checkpointAwaiting) {
+      if (task?.status === "paused") {
         log("INFO", "AutoExec", `Re-emitting checkpoint approval for: ${task.title}`);
         eventBus.emit("approval:required", req);
       }
@@ -1465,7 +1463,7 @@ async function assignDependentTasks(completedTaskId: string) {
         anyDepComplete = true;
       }
       
-      if (d.checkpointAwaiting || 
+      if (d.status === "paused" || 
           !(d.status === "done" || d.status === "failed" || d.skipped)) {
         hasBlockingDep = true;
       }
@@ -1723,13 +1721,10 @@ async function executeTaskViaHttp(taskId: string) {
     const updatedTask = await readTaskInfo(cwd(), taskId);
     const hasCriteria = updatedTask?.acceptanceCriteria && updatedTask.acceptanceCriteria.length > 0;
     if (!hasCriteria) {
-      await updateTaskInfo(cwd(), taskId, { status: "done" });
-      log("INFO", "AutoExec", `Task ${taskId} auto-approved → done (${messageCount} messages)`);
-
-      // Check if this task has checkpoint_after — wait for user confirmation before continuing
+      // Check if this task has checkpoint_after — pause for user confirmation before marking done
       if (updatedTask?.checkpointAfter) {
-        log("INFO", "AutoExec", `Task ${taskId} has checkpoint_after, waiting for user confirmation`);
-        await updateTaskInfo(cwd(), taskId, { checkpointAwaiting: true });
+        log("INFO", "AutoExec", `Task ${taskId} has checkpoint_after, pausing for user confirmation`);
+        await updateTaskInfo(cwd(), taskId, { status: "paused" });
         const checkpointReq: ApprovalRequestEvent = {
           taskId,
           taskTitle: updatedTask.title || taskId,
@@ -1741,6 +1736,8 @@ async function executeTaskViaHttp(taskId: string) {
         eventBus.emit("approval:required", checkpointReq);
         // assignDependentTasks will be called when user approves via the approval endpoint
       } else {
+        await updateTaskInfo(cwd(), taskId, { status: "done" });
+        log("INFO", "AutoExec", `Task ${taskId} auto-approved → done (${messageCount} messages)`);
         // Assign downstream tasks whose dependencies are now met
         await assignDependentTasks(taskId);
       }

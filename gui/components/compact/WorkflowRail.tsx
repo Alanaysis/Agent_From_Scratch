@@ -5,6 +5,10 @@ import * as React from 'react'
 const statusDotConfig: Record<string, { color: string; bg: string }> = {
   todo: { color: '#7dd3fc', bg: 'rgba(125,211,252,0.15)' },
   in_progress: { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)' },
+  pausing: { color: '#fde68a', bg: 'rgba(253,230,138,0.15)' },
+  paused: { color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+  cancelling: { color: '#fb923c', bg: 'rgba(251,146,60,0.15)' },
+  cancelled: { color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
   verify: { color: '#c4b5fd', bg: 'rgba(196,181,253,0.15)' },
   done: { color: '#86efac', bg: 'rgba(134,239,172,0.15)' },
   failed: { color: '#fca5a5', bg: 'rgba(252,165,165,0.15)' },
@@ -16,7 +20,6 @@ interface RailTask {
   title: string
   status: string
   requiresApproval?: boolean
-  checkpointAwaiting?: boolean
 }
 
 interface WorkflowRailProps {

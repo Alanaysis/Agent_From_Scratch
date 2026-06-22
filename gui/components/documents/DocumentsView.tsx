@@ -331,7 +331,7 @@ export function DocumentsView() {
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {relatedTasks.map(t => {
-                    const statusColor = { todo: 'var(--status-blue)', in_progress: 'var(--amber)', verify: 'var(--status-purple)', done: 'var(--status-green)', failed: 'var(--warm-red)', skipped: 'var(--text-faint)' }[t.status] || 'var(--text-muted)'
+                    const statusColor = { todo: 'var(--status-blue)', in_progress: 'var(--amber)', pausing: 'var(--amber)', paused: 'var(--status-blue)', cancelling: 'var(--amber)', cancelled: 'var(--text-faint)', verify: 'var(--status-purple)', done: 'var(--status-green)', failed: 'var(--warm-red)', skipped: 'var(--text-faint)' }[t.status] || 'var(--text-muted)'
                     return (
                       <div key={t.id} style={{
                         padding: '6px 8px',

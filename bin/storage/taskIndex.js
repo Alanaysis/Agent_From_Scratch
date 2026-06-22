@@ -17,12 +17,16 @@ async function withTaskLock(taskId, fn) {
     }
 }
 const VALID_TRANSITIONS = {
-    todo: ["in_progress", "failed", "skipped"],
-    in_progress: ["verify", "failed"],
-    verify: ["done", "in_progress"], // can reject back to in_progress
+    todo: ["in_progress", "failed", "skipped", "cancelled"],
+    in_progress: ["verify", "failed", "pausing", "cancelling"],
+    pausing: ["paused", "failed"],
+    paused: ["in_progress", "cancelling"],
+    cancelling: ["cancelled", "failed"],
+    verify: ["done", "in_progress"],
     done: [],
-    failed: ["todo"], // can retry
-    skipped: [], // terminal state
+    failed: ["todo"],
+    cancelled: [],
+    skipped: [],
 };
 export function isValidTransition(from, to) {
     return VALID_TRANSITIONS[from]?.includes(to) ?? false;
@@ -240,7 +244,7 @@ export async function getUnblockedTasks(cwd) {
                     anyDepComplete = true;
                 }
                 // Check if dep is blocking
-                if (depTask.checkpointAwaiting ||
+                if (depTask.status === "paused" ||
                     !(depTask.status === "done" || depTask.status === "failed" || depTask.skipped)) {
                     hasBlockingDep = true;
                 }

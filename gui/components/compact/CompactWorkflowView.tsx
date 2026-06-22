@@ -21,6 +21,10 @@ const sans = 'IBM Plex Sans, sans-serif'
 const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
   todo: { color: '#7dd3fc', icon: <ChevronRight size={10} />, label: 'Pending' },
   in_progress: { color: '#fbbf24', icon: <Loader2 size={10} />, label: 'Running' },
+  pausing: { color: '#fde68a', icon: <Loader2 size={10} />, label: 'Pausing' },
+  paused: { color: '#60a5fa', icon: <Clock size={10} />, label: 'Paused' },
+  cancelling: { color: '#fb923c', icon: <Loader2 size={10} />, label: 'Cancelling' },
+  cancelled: { color: '#94a3b8', icon: <XCircle size={10} />, label: 'Cancelled' },
   verify: { color: '#c4b5fd', icon: <Clock size={10} />, label: 'Verify' },
   done: { color: '#86efac', icon: <CheckCircle size={10} />, label: 'Done' },
   failed: { color: '#fca5a5', icon: <XCircle size={10} />, label: 'Failed' },
@@ -45,7 +49,6 @@ interface CompactTask {
   }
   checkpointAfter?: boolean
   checkpointMessage?: string
-  checkpointAwaiting?: boolean
   requiresApproval?: boolean
   approvalMessage?: string
   description?: string
@@ -434,7 +437,7 @@ export function CompactWorkflowView() {
         if (current && current.taskId === data.taskId && !current.resolving) return
         // Show popup for any approval event
         const task = tasksRef.current.find(t => t.id === data.taskId)
-        const isCheckpoint = task?.checkpointAwaiting === true
+        const isCheckpoint = task?.status === 'paused' && task?.checkpointAfter === true
         setApprovalPopup({
           taskId: data.taskId,
           taskTitle: data.taskTitle || data.taskId,
@@ -512,7 +515,6 @@ export function CompactWorkflowView() {
           loop: t.loop,
           checkpointAfter: t.checkpointAfter,
           checkpointMessage: t.checkpointMessage,
-          checkpointAwaiting: t.checkpointAwaiting,
           requiresApproval: t.requiresApproval,
           approvalMessage: t.approvalMessage,
           description: t.description,
@@ -852,7 +854,7 @@ export function CompactWorkflowView() {
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
           {/* Approval needed banner — only show when popup not visible */}
-          {tasks.some(t => t.requiresApproval || t.checkpointAwaiting) && !approvalPopup && (
+          {tasks.some(t => t.requiresApproval || t.status === 'paused') && !approvalPopup && (
             <div style={{
               margin: '0 10px 6px', padding: '6px 10px',
               backgroundColor: 'rgba(251,191,36,0.1)',
@@ -864,7 +866,7 @@ export function CompactWorkflowView() {
               fontWeight: 600,
             }}>
               <Clock size={11} />
-              <span>Waiting: {tasks.filter(t => t.requiresApproval || t.checkpointAwaiting).map(t => t.title).join(', ')}</span>
+              <span>Waiting: {tasks.filter(t => t.requiresApproval || t.status === 'paused').map(t => t.title).join(', ')}</span>
             </div>
           )}
           {messages.length === 0 && !streamingText && (
