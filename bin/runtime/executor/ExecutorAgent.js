@@ -94,6 +94,50 @@ export class ExecutorAgent extends EventEmitter {
         }
         return false;
     }
+    /** Pause a running task: abort execution, transition to 'paused' */
+    async pauseTask(taskId) {
+        const info = this.activeTasks.get(taskId);
+        if (!info) {
+            console.log(`[Executor] pauseTask: task ${taskId} not active`);
+            return false;
+        }
+        console.log(`[Executor] Pausing task ${taskId}`);
+        info.abortController.abort();
+        this.activeTasks.delete(taskId);
+        await updateTaskInfo(cwd(), taskId, { status: "paused" }, this.config.executorName);
+        return true;
+    }
+    /** Cancel a running task: abort execution, transition to 'cancelled' (terminal) */
+    async cancelTask(taskId) {
+        const info = this.activeTasks.get(taskId);
+        if (info) {
+            console.log(`[Executor] Cancelling active task ${taskId}`);
+            info.abortController.abort();
+            this.activeTasks.delete(taskId);
+        }
+        else {
+            console.log(`[Executor] Cancelling inactive task ${taskId}`);
+        }
+        await updateTaskInfo(cwd(), taskId, { status: "cancelled" }, this.config.executorName);
+        return true;
+    }
+    /** Resume a paused task: transition to 'in_progress' and re-execute */
+    async resumeTask(taskId) {
+        const task = await readTaskInfo(cwd(), taskId);
+        if (!task) {
+            console.log(`[Executor] resumeTask: task ${taskId} not found`);
+            return false;
+        }
+        if (task.status !== "paused") {
+            console.log(`[Executor] resumeTask: task ${taskId} is ${task.status}, not paused`);
+            return false;
+        }
+        await updateTaskInfo(cwd(), taskId, { status: "in_progress" }, this.config.executorName);
+        this.forceExecuteTask(taskId).catch((e) => {
+            console.error(`[Executor] resumeTask re-execute failed for ${taskId}:`, e);
+        });
+        return true;
+    }
     /** Get list of currently active task IDs */
     getActiveTaskIds() {
         return [...this.activeTasks.keys()];

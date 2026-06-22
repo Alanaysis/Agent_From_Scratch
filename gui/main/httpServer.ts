@@ -897,11 +897,71 @@ routes.set("POST /api/executor/start", async () => {
 
 routes.set("POST /api/executor/stop", async () => {
   stopTaskAutoExec();
+  // Pause all currently running tasks (graceful, resumable)
+  for (const [taskId, controller] of taskAbortControllers) {
+    log("INFO", "AutoExec", `Pausing running task ${taskId} on executor stop`);
+    controller.abort();
+    try {
+      await updateTaskInfo(cwd(), taskId, { status: "paused" });
+    } catch (e) {
+      log("ERROR", "AutoExec", `Failed to mark task ${taskId} as paused: ${e}`);
+    }
+  }
+  taskAbortControllers.clear();
+  executingTasks.clear();
   return { ok: true, running: false };
 });
 
 routes.set("GET /api/executor/status", async () => {
   return { running: taskPollInterval !== null };
+});
+
+// ====== Task-level pause / cancel / resume ======
+
+routes.set("POST /api/tasks/:id/pause", async (_req, _body, params?: Record<string, string>) => {
+  const taskId = params!.id!;
+  const controller = taskAbortControllers.get(taskId);
+  if (controller) {
+    log("INFO", "AutoExec", `Pausing task ${taskId}`);
+    controller.abort();
+    taskAbortControllers.delete(taskId);
+    executingTasks.delete(taskId);
+    await updateTaskInfo(cwd(), taskId, { status: "paused" });
+    return { ok: true, status: "paused" };
+  }
+  return { ok: false, error: "Task not currently running" };
+});
+
+routes.set("POST /api/tasks/:id/cancel", async (_req, _body, params?: Record<string, string>) => {
+  const taskId = params!.id!;
+  const controller = taskAbortControllers.get(taskId);
+  if (controller) {
+    log("INFO", "AutoExec", `Cancelling running task ${taskId}`);
+    controller.abort();
+    taskAbortControllers.delete(taskId);
+    executingTasks.delete(taskId);
+  } else {
+    log("INFO", "AutoExec", `Cancelling inactive task ${taskId}`);
+  }
+  await updateTaskInfo(cwd(), taskId, { status: "cancelled" });
+  pendingApprovalTasks.delete(taskId);
+  return { ok: true, status: "cancelled" };
+});
+
+routes.set("POST /api/tasks/:id/resume", async (_req, _body, params?: Record<string, string>) => {
+  const taskId = params!.id!;
+  const task = await readTaskInfo(cwd(), taskId);
+  if (!task) return { ok: false, error: "Task not found" };
+  if (task.status !== "paused") {
+    return { ok: false, error: `Task is ${task.status}, not paused` };
+  }
+  log("INFO", "AutoExec", `Resuming task ${taskId}`);
+  await updateTaskInfo(cwd(), taskId, { status: "in_progress" });
+  executingTasks.add(taskId);
+  executeTaskViaHttp(taskId).finally(() => {
+    executingTasks.delete(taskId);
+  });
+  return { ok: true, status: "in_progress" };
 });
 
 // ====== Config (read-only, API key masked) ======
@@ -1310,6 +1370,7 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
 // ====== Task Auto-Execution Poll ======
 
 const executingTasks = new Set<string>();
+const taskAbortControllers = new Map<string, AbortController>();
 const pendingApprovalTasks = new Map<string, ApprovalRequestEvent>(); // tasks waiting for user approval
 let taskPollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -1653,6 +1714,7 @@ async function executeTaskViaHttp(taskId: string) {
 
   const appState = createInitialAppState();
   const abortController = new AbortController();
+  taskAbortControllers.set(taskId, abortController);
   let messageCount = 0;
 
   try {
@@ -1748,8 +1810,10 @@ async function executeTaskViaHttp(taskId: string) {
     eventBus.emit("executor:task-completed", { taskId, success: true });
   } catch (error) {
     if (abortController.signal.aborted) {
-      log("INFO", "AutoExec", `Task ${taskId} was aborted`);
-      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: "Aborted by user" });
+      // Abort was triggered by pause/cancel/stop route — it already set the target status.
+      // Don't overwrite it with 'failed'. Just log and emit.
+      const currentTask = await readTaskInfo(cwd(), taskId);
+      log("INFO", "AutoExec", `Task ${taskId} was aborted, current status: ${currentTask?.status}`);
       eventBus.emit("executor:task-completed", { taskId, success: false, result: "Aborted" });
       return;
     }
@@ -1784,6 +1848,8 @@ async function executeTaskViaHttp(taskId: string) {
     pendingApprovalTasks.set(taskId, failureReq);
     eventBus.emit("approval:required", failureReq);
     // Don't emit task-completed yet — wait for user decision
+  } finally {
+    taskAbortControllers.delete(taskId);
   }
 }
 

@@ -106,6 +106,11 @@ const IPC_TO_HTTP: Record<string, { method: string; path: string; bodyKey?: stri
   'executor:start':         { method: 'POST', path: '/api/executor/start' },
   'executor:stop':          { method: 'POST', path: '/api/executor/stop' },
 
+  // Task-level control
+  'tasks:pause':            { method: 'POST', path: '/api/tasks/{0}/pause' },
+  'tasks:cancel':           { method: 'POST', path: '/api/tasks/{0}/cancel' },
+  'tasks:resume':           { method: 'POST', path: '/api/tasks/{0}/resume' },
+
   // Chat
   'chat:send':              { method: 'POST', path: '/api/chat' },
   'chat:cancel':            { method: 'POST', path: '/api/chat/cancel' },
