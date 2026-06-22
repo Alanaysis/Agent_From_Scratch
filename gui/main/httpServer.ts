@@ -772,7 +772,7 @@ routes.set("POST /api/compact/start", async (_req, body) => {
 
     const dependsOn = step.dependsOn?.map((d: string) => tempIdToTaskId.get(d)!).filter(Boolean);
 
-    const task = await createTask(cwd(), {
+    const taskInput: any = {
       id: taskId,
       title: step.name,
       description: description.trim() || undefined,
@@ -781,7 +781,39 @@ routes.set("POST /api/compact/start", async (_req, body) => {
       assignee: step.agent || "general-purpose",
       dependsOn,
       createdBy: input.createdBy || "compact",
-    });
+    };
+
+    // Convert condition.source from yaml step id to actual task UUID
+    let condition = step.condition;
+    if (condition && condition.source) {
+      const mappedSource = tempIdToTaskId.get(condition.source);
+      condition = { ...condition, source: mappedSource || condition.source };
+    }
+
+    // Convert loop.steps from yaml step ids to actual task UUIDs
+    let loop = step.loop;
+    if (loop && loop.steps) {
+      const mappedSteps = loop.steps.map((s: string) => tempIdToTaskId.get(s) || s);
+      let mappedUntil = loop.until;
+      if (mappedUntil && mappedUntil.source) {
+        const untilSource = tempIdToTaskId.get(mappedUntil.source);
+        mappedUntil = { ...mappedUntil, source: untilSource || mappedUntil.source };
+      }
+      loop = { ...loop, steps: mappedSteps, until: mappedUntil };
+    }
+
+    if (condition) taskInput.condition = condition;
+    if (loop) taskInput.loop = loop;
+    if (step.checkpointAfter) {
+      taskInput.checkpointAfter = true;
+      taskInput.checkpointMessage = step.checkpointMessage;
+    }
+    if (step.requiresApproval) {
+      taskInput.requiresApproval = true;
+      taskInput.approvalMessage = step.approvalMessage;
+    }
+
+    const task = await createTask(cwd(), taskInput);
 
     await updateTaskInfo(cwd(), taskId, { sessionId });
 
@@ -791,6 +823,12 @@ routes.set("POST /api/compact/start", async (_req, body) => {
       assignee: task.assignee,
       status: task.status,
       dependsOn,
+      condition,
+      loop,
+      checkpointAfter: step.checkpointAfter,
+      checkpointMessage: step.checkpointMessage,
+      requiresApproval: step.requiresApproval,
+      approvalMessage: step.approvalMessage,
     });
   }
 
@@ -1210,6 +1248,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
   const onToolResult = (data: any) => send("tool:result", data);
   const onToolError = (data: any) => send("tool:error", data);
   const onToolProgress = (data: any) => send("tool:progress", data);
+  const onApprovalRequired = (data: any) => send("approval:required", data);
+  const onApprovalResolved = (data: any) => send("approval:resolved", data);
 
   eventBus.on("session:message-appended", onSessionMessageAppended);
   eventBus.on("executor:task-claimed", onTaskClaimed);
@@ -1220,6 +1260,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
   eventBus.on("tool:result", onToolResult);
   eventBus.on("tool:error", onToolError);
   eventBus.on("tool:progress", onToolProgress);
+  eventBus.on("approval:required", onApprovalRequired);
+  eventBus.on("approval:resolved", onApprovalResolved);
 
   req.on("close", () => {
     eventBus.off("session:message-appended", onSessionMessageAppended);
@@ -1231,6 +1273,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
     eventBus.off("tool:result", onToolResult);
     eventBus.off("tool:error", onToolError);
     eventBus.off("tool:progress", onToolProgress);
+    eventBus.off("approval:required", onApprovalRequired);
+    eventBus.off("approval:resolved", onApprovalResolved);
   });
 }
 
@@ -1421,7 +1465,29 @@ async function pollAndExecuteTasks() {
 
     // Use the updated getUnblockedTasks function that already handles conditions and checkpoints
     const unblockedTasks = await getUnblockedTasks(cwd());
-    
+
+    // Mark tasks as skipped if their condition is not met (deps satisfied but condition fails)
+    const allTasksForCondition = await listTasks(cwd());
+    for (const t of allTasksForCondition) {
+      if (t.status !== "todo" || t.skipped || !t.condition) continue;
+      // Only process tasks with a valid sessionId (skip orphaned tasks from old sessions)
+      if (!t.sessionId) continue;
+      // Check if all deps are done
+      if (!t.dependsOn || t.dependsOn.length === 0) continue;
+      const allDepsDone = t.dependsOn.every(depId => {
+        const dep = allTasksForCondition.find(tt => tt.id === depId);
+        return dep && (dep.status === "done" || dep.status === "failed" || dep.skipped);
+      });
+      if (!allDepsDone) continue;
+      // Verify condition.source exists in task list (skip if source not found = stale data)
+      if (t.condition.source && !allTasksForCondition.find(tt => tt.id === t.condition!.source)) continue;
+      // Deps done but task not unblocked → condition must be false
+      if (!unblockedTasks.find(ut => ut.id === t.id)) {
+        log("INFO", "AutoExec", `Skipping task ${t.title}: condition not met`);
+        await updateTaskInfo(cwd(), t.id, { skipped: true }, "executor");
+      }
+    }
+
     // Filter out tasks that are already executing
     const availableTasks = unblockedTasks.filter(t => !executingTasks.has(t.id));
 

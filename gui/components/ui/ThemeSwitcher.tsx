@@ -38,10 +38,10 @@ export const THEMES: Record<ThemeId, { name: string; description: string; previe
 }
 
 function getStoredTheme(): ThemeId {
-  if (typeof window === 'undefined') return 'obsidian'
+  if (typeof window === 'undefined') return 'silkent'
   const stored = localStorage.getItem('irg-theme')
   if (stored && stored in THEMES) return stored as ThemeId
-  return 'obsidian'
+  return 'silkent'
 }
 
 function applyTheme(theme: ThemeId) {
@@ -51,7 +51,7 @@ function applyTheme(theme: ThemeId) {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = React.useState<ThemeId>('obsidian')
+  const [theme, setThemeState] = React.useState<ThemeId>('silkent')
 
   React.useEffect(() => {
     const stored = getStoredTheme()

@@ -12,8 +12,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
-            var t = localStorage.getItem('irg-theme');
-            if (t && t !== 'obsidian') document.documentElement.setAttribute('data-theme', t);
+            var t = localStorage.getItem('irg-theme') || 'silkent';
+            document.documentElement.setAttribute('data-theme', t);
           })();
         `}} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -19,12 +19,12 @@ const mono = 'IBM Plex Mono, monospace'
 const sans = 'IBM Plex Sans, sans-serif'
 
 const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  todo: { color: 'var(--text-muted)', icon: <ChevronRight size={10} />, label: 'Pending' },
-  in_progress: { color: 'var(--amber)', icon: <Loader2 size={10} />, label: 'Running' },
-  verify: { color: 'var(--status-purple)', icon: <Clock size={10} />, label: 'Verify' },
-  done: { color: 'var(--status-green)', icon: <CheckCircle size={10} />, label: 'Done' },
-  failed: { color: 'var(--warm-red)', icon: <XCircle size={10} />, label: 'Failed' },
-  skipped: { color: 'var(--text-faint)', icon: <ChevronRight size={10} />, label: 'Skipped' },
+  todo: { color: '#7dd3fc', icon: <ChevronRight size={10} />, label: 'Pending' },
+  in_progress: { color: '#fbbf24', icon: <Loader2 size={10} />, label: 'Running' },
+  verify: { color: '#c4b5fd', icon: <Clock size={10} />, label: 'Verify' },
+  done: { color: '#86efac', icon: <CheckCircle size={10} />, label: 'Done' },
+  failed: { color: '#fca5a5', icon: <XCircle size={10} />, label: 'Failed' },
+  skipped: { color: '#94a3b8', icon: <ChevronRight size={10} />, label: 'Skipped' },
 }
 
 interface CompactTask {
@@ -33,6 +33,22 @@ interface CompactTask {
   status: string
   assignee?: string
   dependsOn?: string[]
+  condition?: {
+    type: 'step_result' | 'llm_judge'
+    source?: string
+    field?: string
+    equals?: string
+  }
+  loop?: {
+    max: number
+    steps: string[]
+  }
+  checkpointAfter?: boolean
+  checkpointMessage?: string
+  checkpointAwaiting?: boolean
+  requiresApproval?: boolean
+  approvalMessage?: string
+  description?: string
 }
 
 interface CompactMessage {
@@ -195,7 +211,7 @@ function MessageBubble({ msg, tasks }: { msg: CompactMessage; tasks: CompactTask
                       borderRadius: 2, fontSize: 10, fontFamily: mono,
                     }}>
                       <Wrench size={9} color={sc.color} />
-                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>{block.toolName}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>{block.name || block.toolName}</span>
                       <span style={{ color: sc.color, fontSize: 9, letterSpacing: '0.03em' }}>{sc.label}</span>
                       {toolStatus === 'running' && <Loader2 size={9} color={sc.color} style={{ animation: 'spin 1s linear infinite' }} />}
                     </div>
@@ -225,6 +241,14 @@ export function CompactWorkflowView() {
   const [workflowName, setWorkflowName] = React.useState<string | null>(null)
   const [executorRunning, setExecutorRunning] = React.useState(false)
   const [autoCollapsed, setAutoCollapsed] = React.useState(false)
+  const [approvalPopup, setApprovalPopup] = React.useState<{
+    taskId: string
+    taskTitle: string
+    message: string
+    isCheckpoint: boolean
+    resolving: boolean
+  } | null>(null)
+  const approvalPopupRef = React.useRef<typeof approvalPopup>(null)
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
@@ -234,10 +258,19 @@ export function CompactWorkflowView() {
   const sessionIdRef = React.useRef<string | null>(null)
   const seenMsgIdsRef = React.useRef<Set<string>>(new Set())
   const taskOrderRef = React.useRef<string[]>([])
+  const tasksRef = React.useRef<CompactTask[]>([])
 
   React.useEffect(() => {
     sessionIdRef.current = sessionId
   }, [sessionId])
+
+  React.useEffect(() => {
+    tasksRef.current = tasks
+  }, [tasks])
+
+  React.useEffect(() => {
+    approvalPopupRef.current = approvalPopup
+  }, [approvalPopup])
 
   React.useEffect(() => {
     const saved = localStorage.getItem('compact-session-id')
@@ -327,18 +360,40 @@ export function CompactWorkflowView() {
         seenMsgIdsRef.current.add(msgId)
 
         let content = ''
+        let blocks = m.blocks
         if (typeof m.content === 'string') {
           content = m.content
         } else if (Array.isArray(m.content)) {
           content = m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
+          if (!blocks) {
+            blocks = m.content.map((c: any) => {
+              if (c.type === 'text') return { type: 'text', text: c.text }
+              if (c.type === 'tool_use') return { type: 'tool_use', id: c.id, name: c.name, input: c.input, status: 'completed' }
+              return c
+            })
+          }
         }
+
+        // Normalize block fields: ensure tool_use blocks have 'name'
+        if (Array.isArray(blocks)) {
+          blocks = blocks.map((b: any) => {
+            if (b.type === 'tool_use' && !b.name && b.toolName) {
+              return { ...b, name: b.toolName }
+            }
+            return b
+          })
+        }
+
+        // Associate with the currently running task (if any)
+        const runningTaskId = tasksRef.current.find(t => t.status === 'in_progress')?.id
 
         const msg: CompactMessage = {
           id: msgId,
           role: m.type === 'user' ? 'user' : m.type === 'tool_result' ? (m.isError ? 'tool_error' : 'tool_result') : 'assistant',
           content,
           timestamp: m.timestamp || Date.now(),
-          blocks: m.blocks,
+          blocks,
+          taskId: runningTaskId,
         }
         setMessages(prev => [...prev, msg])
       } catch (err) {
@@ -365,26 +420,41 @@ export function CompactWorkflowView() {
     })
 
     es.addEventListener('executor:task-progress', (e: any) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (taskIdsRef.current.has(data.taskId)) {
-          const msgId = `progress-${data.taskId}-${Date.now()}`
-          if (seenMsgIdsRef.current.has(msgId)) return
-          seenMsgIdsRef.current.add(msgId)
-          const msg: CompactMessage = {
-            id: msgId,
-            role: 'assistant',
-            content: data.text || '',
-            timestamp: Date.now(),
-            taskId: data.taskId,
-          }
-          setMessages(prev => [...prev, msg])
-        }
-      } catch {}
+      // Progress events are streaming deltas — do NOT add as messages.
+      // Full messages arrive via session:message-appended.
     })
 
-    es.addEventListener('approval:required', () => {
-      setWorkflowExpanded(false)
+    es.addEventListener('approval:required', (e: any) => {
+      try {
+        const data = JSON.parse(e.data)
+        // Skip if popup already showing for this task (prevents flicker from re-emitted events)
+        const current = approvalPopupRef.current
+        if (current && current.taskId === data.taskId && !current.resolving) return
+        // Show popup for any approval event
+        const task = tasksRef.current.find(t => t.id === data.taskId)
+        const isCheckpoint = task?.checkpointAwaiting === true
+        setApprovalPopup({
+          taskId: data.taskId,
+          taskTitle: data.taskTitle || data.taskId,
+          message: data.approvalMessage || 'Approval required',
+          isCheckpoint,
+          resolving: false,
+        })
+        loadTasks()
+      } catch {
+        // ignore parse errors
+      }
+    })
+
+    es.addEventListener('approval:resolved', (e: any) => {
+      try {
+        const data = JSON.parse(e.data)
+        const current = approvalPopupRef.current
+        if (current && current.taskId === data.taskId) {
+          setApprovalPopup(null)
+          approvalPopupRef.current = null
+        }
+      } catch {}
     })
 
     es.addEventListener('tool:start', () => {})
@@ -405,6 +475,24 @@ export function CompactWorkflowView() {
     }
   }
 
+  async function approveTask(taskId: string, action: 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop') {
+    setApprovalPopup(prev => prev ? { ...prev, resolving: true } : null)
+    approvalPopupRef.current = approvalPopupRef.current ? { ...approvalPopupRef.current, resolving: true } : null
+    try {
+      await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      await loadTasks()
+    } catch (e) {
+      console.error('[Compact] approve error:', e)
+    } finally {
+      setApprovalPopup(null)
+      approvalPopupRef.current = null
+    }
+  }
+
   async function loadTasks() {
     try {
       const currentSid = sessionIdRef.current
@@ -418,6 +506,14 @@ export function CompactWorkflowView() {
           status: t.status,
           assignee: t.assignee,
           dependsOn: t.dependsOn,
+          condition: t.condition,
+          loop: t.loop,
+          checkpointAfter: t.checkpointAfter,
+          checkpointMessage: t.checkpointMessage,
+          checkpointAwaiting: t.checkpointAwaiting,
+          requiresApproval: t.requiresApproval,
+          approvalMessage: t.approvalMessage,
+          description: t.description,
         }))
         if (taskOrderRef.current.length > 0) {
           const orderMap = new Map(taskOrderRef.current.map((id, idx) => [id, idx]))
@@ -429,11 +525,6 @@ export function CompactWorkflowView() {
         }
         setTasks(compact)
         taskIdsRef.current = new Set(compact.map(t => t.id))
-
-        const hasFailed = compact.some(t => t.status === 'failed')
-        if (hasFailed && workflowExpanded) {
-          setWorkflowExpanded(false)
-        }
       }
     } catch {}
   }
@@ -441,22 +532,28 @@ export function CompactWorkflowView() {
   async function handleStart(filePath: string) {
     try {
       setIsLoading(true)
-      const currentSid = sessionIdRef.current
+      // Always create a new session — don't reuse old one
       const res = await fetch(`${API_BASE}/api/compact/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath, sessionId: currentSid || undefined }),
+        body: JSON.stringify({ filePath }),
       })
       const data = await res.json()
       if (data.error) {
         alert(data.error)
         return
       }
+      // Clear old state
+      setMessages([])
+      seenMsgIdsRef.current.clear()
       setSessionId(data.sessionId)
       sessionIdRef.current = data.sessionId
       setWorkflowName(data.workflow)
       const newTasks: CompactTask[] = data.tasks.map((t: any) => ({
         id: t.id, title: t.title, status: t.status, assignee: t.assignee, dependsOn: t.dependsOn,
+        condition: t.condition, loop: t.loop,
+        checkpointAfter: t.checkpointAfter, checkpointMessage: t.checkpointMessage,
+        requiresApproval: t.requiresApproval, approvalMessage: t.approvalMessage,
       }))
       taskOrderRef.current = newTasks.map(t => t.id)
       setTasks(newTasks)
@@ -736,6 +833,22 @@ export function CompactWorkflowView() {
           padding: '8px 0',
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
+          {/* Approval needed banner — only show when popup not visible */}
+          {tasks.some(t => t.requiresApproval || t.checkpointAwaiting) && !approvalPopup && (
+            <div style={{
+              margin: '0 10px 6px', padding: '6px 10px',
+              backgroundColor: 'rgba(251,191,36,0.1)',
+              border: '1px solid rgba(251,191,36,0.4)',
+              borderLeft: '3px solid #fbbf24',
+              borderRadius: 2,
+              fontSize: 10, fontFamily: mono, color: '#fbbf24',
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontWeight: 600,
+            }}>
+              <Clock size={11} />
+              <span>Waiting: {tasks.filter(t => t.requiresApproval || t.checkpointAwaiting).map(t => t.title).join(', ')}</span>
+            </div>
+          )}
           {messages.length === 0 && !streamingText && (
             <div style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -805,16 +918,16 @@ export function CompactWorkflowView() {
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '8px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
-              backgroundColor: 'rgba(20,20,20,0.6)',
+              borderBottom: '1px solid rgba(255,255,255,0.15)',
+              backgroundColor: 'rgba(0,0,0,0.7)',
               flexShrink: 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff', fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Workflow
                 </span>
                 {workflowName && (
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: mono }}>
+                  <span style={{ fontSize: 10, color: '#d4d4d4', fontFamily: mono }}>
                     — {workflowName}
                   </span>
                 )}
@@ -822,10 +935,10 @@ export function CompactWorkflowView() {
               <button
                 onClick={() => setWorkflowExpanded(false)}
                 style={{
-                  background: 'none', border: '1px solid var(--border-subtle)',
+                  background: 'none', border: '1px solid rgba(255,255,255,0.2)',
                   borderRadius: 2, cursor: 'pointer', padding: '3px 8px',
                   display: 'flex', alignItems: 'center', gap: 4,
-                  color: 'var(--text-muted)', fontSize: 10, fontFamily: mono,
+                  color: '#d4d4d4', fontSize: 10, fontFamily: mono,
                 }}
               >
                 <ChevronLeft size={10} />
@@ -840,6 +953,17 @@ export function CompactWorkflowView() {
                 const color = getTaskColor(task.id, tasks)
                 const isActive = task.status === 'in_progress'
                 const isLast = idx === tasks.length - 1
+                const hasCondition = !!task.condition
+                const hasLoop = !!task.loop
+                const hasCheckpoint = !!task.checkpointAfter
+
+                // Convert hex color to rgba with proper alpha for visibility
+                const hexToRgba = (hex: string, alpha: number) => {
+                  const r = parseInt(hex.slice(1, 3), 16)
+                  const g = parseInt(hex.slice(3, 5), 16)
+                  const b = parseInt(hex.slice(5, 7), 16)
+                  return `rgba(${r},${g},${b},${alpha})`
+                }
 
                 return (
                   <div key={task.id} style={{
@@ -847,58 +971,126 @@ export function CompactWorkflowView() {
                     opacity: task.status === 'skipped' ? 0.45 : 1,
                   }}>
                     <div style={{
-                      position: 'absolute', left: 7, top: 0,
-                      bottom: isLast ? 16 : 0, width: 1,
-                      backgroundColor: 'var(--border-medium)',
+                      position: 'absolute', left: 9, top: 0,
+                      bottom: isLast ? 16 : 0, width: 2,
+                      backgroundColor: 'rgba(255,255,255,0.15)',
                     }} />
+
                     <div style={{
-                      display: 'flex', alignItems: 'stretch', gap: 8, padding: '5px 0',
+                      display: 'flex', alignItems: 'stretch', gap: 10, padding: '6px 0',
                     }}>
+                      {/* Status dot */}
                       <div style={{
-                        width: 14, height: 14, borderRadius: '50%',
-                        backgroundColor: `${color}15`,
+                        width: 18, height: 18, borderRadius: '50%',
+                        backgroundColor: isActive ? hexToRgba(color, 0.4) : hexToRgba(color, 0.2),
                         border: `2px solid ${color}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0, marginTop: 2,
+                        flexShrink: 0, marginTop: 3,
                         animation: isActive ? 'pulse 2s infinite' : undefined,
+                        boxShadow: isActive ? `0 0 10px ${hexToRgba(color, 0.6)}` : 'none',
+                        zIndex: 1,
                       }}>
-                        <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: color }} />
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color }} />
                       </div>
+
+                      {/* Task card */}
                       <div style={{
                         flex: 1, minWidth: 0,
-                        backgroundColor: isActive ? `${color}10` : 'var(--surface-1)',
-                        border: `1px solid ${isActive ? color : 'var(--border-subtle)'}`,
-                        borderRadius: 3, padding: '5px 8px',
+                        backgroundColor: isActive ? hexToRgba(color, 0.15) : 'rgba(40,40,40,0.8)',
+                        border: `1px solid ${isActive ? color : 'rgba(255,255,255,0.15)'}`,
+                        borderRadius: 3, padding: '8px 10px',
                       }}>
+                        {/* Badges row (static, no animation) */}
+                        {(hasCondition || hasLoop || hasCheckpoint) && (
+                          <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap' }}>
+                            {hasCondition && (
+                              <span style={{
+                                fontSize: 9, fontFamily: mono, fontWeight: 700,
+                                padding: '2px 6px',
+                                backgroundColor: 'rgba(251,191,36,0.25)',
+                                color: '#fbbf24',
+                                border: '1px solid #fbbf24',
+                                borderRadius: 2,
+                              }}>
+                                {task.condition?.type === 'llm_judge' ? 'LLM?' : `IF=${task.condition?.equals || '?'}`}
+                              </span>
+                            )}
+                            {hasLoop && (
+                              <span style={{
+                                fontSize: 9, fontFamily: mono, fontWeight: 700,
+                                padding: '2px 6px',
+                                backgroundColor: 'rgba(196,181,253,0.25)',
+                                color: '#c4b5fd',
+                                border: '1px solid #c4b5fd',
+                                borderRadius: 2,
+                              }}>
+                                ⟳ ×{task.loop?.max}
+                              </span>
+                            )}
+                            {hasCheckpoint && (
+                              <span style={{
+                                fontSize: 9, fontFamily: mono, fontWeight: 700,
+                                padding: '2px 6px',
+                                backgroundColor: 'rgba(134,239,172,0.25)',
+                                color: '#86efac',
+                                border: '1px solid #86efac',
+                                borderRadius: 2,
+                              }}>
+                                ⏸ CP
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Title + status row */}
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 6,
                           justifyContent: 'space-between',
                         }}>
                           <span style={{
-                            fontSize: 12, fontWeight: 600,
-                            color: task.status === 'skipped' ? 'var(--text-faint)' : 'var(--text-primary)',
+                            fontSize: 13, fontWeight: 700,
+                            color: task.status === 'skipped' ? '#94a3b8' : '#ffffff',
                             fontFamily: sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.8)',
                           }}>
                             {task.title}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                             <span style={{
-                              fontSize: 9, color: cfg.color, fontFamily: mono,
-                              display: 'flex', alignItems: 'center', gap: 3, fontWeight: 500,
+                              fontSize: 10, color: cfg.color, fontFamily: mono,
+                              display: 'flex', alignItems: 'center', gap: 3, fontWeight: 700,
+                              backgroundColor: 'rgba(0,0,0,0.5)', padding: '1px 5px', borderRadius: 2,
                             }}>
                               {cfg.icon} {cfg.label}
                             </span>
                             {task.assignee && (
                               <span style={{
-                                fontSize: 8, color: 'var(--text-faint)', fontFamily: mono,
-                                backgroundColor: 'var(--surface-2)', padding: '0 4px',
-                                borderRadius: 2, height: 14, lineHeight: '14px',
+                                fontSize: 9, color: '#e8e0d4', fontFamily: mono,
+                                backgroundColor: 'rgba(0,0,0,0.4)', padding: '1px 5px',
+                                borderRadius: 2, fontWeight: 600, border: '1px solid rgba(255,255,255,0.1)',
                               }}>
                                 @{task.assignee}
                               </span>
                             )}
                           </div>
                         </div>
+
+                        {/* Description (visible for active/failed tasks) */}
+                        {task.description && (isActive || task.status === 'failed') && (
+                          <div style={{
+                            marginTop: 5, fontSize: 11, fontFamily: mono,
+                            color: task.status === 'failed' ? '#fca5a5' : '#e8e0d4',
+                            lineHeight: 1.45,
+                            padding: '4px 6px',
+                            backgroundColor: 'rgba(0,0,0,0.5)',
+                            borderRadius: 2,
+                            maxHeight: 80, overflow: 'auto',
+                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                          }}>
+                            {task.description.slice(0, 400)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -911,30 +1103,30 @@ export function CompactWorkflowView() {
             {tasks.length > 0 && (
               <div style={{
                 padding: '8px 12px',
-                borderTop: '1px solid var(--border-subtle)',
-                backgroundColor: 'rgba(20,20,20,0.6)',
+                borderTop: '1px solid var(--border-medium)',
+                backgroundColor: 'rgba(0,0,0,0.5)',
                 flexShrink: 0,
               }}>
                 <div style={{ display: 'flex', gap: 8, fontSize: 10, fontFamily: mono, flexWrap: 'wrap' }}>
                   {tasks.filter(t => t.status === 'in_progress').length > 0 && (
-                    <span style={{ color: 'var(--amber)' }}>{tasks.filter(t => t.status === 'in_progress').length} running</span>
+                    <span style={{ color: '#fbbf24', fontWeight: 700 }}>{tasks.filter(t => t.status === 'in_progress').length} running</span>
                   )}
                   {tasks.filter(t => t.status === 'done').length > 0 && (
-                    <span style={{ color: 'var(--status-green)' }}>{tasks.filter(t => t.status === 'done').length} done</span>
+                    <span style={{ color: '#86efac', fontWeight: 700 }}>{tasks.filter(t => t.status === 'done').length} done</span>
                   )}
                   {tasks.filter(t => t.status === 'failed').length > 0 && (
-                    <span style={{ color: 'var(--warm-red)' }}>{tasks.filter(t => t.status === 'failed').length} failed</span>
+                    <span style={{ color: '#fca5a5', fontWeight: 700 }}>{tasks.filter(t => t.status === 'failed').length} failed</span>
                   )}
-                  <span style={{ color: 'var(--text-faint)' }}>
+                  <span style={{ color: '#d4d4d4', fontWeight: 600 }}>
                     {tasks.filter(t => t.status === 'todo').length} pending
                   </span>
                 </div>
-                <div style={{ marginTop: 6, height: 4, backgroundColor: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ marginTop: 6, height: 4, backgroundColor: 'var(--surface-3)', borderRadius: 2, overflow: 'hidden' }}>
                   {(() => {
                     const done = tasks.filter(t => t.status === 'done').length
                     const total = tasks.length
                     const pct = total > 0 ? Math.round((done / total) * 100) : 0
-                    return <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--status-green)', borderRadius: 2, transition: 'width 0.3s' }} />
+                    return <div style={{ width: `${pct}%`, height: '100%', backgroundColor: '#86efac', borderRadius: 2, transition: 'width 0.3s' }} />
                   })()}
                 </div>
               </div>
@@ -1009,6 +1201,95 @@ export function CompactWorkflowView() {
         onClose={() => setShowPicker(false)}
         onSelect={handleStart}
       />
+
+      {/* Approval Popup */}
+      {approvalPopup && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999,
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #fbbf24',
+            borderRadius: 4,
+            padding: '20px 24px',
+            maxWidth: 380,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.8), 0 0 20px rgba(251,191,36,0.3)',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginBottom: 12,
+            }}>
+              <Clock size={18} color="#fbbf24" />
+              <span style={{
+                fontSize: 14, fontWeight: 700, color: '#fbbf24',
+                fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {approvalPopup.isCheckpoint ? 'Checkpoint' : 'Approval Required'}
+              </span>
+            </div>
+            <div style={{
+              fontSize: 13, color: '#ffffff', fontWeight: 600,
+              fontFamily: sans, marginBottom: 8,
+            }}>
+              {approvalPopup.taskTitle}
+            </div>
+            <div style={{
+              fontSize: 12, color: '#d4d4d4', fontFamily: mono,
+              lineHeight: 1.5, marginBottom: 16,
+              padding: '8px 10px',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              {approvalPopup.message}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => approveTask(approvalPopup.taskId, 'execute')}
+                disabled={approvalPopup.resolving}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
+                  fontFamily: mono, cursor: approvalPopup.resolving ? 'not-allowed' : 'pointer',
+                  backgroundColor: '#86efac', color: '#000',
+                  border: '1px solid #86efac', borderRadius: 2,
+                  opacity: approvalPopup.resolving ? 0.6 : 1,
+                }}
+              >
+                {approvalPopup.resolving ? '...' : '✓ Approve & Continue'}
+              </button>
+              <button
+                onClick={() => approveTask(approvalPopup.taskId, 'later')}
+                disabled={approvalPopup.resolving}
+                style={{
+                  padding: '8px 12px', fontSize: 12, fontWeight: 600,
+                  fontFamily: mono, cursor: approvalPopup.resolving ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#d4d4d4',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2,
+                  opacity: approvalPopup.resolving ? 0.6 : 1,
+                }}
+              >
+                Later
+              </button>
+              <button
+                onClick={() => approveTask(approvalPopup.taskId, 'abort')}
+                disabled={approvalPopup.resolving}
+                style={{
+                  padding: '8px 12px', fontSize: 12, fontWeight: 600,
+                  fontFamily: mono, cursor: approvalPopup.resolving ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#fca5a5',
+                  border: '1px solid #fca5a5', borderRadius: 2,
+                  opacity: approvalPopup.resolving ? 0.6 : 1,
+                }}
+              >
+                ✕ Abort
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Click outside to close history */}
       {showHistory && (
