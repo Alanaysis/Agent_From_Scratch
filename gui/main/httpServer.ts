@@ -1709,13 +1709,26 @@ async function generateErrorSummary(taskTitle: string, taskDescription: string |
       if (Array.isArray(m.content)) {
         const texts = m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text);
         const tools = m.content.filter((c: any) => c.type === 'tool_use').map((c: any) => `${c.name}(${JSON.stringify(c.input).slice(0, 200)})`);
-        const results = m.content.filter((c: any) => c.type === 'tool_result').map((c: any) => typeof c.content === 'string' ? c.content.slice(0, 300) : JSON.stringify(c.content).slice(0, 300));
+        const results = m.content.filter((c: any) => c.type === 'tool_result').map((c: any) => {
+          const content = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+          return `${c.is_error ? '[ERROR] ' : ''}${content.slice(0, 400)}`;
+        });
         return `${m.type}: ${[...texts, ...tools, ...results].join(' | ')}`;
       }
       return '';
     }).join('\n');
 
-    const systemPrompt = `You are an error analyst. Summarize why the task failed in 1-2 concise sentences. Focus on the root cause. Reply in the same language as the task.`;
+    const systemPrompt = `You are a technical error analyst. Explain WHY the task failed in a clear, conversational way — like a senior engineer briefing a colleague.
+
+Your summary MUST include:
+1. **Which tool/action failed** — name the specific tool (e.g. GrpcClient, Shell, Read) that produced the error
+2. **What kind of error** — classify it: connection refused, timeout, wrong parameters, permission denied, file not found, API returned error, etc.
+3. **The root cause** in one sentence
+
+Format: "<ToolName> 调用失败：<error type>。<root cause>"
+Example: "GrpcClient 调用失败：连接被拒绝 (ECONNREFUSED)。目标地址 192.168.25.106:9010 无法连接，可能服务未启动或网络不通。"
+
+Reply in the same language as the task. Keep it under 2 sentences. No markdown.`;
     const userMessage = `Task: ${taskTitle}
 Description: ${taskDescription || 'N/A'}
 Error: ${errorMessage}
@@ -1796,13 +1809,13 @@ async function enhanceTemplateWithPm(
       `Node ${i + 1}: ${n.name} (id=${n.id}, agent=${n.agent || 'general-purpose'})\n  desc: ${n.description || 'N/A'}\n  grpc: ${n.grpc ? `${n.grpc.service}.${n.grpc.method}` : 'N/A'}`
     ).join('\n');
 
-    const systemPrompt = `You are a PM agent. Analyze the workflow template and enrich it. Output STRICT JSON only, no markdown.
-Schema:
-{
-  "enrichedDescriptions": { "<nodeId>": "<improved description with context>" },
-  "warnings": ["<risk or issue>", ...],
-  "suggestions": ["<improvement suggestion>", ...]
-}
+    const systemPrompt = `You are a PM agent. Analyze the workflow template and enrich it.
+
+CRITICAL: Output ONLY a JSON object. Do NOT include any thinking process, reasoning, or explanation text. Do NOT use markdown code fences. Start your response with { and end with }.
+
+JSON Schema:
+{"enrichedDescriptions": {"<nodeId>": "<improved description with context>"}, "warnings": ["<risk or issue>"], "suggestions": ["<improvement suggestion>"]}
+
 Reply in the same language as the user message.`;
 
     const userContent = `User intent: ${userMessage}
@@ -1833,7 +1846,11 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
           messages: [{ role: 'user', content: userContent }],
         }),
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        log("ERROR", "PMEnhance", `Anthropic API ${response.status}: ${errBody.slice(0, 300)}`);
+        return null;
+      }
       const data = await response.json();
       responseText = data.content?.[0]?.text;
     } else {
@@ -1852,14 +1869,50 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
           ],
         }),
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        log("ERROR", "PMEnhance", `OpenAI API ${response.status}: ${errBody.slice(0, 300)}`);
+        return null;
+      }
       const data = await response.json();
-      responseText = data.choices?.[0]?.message?.content;
+      log("INFO", "PMEnhance", `OpenAI response keys: ${Object.keys(data).join(',')}, choices: ${data.choices?.length || 0}`);
+      if (data.choices?.[0]) {
+        const msg = data.choices[0].message || {};
+        log("INFO", "PMEnhance", `message keys: ${Object.keys(msg).join(',')}`);
+        responseText = msg.content || msg.reasoning_content || msg.text || null;
+      }
     }
 
-    if (!responseText) return null;
-    const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+    if (!responseText) {
+      log("WARN", "PMEnhance", "Empty response text from LLM (content field null/empty), using fallback");
+      return { enrichedDescriptions: {}, warnings: ["LLM 返回空响应，使用原始描述"], suggestions: [] };
+    }
+    // Strip markdown code fences
+    let cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    // Some reasoning models (e.g. qwen3) put thinking process before the JSON.
+    // Try to extract the JSON object from the text.
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (firstErr) {
+      // Try to find a JSON object in the text (first { to last })
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd = cleaned.lastIndexOf('}');
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        const jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
+        try {
+          parsed = JSON.parse(jsonStr);
+          log("INFO", "PMEnhance", `Extracted JSON from reasoning text (offset ${jsonStart}-${jsonEnd})`);
+        } catch (e) {
+          log("ERROR", "PMEnhance", `JSON parse failed even after extraction: ${e}\nRaw: ${cleaned.slice(0, 300)}`);
+          return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
+        }
+      } else {
+        log("ERROR", "PMEnhance", `JSON parse failed: ${firstErr}\nRaw: ${cleaned.slice(0, 300)}`);
+        return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
+      }
+    }
     const result = {
       enrichedDescriptions: parsed.enrichedDescriptions || {},
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],

@@ -143,7 +143,7 @@ export function extractTemplateNodes(template: WorkflowTemplate): TemplateNode[]
   return template.workflow.steps.map((step) => ({
     id: step.id,
     name: step.name,
-    description: step.description,
+    description: step.description || generateFallbackDescription(step),
     agent: step.agent,
     dependsOn: step.dependsOn,
     grpc: step.grpc,
@@ -153,4 +153,17 @@ export function extractTemplateNodes(template: WorkflowTemplate): TemplateNode[]
     condition: step.condition,
     loop: step.loop,
   }));
+}
+
+function generateFallbackDescription(step: WorkflowStep): string {
+  if (step.grpc) {
+    const method = step.grpc.method || "unknown";
+    const service = step.grpc.service || "";
+    const module = step.grpc.payload?.Module || "";
+    const action = step.grpc.payload?.Method || "";
+    if (module && action) return `${module}.${action} via ${service}.${method}`;
+    return `${service}.${method}`;
+  }
+  if (step.shell) return `Shell: ${step.shell.slice(0, 80)}`;
+  return step.name;
 }

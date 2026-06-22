@@ -237,6 +237,7 @@ export function CompactWorkflowView() {
   const [tasks, setTasks] = React.useState<CompactTask[]>([])
   const [workflowExpanded, setWorkflowExpanded] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(false)
+  const [intentLoading, setIntentLoading] = React.useState(false)
   const [streamingText, setStreamingText] = React.useState('')
   const [input, setInput] = React.useState('')
   const [showPicker, setShowPicker] = React.useState(false)
@@ -589,7 +590,7 @@ export function CompactWorkflowView() {
     // Intent recognition: check if message matches a template
     if (!sessionIdRef.current && tasks.length === 0) {
       try {
-        setIsLoading(true)
+        setIntentLoading(true)
         const intentRes = await fetch(`${API_BASE}/api/chat/intent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -612,7 +613,7 @@ export function CompactWorkflowView() {
       } catch (e) {
         console.error('[Compact] intent recognition failed:', e)
       } finally {
-        setIsLoading(false)
+        setIntentLoading(false)
       }
     }
 
@@ -971,6 +972,14 @@ export function CompactWorkflowView() {
                 <span style={{ display: 'inline-block', width: 6, height: 12, backgroundColor: 'var(--amber)', marginLeft: 2, animation: 'blink 1s step-end infinite' }} />
                 <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
               </div>
+            </div>
+          )}
+
+          {intentLoading && (
+            <div style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, color: '#7dd3fc', fontSize: 11, fontFamily: mono }}>
+              <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+              正在分析意图，PM Agent 增强 workflow 中...
+              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
           )}
 
