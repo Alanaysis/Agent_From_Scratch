@@ -1219,11 +1219,33 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
     const abortController = new AbortController();
     httpAbortController = abortController;
 
+    // Build workflow context for system prompt so chat understands workflow state
+    const workflowContext: string[] = [];
+    if (sessionId) {
+      try {
+        const allTasks = await listTasks(cwd());
+        const sessionTasks = allTasks.filter(t => t.sessionId === sessionId);
+        if (sessionTasks.length > 0) {
+          workflowContext.push(`The user is running a workflow with ${sessionTasks.length} tasks. Current task statuses:`);
+          for (const t of sessionTasks) {
+            let line = `- ${t.title}: ${t.status}`;
+            if (t.status === 'failed' && t.lastError) line += ` (error: ${t.lastError.slice(0, 150)})`;
+            if (t.status === 'paused' && t.lastError) line += ` (failed, waiting for user decision. error: ${t.lastError.slice(0, 150)})`;
+            workflowContext.push(line);
+          }
+          const failedPaused = sessionTasks.filter(t => t.status === 'paused' && t.lastError);
+          if (failedPaused.length > 0) {
+            workflowContext.push(`\nThere ${failedPaused.length === 1 ? 'is a failed task' : 'are failed tasks'} waiting for user decision. If the user says "继续" (continue), they likely want to continue the workflow past the failure. If they say "重试" (retry), they want to retry the failed task.`);
+          }
+        }
+      } catch {}
+    }
+
     try {
       for await (const msg of query({
         prompt: messageText,
         messages: session.getMessages(),
-        systemPrompt: [],
+        systemPrompt: workflowContext,
         sessionId: session.sessionId,
         toolUseContext: {
           cwd: cwd(),
