@@ -262,6 +262,11 @@ export function CompactWorkflowView() {
     loading: boolean
   } | null>(null)
   const [stopChoice, setStopChoice] = React.useState(false)
+  const [failedTaskAction, setFailedTaskAction] = React.useState<{
+    taskId: string
+    taskTitle: string
+    error: string
+  } | null>(null)
   const approvalPopupRef = React.useRef<typeof approvalPopup>(null)
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
@@ -291,7 +296,7 @@ export function CompactWorkflowView() {
     }, 300)
     const bannerTimer = setInterval(() => {
       setIntentBanner(b => b + 1)
-    }, 1800)
+    }, 3000)
     return () => {
       clearInterval(progressTimer)
       clearInterval(bannerTimer)
@@ -450,6 +455,14 @@ export function CompactWorkflowView() {
         const data = JSON.parse(e.data)
         if (taskIdsRef.current.has(data.taskId)) {
           loadTasks()
+          if (data.success === false) {
+            const failedTask = tasksRef.current.find(t => t.id === data.taskId)
+            setFailedTaskAction({
+              taskId: data.taskId,
+              taskTitle: failedTask?.title || data.taskId,
+              error: typeof data.result === 'string' ? data.result : 'Task failed',
+            })
+          }
         }
       } catch {}
     })
@@ -462,6 +475,16 @@ export function CompactWorkflowView() {
     es.addEventListener('approval:required', (e: any) => {
       try {
         const data = JSON.parse(e.data)
+        // task_failure: show inline action bar above input, not popup
+        if (data.requestType === 'task_failure') {
+          setFailedTaskAction({
+            taskId: data.taskId,
+            taskTitle: data.taskTitle || data.taskId,
+            error: data.errorMessage || data.approvalMessage || 'Task failed',
+          })
+          loadTasks()
+          return
+        }
         // Skip if popup already showing for this task (prevents flicker from re-emitted events)
         const current = approvalPopupRef.current
         if (current && current.taskId === data.taskId && !current.resolving) return
@@ -489,6 +512,7 @@ export function CompactWorkflowView() {
           setApprovalPopup(null)
           approvalPopupRef.current = null
         }
+        setFailedTaskAction(prev => prev && prev.taskId === data.taskId ? null : prev)
       } catch {}
     })
 
@@ -525,6 +549,38 @@ export function CompactWorkflowView() {
     } finally {
       setApprovalPopup(null)
       approvalPopupRef.current = null
+    }
+  }
+
+  async function handleFailedTaskAction(action: 'retry' | 'continue' | 'new') {
+    if (!failedTaskAction) return
+    const { taskId } = failedTaskAction
+    setFailedTaskAction(null)
+    try {
+      if (action === 'retry') {
+        await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'retry' }),
+        })
+      } else if (action === 'continue') {
+        await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'continue' }),
+        })
+      } else if (action === 'new') {
+        await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'stop' }),
+        })
+        setInput('')
+        setWorkflowExpanded(false)
+      }
+      await loadTasks()
+    } catch (e) {
+      console.error('[Compact] failed task action error:', e)
     }
   }
 
@@ -1321,6 +1377,80 @@ export function CompactWorkflowView() {
         backgroundColor: 'var(--surface-1)',
         flexShrink: 0,
       }}>
+        {/* Failed Task Action Bar */}
+        {failedTaskAction && (
+          <div style={{
+            marginBottom: 8, padding: '8px 10px',
+            backgroundColor: 'rgba(252,165,165,0.08)',
+            border: '1px solid rgba(252,165,165,0.3)',
+            borderLeft: '3px solid #fca5a5',
+            borderRadius: 2,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              marginBottom: 4,
+            }}>
+              <XCircle size={12} color="#fca5a5" />
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: '#fca5a5',
+                fontFamily: mono, textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Task Failed
+              </span>
+              <span style={{
+                fontSize: 11, color: '#d4d4d4', fontFamily: mono,
+                marginLeft: 4,
+              }}>
+                {failedTaskAction.taskTitle}
+              </span>
+            </div>
+            <div style={{
+              fontSize: 10, color: '#a1a1aa', fontFamily: mono,
+              marginBottom: 8, lineHeight: 1.4,
+              padding: '4px 6px',
+              backgroundColor: 'rgba(0,0,0,0.3)',
+              borderRadius: 2,
+            }}>
+              {failedTaskAction.error}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => handleFailedTaskAction('retry')}
+                style={{
+                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 700,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: '#86efac', color: '#000',
+                  border: '1px solid #86efac', borderRadius: 2,
+                }}
+              >
+                ↻ Retry
+              </button>
+              <button
+                onClick={() => handleFailedTaskAction('continue')}
+                style={{
+                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'rgba(96,165,250,0.2)', color: '#60a5fa',
+                  border: '1px solid #60a5fa', borderRadius: 2,
+                }}
+              >
+                ⏭ Continue
+              </button>
+              <button
+                onClick={() => handleFailedTaskAction('new')}
+                style={{
+                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#d4d4d4',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2,
+                }}
+              >
+                ✕ New Task
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
           <textarea
             ref={inputRef}
