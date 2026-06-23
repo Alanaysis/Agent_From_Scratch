@@ -226,15 +226,17 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
     }
 
     if (action === 'continue' || action === 'execute') {
-      // Continue: keep as failed, but trigger downstream tasks
+      // Continue: mark as failed (was paused), trigger downstream tasks
       log("INFO", "AutoExec", `Continuing after failed task ${taskId}`);
+      await updateTaskInfo(cwd(), taskId, { status: "failed" });
       await assignDependentTasks(taskId);
       eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
       return { ok: true, action: action };
     }
 
-    // stop/abort: keep as failed, don't continue (user will intervene manually)
+    // stop/abort: mark as failed (was paused), don't continue
     log("INFO", "AutoExec", `Stopped after failed task ${taskId}`);
+    await updateTaskInfo(cwd(), taskId, { status: "failed" });
     eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
     return { ok: true, action: action };
   }
@@ -1537,7 +1539,9 @@ function isTaskBlocked(task: any, allTasks: any[]): boolean {
 async function pollAndExecuteTasks() {
   try {
     // Re-emit pending checkpoint approvals (for "later" action)
+    // Skip task_failure requests — those are shown as inline action bar, not popup
     for (const [taskId, req] of pendingApprovalTasks.entries()) {
+      if (req.requestType === 'task_failure') continue;
       const task = await readTaskInfo(cwd(), taskId);
       if (task?.status === "paused") {
         log("INFO", "AutoExec", `Re-emitting checkpoint approval for: ${task.title}`);
@@ -2120,7 +2124,7 @@ async function executeTaskViaHttp(taskId: string) {
       errMsg,
       sessionMessages
     );
-    await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errorSummary });
+    await updateTaskInfo(cwd(), taskId, { status: "paused", lastError: errorSummary });
 
     // Emit failure approval request — ask user what to do
     const task = await readTaskInfo(cwd(), taskId);
@@ -2131,11 +2135,13 @@ async function executeTaskViaHttp(taskId: string) {
       stepIndex: 0,
       stepTotal: 1,
       requestType: 'task_failure' as const,
-      errorMessage: errMsg,
+      errorMessage: errorSummary,
     };
     pendingApprovalTasks.set(taskId, failureReq);
     eventBus.emit("approval:required", failureReq);
     // Don't emit task-completed yet — wait for user decision
+    // Task stays 'paused' so downstream tasks are blocked (getUnblockedTasks
+    // treats paused deps as blocking). User decision will set failed/todo.
   } finally {
     taskAbortControllers.delete(taskId);
   }
