@@ -31,6 +31,13 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
   skipped: { color: '#94a3b8', icon: <ChevronRight size={10} />, label: 'Skipped' },
 }
 
+function getStatusConfig(task: CompactTask) {
+  if (task.status === 'paused' && task.lastError) {
+    return { color: '#fca5a5', icon: <XCircle size={10} />, label: 'Failed' }
+  }
+  return statusConfig[task.status] || statusConfig.todo
+}
+
 interface CompactTask {
   id: string
   title: string
@@ -117,7 +124,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
 }
 
 function SystemEventTag({ task, tasks }: { task: CompactTask; tasks: CompactTask[] }) {
-  const cfg = statusConfig[task.status] || statusConfig.todo
+  const cfg = getStatusConfig(task)
   const color = getTaskColor(task.id, tasks)
   return (
     <div style={{
@@ -477,10 +484,12 @@ export function CompactWorkflowView() {
         const data = JSON.parse(e.data)
         // task_failure: show inline action bar above input, not popup
         if (data.requestType === 'task_failure') {
+          const rawError = data.errorMessage || data.approvalMessage || 'Task failed'
+          const cleanError = rawError.replace(/^Task failed:\s*/i, '')
           setFailedTaskAction({
             taskId: data.taskId,
             taskTitle: data.taskTitle || data.taskId,
-            error: data.errorMessage || data.approvalMessage || 'Task failed',
+            error: cleanError,
           })
           loadTasks()
           return
@@ -1165,7 +1174,7 @@ export function CompactWorkflowView() {
             {/* Workflow steps */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
               {tasks.map((task, idx) => {
-                const cfg = statusConfig[task.status] || statusConfig.todo
+                const cfg = getStatusConfig(task)
                 const color = getTaskColor(task.id, tasks)
                 const isActive = task.status === 'in_progress'
                 const isLast = idx === tasks.length - 1

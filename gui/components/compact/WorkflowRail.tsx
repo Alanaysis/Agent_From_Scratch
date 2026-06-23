@@ -20,11 +20,19 @@ interface RailTask {
   title: string
   status: string
   requiresApproval?: boolean
+  lastError?: string
 }
 
 interface WorkflowRailProps {
   tasks: RailTask[]
   onExpand: () => void
+}
+
+function getDotConfig(task: RailTask) {
+  if (task.status === 'paused' && task.lastError) {
+    return statusDotConfig.failed
+  }
+  return statusDotConfig[task.status] || statusDotConfig.todo
 }
 
 export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
@@ -48,13 +56,14 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
       title="Expand workflow"
     >
       {tasks.map((task) => {
-        const cfg = statusDotConfig[task.status] || statusDotConfig.todo
+        const cfg = getDotConfig(task)
         const isActive = task.status === 'in_progress'
+        const isFailedPaused = task.status === 'paused' && task.lastError
 
         return (
           <div
             key={task.id}
-            title={`${task.title}: ${task.status}`}
+            title={`${task.title}: ${isFailedPaused ? 'Failed' : task.status}`}
             style={{
               width: 10,
               height: 10,
