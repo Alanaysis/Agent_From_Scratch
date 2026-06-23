@@ -2063,8 +2063,20 @@ async function executeTaskViaHttp(taskId: string) {
         "Tool execution failed",
         allMessagesForCheck
       );
-      await updateTaskInfo(cwd(), taskId, { status: "failed", lastError: errorSummary });
-      eventBus.emit("executor:task-completed", { taskId, success: false, result: errorSummary });
+      // Tool errors: pause and ask user what to do (same as catch-block failure path)
+      log("INFO", "AutoExec", `Task ${taskId} has tool errors, pausing for user decision`);
+      await updateTaskInfo(cwd(), taskId, { status: "paused", lastError: errorSummary });
+      const failureReq = {
+        taskId,
+        taskTitle: failedTask?.title || taskId,
+        approvalMessage: `Task failed: ${errorSummary.slice(0, 200)}`,
+        stepIndex: 0,
+        stepTotal: 1,
+        requestType: 'task_failure' as const,
+        errorMessage: errorSummary,
+      };
+      pendingApprovalTasks.set(taskId, failureReq);
+      eventBus.emit("approval:required", failureReq);
       return;
     }
 
