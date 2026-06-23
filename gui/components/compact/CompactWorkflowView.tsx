@@ -1380,37 +1380,39 @@ export function CompactWorkflowView() {
         {/* Failed Task Action Bar */}
         {failedTaskAction && (
           <div style={{
-            marginBottom: 8, padding: '8px 10px',
-            backgroundColor: 'rgba(252,165,165,0.08)',
-            border: '1px solid rgba(252,165,165,0.3)',
-            borderLeft: '3px solid #fca5a5',
+            marginBottom: 8, padding: '10px 12px',
+            backgroundColor: 'var(--surface-2)',
+            border: '1px solid var(--border-medium)',
+            borderLeft: '3px solid var(--warm-red)',
             borderRadius: 2,
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              marginBottom: 4,
+              marginBottom: 6,
             }}>
-              <XCircle size={12} color="#fca5a5" />
+              <XCircle size={13} color="var(--warm-red)" />
               <span style={{
-                fontSize: 11, fontWeight: 700, color: '#fca5a5',
+                fontSize: 11, fontWeight: 700, color: 'var(--warm-red)',
                 fontFamily: mono, textTransform: 'uppercase',
                 letterSpacing: '0.05em',
               }}>
                 Task Failed
               </span>
               <span style={{
-                fontSize: 11, color: '#d4d4d4', fontFamily: mono,
-                marginLeft: 4,
+                fontSize: 11, color: 'var(--text-primary)', fontFamily: mono,
+                marginLeft: 4, fontWeight: 500,
               }}>
                 {failedTaskAction.taskTitle}
               </span>
             </div>
             <div style={{
-              fontSize: 10, color: '#a1a1aa', fontFamily: mono,
-              marginBottom: 8, lineHeight: 1.4,
-              padding: '4px 6px',
-              backgroundColor: 'rgba(0,0,0,0.3)',
+              fontSize: 11, color: 'var(--text-secondary)', fontFamily: mono,
+              marginBottom: 10, lineHeight: 1.5,
+              padding: '6px 8px',
+              backgroundColor: 'var(--surface-0)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: 2,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
               {failedTaskAction.error}
             </div>
@@ -1418,10 +1420,10 @@ export function CompactWorkflowView() {
               <button
                 onClick={() => handleFailedTaskAction('retry')}
                 style={{
-                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 700,
+                  flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: 700,
                   fontFamily: mono, cursor: 'pointer',
-                  backgroundColor: '#86efac', color: '#000',
-                  border: '1px solid #86efac', borderRadius: 2,
+                  backgroundColor: 'var(--amber)', color: '#000',
+                  border: '1px solid var(--amber)', borderRadius: 2,
                 }}
               >
                 ↻ Retry
@@ -1429,10 +1431,10 @@ export function CompactWorkflowView() {
               <button
                 onClick={() => handleFailedTaskAction('continue')}
                 style={{
-                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 600,
+                  flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: 600,
                   fontFamily: mono, cursor: 'pointer',
-                  backgroundColor: 'rgba(96,165,250,0.2)', color: '#60a5fa',
-                  border: '1px solid #60a5fa', borderRadius: 2,
+                  backgroundColor: 'var(--surface-1)', color: 'var(--text-primary)',
+                  border: '1px solid var(--border-medium)', borderRadius: 2,
                 }}
               >
                 ⏭ Continue
@@ -1440,10 +1442,10 @@ export function CompactWorkflowView() {
               <button
                 onClick={() => handleFailedTaskAction('new')}
                 style={{
-                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 600,
+                  flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: 600,
                   fontFamily: mono, cursor: 'pointer',
-                  backgroundColor: 'rgba(0,0,0,0.4)', color: '#d4d4d4',
-                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2,
+                  backgroundColor: 'var(--surface-1)', color: 'var(--text-muted)',
+                  border: '1px solid var(--border-subtle)', borderRadius: 2,
                 }}
               >
                 ✕ New Task
