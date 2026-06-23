@@ -1979,6 +1979,28 @@ async function executeTaskViaHttp(taskId: string) {
   const title = task.title || taskId;
   let prompt = `## Task: ${title}\n\n`;
   if (task.description) prompt += `${task.description}\n\n`;
+
+  // Include context from dependency tasks (especially failures when user chose 'continue')
+  if (task.dependsOn && task.dependsOn.length > 0) {
+    const depContext: string[] = [];
+    for (const depId of task.dependsOn) {
+      const depTask = await readTaskInfo(cwd(), depId);
+      if (!depTask) continue;
+      const depStatus = depTask.status;
+      if (depStatus === 'done') {
+        depContext.push(`- "${depTask.title}": completed successfully`);
+      } else if (depStatus === 'failed') {
+        depContext.push(`- "${depTask.title}": FAILED${depTask.lastError ? ` — ${depTask.lastError.slice(0, 200)}` : ''}. User chose to continue despite this failure. Be aware of this when executing.`);
+      } else if (depTask.skipped) {
+        depContext.push(`- "${depTask.title}": skipped`);
+      }
+    }
+    if (depContext.length > 0) {
+      prompt += `## Previous Steps Context\n`;
+      prompt += depContext.join('\n') + '\n\n';
+    }
+  }
+
   prompt += `## Instructions\n`;
   prompt += `- Focus ONLY on completing this specific task. Do NOT start other unrelated work.\n`;
   prompt += `- Do NOT modify files unless the task explicitly requires it.\n`;
@@ -2057,10 +2079,20 @@ async function executeTaskViaHttp(taskId: string) {
     if (hasToolErrors) {
       log("INFO", "AutoExec", `Task ${taskId} has tool errors, marking as failed`);
       const failedTask = await readTaskInfo(cwd(), taskId);
+      // Extract actual error text from tool_result messages
+      const toolErrorMessages = allMessagesForCheck
+        .filter((m: any) => m.type === 'tool_result' && m.isError)
+        .map((m: any) => {
+          if (typeof m.content === 'string') return m.content;
+          if (Array.isArray(m.content)) return m.content.map((c: any) => c.text || JSON.stringify(c)).join(' ');
+          return JSON.stringify(m.content);
+        });
+      const actualError = toolErrorMessages.join('; ').slice(0, 500) || "Tool execution failed";
+      log("INFO", "AutoExec", `Task ${taskId} tool error detail: ${actualError.slice(0, 200)}`);
       const errorSummary = await generateErrorSummary(
         failedTask?.title || taskId,
         failedTask?.description,
-        "Tool execution failed",
+        actualError,
         allMessagesForCheck
       );
       // Tool errors: pause and ask user what to do (same as catch-block failure path)

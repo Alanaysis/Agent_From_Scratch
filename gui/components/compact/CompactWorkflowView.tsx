@@ -394,6 +394,27 @@ export function CompactWorkflowView() {
     const es = new EventSource(`${API_BASE}/api/events`)
     eventSourceRef.current = es
 
+    // Restore pending task_failure approvals on reconnect/refresh
+    fetch(`${API_BASE}/api/approvals/pending`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.approvals) {
+          for (const req of data.approvals) {
+            if (req.requestType === 'task_failure') {
+              const rawError = req.errorMessage || req.approvalMessage || 'Task failed'
+              const cleanError = rawError.replace(/^Task failed:\s*/i, '')
+              setFailedTaskAction({
+                taskId: req.taskId,
+                taskTitle: req.taskTitle || req.taskId,
+                error: cleanError,
+              })
+              break
+            }
+          }
+        }
+      })
+      .catch(() => {})
+
     es.addEventListener('session:message-appended', (e: any) => {
       try {
         const data = JSON.parse(e.data)
