@@ -1226,16 +1226,54 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
         const allTasks = await listTasks(cwd());
         const sessionTasks = allTasks.filter(t => t.sessionId === sessionId);
         if (sessionTasks.length > 0) {
-          workflowContext.push(`The user is running a workflow with ${sessionTasks.length} tasks. Current task statuses:`);
+          // Workflow overview
+          const taskMap = new Map(sessionTasks.map(t => [t.id, t]));
+          const running = sessionTasks.filter(t => t.status === 'in_progress');
+          const failedPaused = sessionTasks.filter(t => t.status === 'paused' && t.lastError);
+          const completed = sessionTasks.filter(t => t.status === 'done');
+          const pending = sessionTasks.filter(t => t.status === 'todo');
+          const checkpoints = sessionTasks.filter(t => t.status === 'paused' && !t.lastError && t.checkpointAfter);
+
+          workflowContext.push(`## Workflow Context`);
+          workflowContext.push(`The user is running a workflow with ${sessionTasks.length} tasks.`);
+          workflowContext.push(`Progress: ${completed.length} done, ${running.length} running, ${pending.length} pending, ${failedPaused.length} failed, ${checkpoints.length} waiting for checkpoint.`);
+
+          // Task list with dependencies and status
+          workflowContext.push(`\n### Task Status:`);
           for (const t of sessionTasks) {
-            let line = `- ${t.title}: ${t.status}`;
-            if (t.status === 'failed' && t.lastError) line += ` (error: ${t.lastError.slice(0, 150)})`;
-            if (t.status === 'paused' && t.lastError) line += ` (failed, waiting for user decision. error: ${t.lastError.slice(0, 150)})`;
+            let line = `- ${t.title} [${t.status}]`;
+            if (t.assignee) line += ` (agent: ${t.assignee})`;
+            if (t.dependsOn && t.dependsOn.length > 0) {
+              const depTitles = t.dependsOn.map(id => taskMap.get(id)?.title || id.slice(0, 8)).join(', ');
+              line += ` ← depends on: ${depTitles}`;
+            }
+            if (t.status === 'failed' && t.lastError) line += ` | ERROR: ${t.lastError.slice(0, 150)}`;
+            if (t.status === 'paused' && t.lastError) line += ` | FAILED, waiting for user decision: ${t.lastError.slice(0, 150)}`;
+            if (t.status === 'paused' && !t.lastError && t.checkpointAfter) line += ` | CHECKPOINT: ${t.checkpointMessage || 'waiting for user input'}`;
+            if (t.requiresApproval && t.status === 'todo') line += ` | needs approval: ${t.approvalMessage || ''}`;
             workflowContext.push(line);
           }
-          const failedPaused = sessionTasks.filter(t => t.status === 'paused' && t.lastError);
+
+          // Current focus
+          if (running.length > 0) {
+            workflowContext.push(`\n### Currently Executing: ${running.map(t => t.title).join(', ')}`);
+          }
+
+          // Guidance for user commands
           if (failedPaused.length > 0) {
-            workflowContext.push(`\nThere ${failedPaused.length === 1 ? 'is a failed task' : 'are failed tasks'} waiting for user decision. If the user says "继续" (continue), they likely want to continue the workflow past the failure. If they say "重试" (retry), they want to retry the failed task.`);
+            workflowContext.push(`\n### Action Needed`);
+            workflowContext.push(`There ${failedPaused.length === 1 ? 'is a failed task' : 'are failed tasks'} waiting for user decision.`);
+            workflowContext.push(`- If user says "继续"/"continue": they want to continue the workflow past the failure (skip the failed task).`);
+            workflowContext.push(`- If user says "重试"/"retry": they want to retry the failed task.`);
+            workflowContext.push(`- If user says "跳过"/"skip": they want to skip the failed task and move on.`);
+            workflowContext.push(`- If user asks about the error: explain what went wrong based on the error info above.`);
+          }
+          if (checkpoints.length > 0) {
+            workflowContext.push(`\n### Checkpoint Waiting`);
+            workflowContext.push(`Task "${checkpoints[0]!.title}" is paused at a checkpoint: ${checkpoints[0]!.checkpointMessage || 'waiting for user input'}. The user may need to provide input or confirmation.`);
+          }
+          if (running.length === 0 && failedPaused.length === 0 && checkpoints.length === 0 && pending.length > 0) {
+            workflowContext.push(`\nNo task is currently running. ${pending.length} task(s) are pending. The executor may need to be started.`);
           }
         }
       } catch {}
