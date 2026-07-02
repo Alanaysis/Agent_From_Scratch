@@ -15,7 +15,7 @@ import { listAgents, readAgentInfo, createAgent, updateAgentInfo, deleteAgentInf
 import { createId } from "../../shared/ids";
 import { eventBus } from "../../shared/eventBus";
 
-type RouteHandler = (req: http.IncomingMessage, body: string) => Promise<unknown>;
+type RouteHandler = (req: http.IncomingMessage, body: string, params?: Record<string, string>) => Promise<unknown>;
 
 const routes = new Map<string, RouteHandler>();
 
@@ -59,8 +59,17 @@ routes.set("GET /api/sessions/:id", async (_req, _body, params?: Record<string, 
 });
 
 routes.set("DELETE /api/sessions/:id", async (_req, _body, params?: Record<string, string>) => {
-  await deleteSessionInfo(cwd(), params!.id!);
-  await deleteTranscript(cwd(), params!.id!).catch(() => {});
+  const sid = params!.id!;
+  await deleteSessionInfo(cwd(), sid);
+  await deleteTranscript(cwd(), sid).catch(() => {});
+  // Delete all tasks associated with this session
+  try {
+    const allTasks = await listTasks(cwd());
+    const sessionTasks = allTasks.filter(t => t.sessionId === sid);
+    for (const t of sessionTasks) {
+      await deleteTaskInfo(cwd(), t.id).catch(() => {});
+    }
+  } catch {}
   return { ok: true };
 });
 
@@ -155,7 +164,7 @@ routes.set("POST /api/tasks/:id/assign", async (_req, body, params?: Record<stri
 });
 
 routes.set("POST /api/tasks/:id/release", async (_req, _body, params?: Record<string, string>) => {
-  const task = await updateTaskInfo(cwd(), params!.id!, { assignee: undefined }, "user");
+  const task = await updateTaskInfo(cwd(), params!.id!, { assignee: null }, "user");
   return { task };
 });
 
@@ -197,7 +206,7 @@ routes.set("POST /api/tasks/:id/execute", async (_req, _body, _params) => {
 routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<string, string>) => {
   const input = JSON.parse(body);
   const taskId = params!.id!;
-  const action = input.action as string;
+  const action = input.action as 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop';
 
   if (!action || !['execute', 'later', 'abort', 'continue', 'retry', 'stop'].includes(action)) {
     return { error: "action must be 'execute', 'later', 'abort', 'continue', 'retry', or 'stop'" };
@@ -217,7 +226,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
     if (action === 'retry') {
       // Retry: reset task to todo and re-execute
       log("INFO", "AutoExec", `Retrying failed task ${taskId}`);
-      await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: undefined });
+      await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: null });
       executingTasks.add(taskId);
       executeTaskViaHttp(taskId).finally(() => {
         executingTasks.delete(taskId);
@@ -237,6 +246,21 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
     // stop/abort: mark as failed (was paused), don't continue
     log("INFO", "AutoExec", `Stopped after failed task ${taskId}`);
     await updateTaskInfo(cwd(), taskId, { status: "failed" });
+    // Cancel all remaining todo tasks in the same session to stop the workflow
+    try {
+      const stoppedTask = await readTaskInfo(cwd(), taskId);
+      const sid = stoppedTask?.sessionId;
+      if (sid) {
+        const allTasks = await listTasks(cwd());
+        const remaining = allTasks.filter(t => t.sessionId === sid && t.status === "todo");
+        for (const t of remaining) {
+          log("INFO", "AutoExec", `Cancelling remaining task: ${t.title}`);
+          await updateTaskInfo(cwd(), t.id, { status: "cancelled", lastError: "Workflow stopped by user" }, "user");
+        }
+      }
+    } catch (e) {
+      log("WARN", "AutoExec", `Failed to cancel remaining tasks: ${e}`);
+    }
     eventBus.emit("executor:task-completed", { taskId, success: false, result: pendingReq.errorMessage });
     return { ok: true, action: action };
   }
@@ -605,6 +629,7 @@ routes.set("POST /api/agents", async (_req, body) => {
     allowedTools: input.allowedTools || "*",
     maxTurns: input.maxTurns,
     capabilities: input.capabilities,
+    isBuiltIn: false,
   });
   return { agent };
 });
@@ -628,7 +653,7 @@ routes.set("GET /api/agents/:id", async (_req, _body, params?: Record<string, st
 
 routes.set("GET /api/agents/by-capability", async (_req, _body) => {
   const { listAgentsByCapability } = await import("../../storage/agentIndex");
-  const agents = await listAgentsByCapability(cwd());
+  const agents = await listAgentsByCapability(cwd(), "");
   return { agents };
 });
 
@@ -834,6 +859,20 @@ routes.set("POST /api/compact/start", async (_req, body) => {
     if (step.requiresApproval) {
       taskInput.requiresApproval = true;
       taskInput.approvalMessage = step.approvalMessage;
+    }
+    // Persist structured gRPC config so executeTaskViaHttp can build a precise
+    // prompt with exact parameters (rather than relying on the LLM to parse
+    // them out of the free-text description). Mirrors workflowIndex.ts behavior.
+    if (step.grpc) {
+      taskInput.grpcConfig = {
+        protoFile: step.grpc.protoFile || "protos/AlgoService.proto",
+        service: step.grpc.service,
+        method: step.grpc.method,
+        address: step.grpc.address || "",
+        payload: step.grpc.payload || {},
+        metadata: step.grpc.metadata,
+        deadline: step.grpc.deadline,
+      };
     }
 
     const task = await createTask(cwd(), taskInput);
@@ -1093,7 +1132,7 @@ import { loadConfig, saveConfig, mergeEnvIntoConfig, getDefaultConfig } from "..
 
 routes.set("GET /api/config", async () => {
   try {
-    const config = await loadConfig(cwd());
+    const config = await loadConfig();
     const merged = mergeEnvIntoConfig(config);
     return {
       llm: {
@@ -1117,8 +1156,10 @@ routes.set("PATCH /api/config", async (_req, body) => {
   if (input.contextWindow !== undefined && input.contextWindow > 0) allowed.contextWindow = input.contextWindow;
   if (input.maxOutputTokens !== undefined && input.maxOutputTokens > 0) allowed.maxOutputTokens = input.maxOutputTokens;
   // Never allow apiKey to be set via HTTP
-  const config = await saveConfig(cwd(), allowed);
-  return { llm: { ...config.llm, apiKey: config.llm.apiKey ? "[SET]" : "" }, source: "file" };
+  const existing = await loadConfig();
+  const updatedConfig = { llm: { ...existing.llm, ...allowed } };
+  await saveConfig(updatedConfig);
+  return { llm: { ...updatedConfig.llm, apiKey: updatedConfig.llm.apiKey ? "[SET]" : "" }, source: "file" };
 });
 
 // ====== Chat (SSE streaming + permission support) ======
@@ -1127,14 +1168,15 @@ import { SessionEngine } from "../../runtime/session";
 import { query } from "../../runtime/query";
 import { canUseTool } from "../../permissions/engine";
 import { createInitialAppState } from "../../runtime/state";
-import { readTranscriptMessages } from "../../storage/transcript";
 import { initLlmConfig, getLlmConfig } from "../../runtime/llm";
 import type { Message } from "../../runtime/messages";
-import { eventBus } from "../../shared/eventBus";
 
 // Pending permission requests for HTTP mode
 const httpPermissions = new Map<string, { resolve: (approved: boolean) => void; request: unknown }>();
-let httpAbortController: AbortController | null = null;
+// Track in-flight chat abort controllers by request id so concurrent chat
+// requests don't clobber each other, and so client disconnects can abort
+// the running LLM query (freeing tokens/resources).
+const httpAbortControllers = new Map<string, AbortController>();
 
 // SSE chat endpoint
 function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body: string) {
@@ -1166,6 +1208,12 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
 
   send("connected", { status: "ok" });
 
+  // Each chat request gets its own abort controller so concurrent requests
+  // and client disconnects can be handled independently.
+  const chatReqId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const abortController = new AbortController();
+  httpAbortControllers.set(chatReqId, abortController);
+
   // Forward eventBus tool events as SSE events (like ipcPush.ts does for Electron)
   const onToolStart = (data: any) => send("tool:start", data);
   const onToolResult = (data: any) => send("tool:result", data);
@@ -1178,13 +1226,16 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
   eventBus.on("tool:progress", onToolProgress);
   eventBus.on("session:message-appended", onSessionMessageAppended);
 
-  // Clean up listeners when connection closes
+  // Clean up listeners when connection closes — also abort the in-flight
+  // LLM query so disconnecting the client stops burning tokens.
   res.on("close", () => {
     eventBus.off("tool:start", onToolStart);
     eventBus.off("tool:result", onToolResult);
     eventBus.off("tool:error", onToolError);
     eventBus.off("tool:progress", onToolProgress);
     eventBus.off("session:message-appended", onSessionMessageAppended);
+    abortController.abort();
+    httpAbortControllers.delete(chatReqId);
   });
 
   (async () => {
@@ -1216,8 +1267,6 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
     send("message", { id: userMsg.id, role: "user", content: userContent, type: "user" });
 
     const appState = createInitialAppState();
-    const abortController = new AbortController();
-    httpAbortController = abortController;
 
     // Build workflow context for system prompt so chat understands workflow state
     const workflowContext: string[] = [];
@@ -1237,6 +1286,16 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
           workflowContext.push(`## Workflow Context`);
           workflowContext.push(`The user is running a workflow with ${sessionTasks.length} tasks.`);
           workflowContext.push(`Progress: ${completed.length} done, ${running.length} running, ${pending.length} pending, ${failedPaused.length} failed, ${checkpoints.length} waiting for checkpoint.`);
+
+          workflowContext.push(`\n### CRITICAL: Your Role`);
+          workflowContext.push(`You are the chat assistant for a workflow session. The workflow tasks are executed by a separate executor system, but you CAN control it.`);
+          workflowContext.push(`- Use the **TaskControl** tool to interact with the workflow: list tasks, retry/skip/continue/resume tasks, start/stop the executor, or set task status.`);
+          workflowContext.push(`- When the user says "继续"/"continue": use TaskControl with action "continue" or "skip" on the failed task (use "list" first to find the taskId).`);
+          workflowContext.push(`- When the user says "重试"/"retry": use TaskControl with action "retry" on the failed task.`);
+          workflowContext.push(`- When the user says "跳过"/"skip": use TaskControl with action "skip" on the failed task.`);
+          workflowContext.push(`- When the user wants to resume/start the workflow: use TaskControl with action "start-executor".`);
+          workflowContext.push(`- You MAY also execute workflow steps yourself using other tools (Shell, GrpcClient, etc.) if the user asks you to do something directly. But for workflow STATUS changes (retry, skip, continue, resume), prefer TaskControl.`);
+          workflowContext.push(`- If the user asks about the workflow state, use TaskControl "list" to get current status, then explain it.`);
 
           // Task list with dependencies and status
           workflowContext.push(`\n### Task Status:`);
@@ -1354,7 +1413,7 @@ function handleChatSse(req: http.IncomingMessage, res: http.ServerResponse, body
     } catch (error) {
       send("error", { message: error instanceof Error ? error.message : String(error) });
     } finally {
-      httpAbortController = null;
+      httpAbortControllers.delete(chatReqId);
       res.end();
     }
   })();
@@ -1393,6 +1452,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
   const onToolProgress = (data: any) => send("tool:progress", data);
   const onApprovalRequired = (data: any) => send("approval:required", data);
   const onApprovalResolved = (data: any) => send("approval:resolved", data);
+  const onTaskPermission = (data: any) => send("permission", data);
+  const onTaskPermissionTimeout = (data: any) => send("permission-timeout", data);
 
   eventBus.on("session:message-appended", onSessionMessageAppended);
   eventBus.on("executor:task-claimed", onTaskClaimed);
@@ -1405,6 +1466,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
   eventBus.on("tool:progress", onToolProgress);
   eventBus.on("approval:required", onApprovalRequired);
   eventBus.on("approval:resolved", onApprovalResolved);
+  eventBus.on("task:permission-request", onTaskPermission);
+  eventBus.on("task:permission-timeout", onTaskPermissionTimeout);
 
   req.on("close", () => {
     eventBus.off("session:message-appended", onSessionMessageAppended);
@@ -1418,6 +1481,8 @@ function handleSessionEventsSse(req: http.IncomingMessage, res: http.ServerRespo
     eventBus.off("tool:progress", onToolProgress);
     eventBus.off("approval:required", onApprovalRequired);
     eventBus.off("approval:resolved", onApprovalResolved);
+    eventBus.off("task:permission-request", onTaskPermission);
+    eventBus.off("task:permission-timeout", onTaskPermissionTimeout);
   });
 }
 
@@ -1555,6 +1620,7 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
 const executingTasks = new Set<string>();
 const taskAbortControllers = new Map<string, AbortController>();
 const pendingApprovalTasks = new Map<string, ApprovalRequestEvent>(); // tasks waiting for user approval
+const taskPermissions = new Map<string, { resolve: (approved: boolean) => void; request: any }>(); // task tool permissions
 let taskPollInterval: ReturnType<typeof setInterval> | null = null;
 
 // Approval request type (mirrors eventBus type)
@@ -1627,8 +1693,9 @@ async function pollAndExecuteTasks() {
       if (!allDepsDone) continue;
       // Verify condition.source exists in task list (skip if source not found = stale data)
       if (t.condition.source && !allTasksForCondition.find(tt => tt.id === t.condition!.source)) continue;
-      // Deps done but task not unblocked → condition must be false
-      if (!unblockedTasks.find(ut => ut.id === t.id)) {
+      // Deps done but condition not met → skip. Use evaluateCondition directly
+      // (single source of truth, consistent with assignDependentTasks).
+      if (!evaluateCondition(t.condition, allTasksForCondition)) {
         log("INFO", "AutoExec", `Skipping task ${t.title}: condition not met`);
         await updateTaskInfo(cwd(), t.id, { skipped: true }, "executor");
       }
@@ -1761,13 +1828,75 @@ async function assignDependentTasks(completedTaskId: string) {
   }
 }
 
+/**
+ * Shared single-shot LLM call. Handles both Anthropic and OpenAI-compatible
+ * providers. Returns the assistant text (or null) and whether the call
+ * succeeded, so callers can apply their own fallback logic.
+ */
+async function callLlm(
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+): Promise<{ ok: boolean; text: string | null; status: number }> {
+  const config = getLlmConfig();
+  if (!config?.apiKey) {
+    return { ok: false, text: null, status: 0 };
+  }
+  const isAnthropic = config.provider === 'anthropic' || (config.baseUrl && config.baseUrl.includes('anthropic'));
+  const baseUrl = config.baseUrl || (isAnthropic ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1');
+
+  if (isAnthropic) {
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': config.anthropicVersion || '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      log("ERROR", "LLM", `Anthropic API ${response.status}: ${errBody.slice(0, 300)}`);
+      return { ok: false, text: null, status: response.status };
+    }
+    const data = await response.json();
+    return { ok: true, text: data.content?.[0]?.text || null, status: response.status };
+  }
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    log("ERROR", "LLM", `OpenAI API ${response.status}: ${errBody.slice(0, 300)}`);
+    return { ok: false, text: null, status: response.status };
+  }
+  const data = await response.json();
+  const msg = data.choices?.[0]?.message || {};
+  const text = msg.content || msg.reasoning_content || msg.text || null;
+  return { ok: true, text, status: response.status };
+}
+
 async function generateErrorSummary(taskTitle: string, taskDescription: string | undefined, errorMessage: string, sessionMessages: any[]): Promise<string> {
   try {
-    const config = getLlmConfig();
-    if (!config?.apiKey) {
-      return errorMessage.slice(0, 200);
-    }
-
     const recentMessages = sessionMessages.slice(-10).map((m: any) => {
       if (typeof m.content === 'string') return `${m.type}: ${m.content.slice(0, 500)}`;
       if (Array.isArray(m.content)) {
@@ -1802,47 +1931,9 @@ ${recentMessages}
 
 Summarize the failure reason concisely:`;
 
-    const isAnthropic = config.provider === 'anthropic' || (config.baseUrl && config.baseUrl.includes('anthropic'));
-    const baseUrl = config.baseUrl || (isAnthropic ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1');
-
-    if (isAnthropic) {
-      const response = await fetch(`${baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': config.apiKey,
-          'anthropic-version': config.anthropicVersion || '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: 256,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userMessage }],
-        }),
-      });
-      if (!response.ok) return errorMessage.slice(0, 200);
-      const data = await response.json();
-      return data.content?.[0]?.text || errorMessage.slice(0, 200);
-    } else {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'authorization': `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: 256,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-        }),
-      });
-      if (!response.ok) return errorMessage.slice(0, 200);
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content || errorMessage.slice(0, 200);
-    }
+    const result = await callLlm(systemPrompt, userMessage, 256);
+    if (!result.ok || !result.text) return errorMessage.slice(0, 200);
+    return result.text;
   } catch (e) {
     log("ERROR", "ErrorSummary", `Failed to generate summary: ${e}`);
     return errorMessage.slice(0, 200);
@@ -1891,61 +1982,9 @@ ${nodesText}
 
 Enrich each node description, identify risks, suggest improvements. Output JSON:`;
 
-    const isAnthropic = config.provider === 'anthropic' || (config.baseUrl && config.baseUrl.includes('anthropic'));
-    const baseUrl = config.baseUrl || (isAnthropic ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1');
-
-    let responseText: string | null = null;
-    if (isAnthropic) {
-      const response = await fetch(`${baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': config.apiKey,
-          'anthropic-version': config.anthropicVersion || '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userContent }],
-        }),
-      });
-      if (!response.ok) {
-        const errBody = await response.text().catch(() => '');
-        log("ERROR", "PMEnhance", `Anthropic API ${response.status}: ${errBody.slice(0, 300)}`);
-        return null;
-      }
-      const data = await response.json();
-      responseText = data.content?.[0]?.text;
-    } else {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'authorization': `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: 1024,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent },
-          ],
-        }),
-      });
-      if (!response.ok) {
-        const errBody = await response.text().catch(() => '');
-        log("ERROR", "PMEnhance", `OpenAI API ${response.status}: ${errBody.slice(0, 300)}`);
-        return null;
-      }
-      const data = await response.json();
-      log("INFO", "PMEnhance", `OpenAI response keys: ${Object.keys(data).join(',')}, choices: ${data.choices?.length || 0}`);
-      if (data.choices?.[0]) {
-        const msg = data.choices[0].message || {};
-        log("INFO", "PMEnhance", `message keys: ${Object.keys(msg).join(',')}`);
-        responseText = msg.content || msg.reasoning_content || msg.text || null;
-      }
-    }
+    const llmResult = await callLlm(systemPrompt, userContent, 1024);
+    if (!llmResult.ok) return null;
+    const responseText = llmResult.text;
 
     if (!responseText) {
       log("WARN", "PMEnhance", "Empty response text from LLM (content field null/empty), using fallback");
@@ -1987,8 +2026,8 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
     }
 
     if (!parsed) {
-      log("ERROR", "PMEnhance", `All JSON extraction strategies failed.\nRaw: ${cleaned.slice(0, 500)}`);
-      return { enrichedDescriptions: {}, warnings: ["LLM 响应解析失败，使用原始描述"], suggestions: [] };
+      log("WARN", "PMEnhance", `JSON extraction failed, using original descriptions. Raw: ${cleaned.slice(0, 200)}`);
+      return { enrichedDescriptions: {}, warnings: [], suggestions: [] };
     }
     const result = {
       enrichedDescriptions: parsed.enrichedDescriptions || {},
@@ -1998,8 +2037,8 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
     log("INFO", "PMEnhance", `Success: ${Object.keys(result.enrichedDescriptions).length} enriched, ${result.warnings.length} warnings, ${result.suggestions.length} suggestions`);
     return result;
   } catch (e) {
-    log("ERROR", "PMEnhance", `Failed to enhance template: ${e}`);
-    return null;
+    log("WARN", "PMEnhance", `Enhancement skipped: ${e}`);
+    return { enrichedDescriptions: {}, warnings: [], suggestions: [] };
   }
 }
 
@@ -2107,6 +2146,33 @@ async function executeTaskViaHttp(taskId: string) {
       },
       canUseTool,
       maxTurns: 8,
+      onPermissionRequest: async (request) => {
+        // Checkpoint tool needs special handling: inject checkpointId and auto-respond
+        // so the workflow's own failure/checkpoint mechanism takes over instead.
+        if (request.toolName === "Checkpoint") {
+          const input = request.input as any;
+          const checkpointId = `ckpt-${taskId}-${Date.now()}`;
+          // Auto-respond based on checkpoint type
+          let response: any;
+          if (input?.type === "error_choice") {
+            // Workflow has its own retry/skip/stop UI — auto-skip to let task fail and trigger that flow
+            response = { choice: input?.options?.[0] || "skip" };
+          } else if (input?.type === "approval") {
+            response = { approved: true };
+          } else {
+            response = { data: {} };
+          }
+          const { setCheckpointResponse } = await import("../../tools/workflow/checkpointTool");
+          setCheckpointResponse(checkpointId, response);
+          // Return updated input with checkpointId injected
+          return {
+            allowed: true,
+            updatedInput: { ...input, __checkpointId: checkpointId },
+          } as any;
+        }
+        log("INFO", "AutoExec", `Task ${taskId} auto-approving tool ${request.toolName} (workflow mode)`);
+        return true;
+      },
       onProgress: (text) => {
         eventBus.emit("executor:task-progress", { taskId, text });
       },
@@ -2134,14 +2200,18 @@ async function executeTaskViaHttp(taskId: string) {
       log("ERROR", "AutoExec", `Failed to update session info: ${e}`);
     }
 
-    // Check for tool-level errors (e.g., gRPC failures)
-    const hasToolErrors = allMessagesForCheck.some((m: any) => m.type === 'tool_result' && m.isError);
+    // Check for tool-level errors (e.g., gRPC failures).
+    // Only consider the LAST tool_result: if the agent retried and recovered,
+    // an earlier error must not cause a false failure.
+    const toolResultMessages = allMessagesForCheck.filter((m: any) => m.type === 'tool_result');
+    const lastToolResult = toolResultMessages[toolResultMessages.length - 1];
+    const hasToolErrors = !!lastToolResult && !!lastToolResult.isError;
     if (hasToolErrors) {
       log("INFO", "AutoExec", `Task ${taskId} has tool errors, marking as failed`);
       const failedTask = await readTaskInfo(cwd(), taskId);
-      // Extract actual error text from tool_result messages
-      const toolErrorMessages = allMessagesForCheck
-        .filter((m: any) => m.type === 'tool_result' && m.isError)
+      // Extract actual error text from the failing tool_result
+      const toolErrorMessages = [lastToolResult]
+        .filter((m: any) => m && m.isError)
         .map((m: any) => {
           if (typeof m.content === 'string') return m.content;
           if (Array.isArray(m.content)) return m.content.map((c: any) => c.text || JSON.stringify(c)).join(' ');
@@ -2269,10 +2339,18 @@ export function stopTaskAutoExec() {
 // Permission response endpoint
 routes.set("POST /api/chat/permission-response", async (_req, body) => {
   const input = JSON.parse(body);
+  // Check chat permissions first
   const pending = httpPermissions.get(input.id);
   if (pending) {
     httpPermissions.delete(input.id);
     pending.resolve(input.approved === true);
+    return { ok: true };
+  }
+  // Check task permissions
+  const taskPending = taskPermissions.get(input.id);
+  if (taskPending) {
+    taskPermissions.delete(input.id);
+    taskPending.resolve(input.approved === true);
     return { ok: true };
   }
   return { error: "No pending permission request with that ID" };
@@ -2280,9 +2358,10 @@ routes.set("POST /api/chat/permission-response", async (_req, body) => {
 
 // Cancel endpoint
 routes.set("POST /api/chat/cancel", async () => {
-  if (httpAbortController) {
-    httpAbortController.abort();
-    httpAbortController = null;
+  // Abort all in-flight chat queries (supports concurrent requests)
+  for (const [id, controller] of httpAbortControllers) {
+    controller.abort();
+    httpAbortControllers.delete(id);
   }
   // Reject all pending permissions
   for (const [id, pending] of httpPermissions) {
@@ -2488,6 +2567,63 @@ export function startHttpServer(port = 3002): http.Server {
     // Start auto-execution poll for unblocked tasks
     startTaskAutoExec(5000);
   });
+
+  // Listen for executor control commands from chat/tools
+  const onExecutorCommand = async (cmd: any) => {
+    try {
+      log("INFO", "AutoExec", `executor:command received: ${cmd.action} ${cmd.taskId || ''}`);
+      if (cmd.action === 'start') {
+        startTaskAutoExec();
+      } else if (cmd.action === 'stop') {
+        stopTaskAutoExec();
+        for (const [taskId, controller] of taskAbortControllers) {
+          controller.abort();
+          await updateTaskInfo(cwd(), taskId, { status: "paused" }).catch(() => {});
+        }
+        taskAbortControllers.clear();
+        executingTasks.clear();
+      } else if (cmd.action === 'resume-task' && cmd.taskId) {
+        const task = await readTaskInfo(cwd(), cmd.taskId);
+        if (task && task.status === 'paused') {
+          await updateTaskInfo(cwd(), cmd.taskId, { status: "in_progress" });
+          executingTasks.add(cmd.taskId);
+          executeTaskViaHttp(cmd.taskId).finally(() => { executingTasks.delete(cmd.taskId); });
+        }
+      } else if (cmd.action === 'retry-task' && cmd.taskId) {
+        await updateTaskInfo(cwd(), cmd.taskId, { status: "todo", lastError: null }).catch(() => {});
+        pendingApprovalTasks.delete(cmd.taskId);
+        eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
+        startTaskAutoExec();
+      } else if (cmd.action === 'skip-task' && cmd.taskId) {
+        await updateTaskInfo(cwd(), cmd.taskId, { status: "failed", lastError: cmd.reason || "Skipped by user via chat" }).catch(() => {});
+        pendingApprovalTasks.delete(cmd.taskId);
+        eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
+        await assignDependentTasks(cmd.taskId).catch(() => {});
+        eventBus.emit("executor:task-completed", { taskId: cmd.taskId, success: false, result: "Skipped" });
+      } else if (cmd.action === 'continue-task' && cmd.taskId) {
+        await updateTaskInfo(cwd(), cmd.taskId, { status: "failed" }).catch(() => {});
+        pendingApprovalTasks.delete(cmd.taskId);
+        eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
+        await assignDependentTasks(cmd.taskId).catch(() => {});
+        eventBus.emit("executor:task-completed", { taskId: cmd.taskId, success: false, result: "Continued past failure" });
+      } else if (cmd.action === 'set-status' && cmd.taskId && cmd.status) {
+        const updates: any = { status: cmd.status };
+        if (cmd.status === 'todo' || cmd.status === 'in_progress') {
+          updates.lastError = null;
+        } else if (cmd.reason) {
+          updates.lastError = cmd.reason;
+        }
+        await updateTaskInfo(cwd(), cmd.taskId, updates).catch(() => {});
+        if (cmd.status === 'done') {
+          await assignDependentTasks(cmd.taskId).catch(() => {});
+          eventBus.emit("executor:task-completed", { taskId: cmd.taskId, success: true });
+        }
+      }
+    } catch (e) {
+      log("ERROR", "AutoExec", `executor:command failed: ${e}`);
+    }
+  };
+  eventBus.on("executor:command", onExecutorCommand);
 
   return server;
 }

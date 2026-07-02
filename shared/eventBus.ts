@@ -57,6 +57,19 @@ export interface PermissionRequestEvent {
   message: string
 }
 
+export interface TaskPermissionRequestEvent {
+  taskId: string
+  permId: string
+  toolName: string
+  input?: unknown
+  message: string
+}
+
+export interface TaskPermissionTimeoutEvent {
+  taskId: string
+  permId: string
+}
+
 export interface PermissionResponseEvent {
   sessionId: string
   approved: boolean
@@ -90,7 +103,14 @@ export interface ApprovalRequestEvent {
 
 export interface ApprovalResponseEvent {
   taskId: string
-  action: 'execute' | 'later' | 'abort'
+  action: 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop'
+}
+
+export interface ExecutorCommandEvent {
+  action: 'start' | 'stop' | 'resume-task' | 'retry-task' | 'skip-task' | 'continue-task' | 'set-status'
+  taskId?: string
+  status?: string
+  reason?: string
 }
 
 export interface EventBusEvents {
@@ -114,6 +134,8 @@ export interface EventBusEvents {
   // Permission
   'permission:request': PermissionRequestEvent
   'permission:response': PermissionResponseEvent
+  'task:permission-request': TaskPermissionRequestEvent
+  'task:permission-timeout': TaskPermissionTimeoutEvent
 
   // Executor
   'executor:task-claimed': ExecutorTaskEvent
@@ -127,6 +149,9 @@ export interface EventBusEvents {
   // Approval workflow
   'approval:required': ApprovalRequestEvent
   'approval:resolved': ApprovalResponseEvent
+
+  // Executor control (from chat/tools)
+  'executor:command': ExecutorCommandEvent
 }
 
 class TypedEventBus extends EventEmitter {

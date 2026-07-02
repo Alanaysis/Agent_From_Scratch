@@ -17,6 +17,7 @@ import { DiscoveryTool } from "../discovery/DiscoveryTool";
 import { GrpcClientTool } from "./grpc/grpcClientTool";
 import { CheckpointTool } from "./workflow/checkpointTool";
 import { TaskCreateTool } from "./task/taskCreateTool";
+import { TaskControlTool } from "./task/taskControlTool";
 
 export function getTools(): Tools {
   return [
@@ -38,5 +39,6 @@ export function getTools(): Tools {
     GrpcClientTool,
     CheckpointTool,
     TaskCreateTool,
+    TaskControlTool,
   ];
 }

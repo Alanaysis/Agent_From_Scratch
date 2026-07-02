@@ -480,6 +480,40 @@ function getToolDefinitions(): LlmToolDefinition[] {
         additionalProperties: false,
       },
     },
+    {
+      name: "TaskControl",
+      description:
+        "Control workflow tasks and the executor. Use this to interact with the workflow when one is active. " +
+        "Actions: 'list' (list all tasks with status), 'retry' (retry a failed/paused task by taskId), " +
+        "'skip' (skip a failed task and continue downstream), 'continue' (mark failed task as done and continue), " +
+        "'resume' (resume a paused task), 'start-executor' (start/resume the workflow executor), " +
+        "'stop-executor' (pause the executor), 'set-status' (manually set a task's status). " +
+        "When the user says '继续'/'continue'/'retry'/'重试'/'跳过'/'skip' about a workflow task, use this tool instead of executing the task yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["list", "retry", "skip", "continue", "resume", "start-executor", "stop-executor", "set-status"],
+            description: "The control action to perform.",
+          },
+          taskId: {
+            type: "string",
+            description: "Task ID (required for retry, skip, continue, resume, set-status). Use 'list' first to find task IDs.",
+          },
+          status: {
+            type: "string",
+            description: "New status (required for set-status). One of: todo, in_progress, paused, done, failed, skipped, cancelled.",
+          },
+          reason: {
+            type: "string",
+            description: "Optional reason for skip or set-status.",
+          },
+        },
+        required: ["action"],
+        additionalProperties: false,
+      },
+    },
   ];
 }
 

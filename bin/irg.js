@@ -1332,7 +1332,8 @@ var openAiProvider = {
             parameters: tool.parameters
           }
         }))
-      })
+      }),
+      signal: params.signal
     });
     if (!response.ok) {
       const payload = await response.json();
@@ -1405,7 +1406,8 @@ var anthropicProvider = {
           description: tool.description,
           input_schema: tool.parameters
         }))
-      })
+      }),
+      signal: params.signal
     });
     if (!response.ok) {
       const payload = await response.json();
@@ -1855,7 +1857,7 @@ function stringify(data) {
     return String(data);
   }
 }
-async function* executeSubagentToolCall(toolName, toolInput, toolUseId, context, permissionFn, filteredTools) {
+async function* executeSubagentToolCall(toolName, toolInput, toolUseId, context, permissionFn, filteredTools, onPermissionRequest) {
   const tool = findToolByName(filteredTools, toolName);
   if (!tool) {
     yield createToolResultMessage(toolUseId, stringify({ error: `Unknown tool ${toolName}` }), true);
@@ -1870,7 +1872,27 @@ async function* executeSubagentToolCall(toolName, toolInput, toolUseId, context,
     return;
   }
   let effectiveInput = toolInput;
-  if (permission.updatedInput !== void 0) {
+  if (permission.behavior === "ask") {
+    const permResult = onPermissionRequest ? await onPermissionRequest({
+      toolName,
+      input: toolInput,
+      message: permission.message || `Tool ${toolName} requires confirmation`
+    }) : false;
+    const allowed = typeof permResult === "boolean" ? permResult : permResult.allowed;
+    if (!allowed) {
+      yield createToolResultMessage(
+        toolUseId,
+        stringify({ error: `User rejected ${toolName}` }),
+        true
+      );
+      return;
+    }
+    if (typeof permResult === "object" && permResult.updatedInput !== void 0) {
+      effectiveInput = permResult.updatedInput;
+    } else if (permission.updatedInput !== void 0) {
+      effectiveInput = permission.updatedInput;
+    }
+  } else if (permission.updatedInput !== void 0) {
     effectiveInput = permission.updatedInput;
   }
   try {
@@ -1896,8 +1918,10 @@ async function runAgent(params) {
   const maxTurns = params.maxTurns ?? agentDef.maxTurns ?? 8;
   const permissionFn = params.canUseTool ?? canUseTool;
   const subContext = createSubagentContext(params.parentContext, {
-    agentType: agentDef.name
+    agentType: agentDef.name,
+    shareAbortController: true
   });
+  const signal = subContext.abortController.signal;
   const filteredTools = getFilteredTools(agentDef);
   if (!getLlmConfig()?.apiKey) {
     console.log(`[runAgent] No LLM API key configured, returning early`);
@@ -1929,13 +1953,22 @@ async function runAgent(params) {
     }
   }
   for (let turn = 0; turn < maxTurns; turn += 1) {
+    if (signal.aborted) {
+      console.log(`[runAgent] Aborted before turn ${turn + 1}`);
+      break;
+    }
     console.log(`[runAgent] Turn ${turn + 1}/${maxTurns}`);
     const llmResponse = await runLlmTurn({
       messages,
       systemPrompt,
       tools: toolDefs,
-      onTextDelta: params.onProgress
+      onTextDelta: params.onProgress,
+      signal
     });
+    if (signal.aborted) {
+      console.log(`[runAgent] Aborted during LLM turn ${turn + 1}`);
+      break;
+    }
     if (!llmResponse.text && llmResponse.toolCalls.length === 0) {
       break;
     }
@@ -1964,13 +1997,18 @@ async function runAgent(params) {
       break;
     }
     for (const toolCall of toolCalls) {
+      if (signal.aborted) {
+        console.log(`[runAgent] Aborted before tool ${toolCall.name}`);
+        break;
+      }
       for await (const msg of executeSubagentToolCall(
         toolCall.name,
         toolCall.input,
         toolCall.id,
         subContext,
         permissionFn,
-        filteredTools
+        filteredTools,
+        params.onPermissionRequest
       )) {
         messages.push(msg);
         allResultMessages.push(msg);
@@ -5819,6 +5857,14 @@ function getTasksDir(cwd2) {
 function getTaskInfoPath(cwd2, taskId) {
   return join15(getTasksDir(cwd2), `${taskId}.json`);
 }
+async function readTaskInfo(cwd2, taskId) {
+  try {
+    const content = await readFile14(getTaskInfoPath(cwd2, taskId), "utf8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
 async function createTask(cwd2, task) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const newTask = {
@@ -5846,6 +5892,40 @@ async function createTask(cwd2, task) {
     "utf8"
   );
   return newTask;
+}
+async function listTasks(cwd2) {
+  const infos = /* @__PURE__ */ new Map();
+  try {
+    const entries = await readdir8(getTasksDir(cwd2));
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) {
+        continue;
+      }
+      const taskId = entry.replace(/\.json$/, "");
+      const info = await readTaskInfo(cwd2, taskId);
+      if (info) {
+        infos.set(taskId, info);
+      }
+    }
+  } catch {
+  }
+  return [...infos.values()].sort((left, right) => {
+    const statusOrder = {
+      in_progress: 0,
+      todo: 1,
+      verify: 2,
+      failed: 3,
+      done: 4
+    };
+    const leftRank = statusOrder[left.status] ?? 5;
+    const rightRank = statusOrder[right.status] ?? 5;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    const leftTime = left.updatedAt || left.createdAt || "";
+    const rightTime = right.updatedAt || right.createdAt || "";
+    return rightTime.localeCompare(leftTime);
+  });
 }
 
 // tools/task/taskCreateTool.ts
@@ -5900,6 +5980,108 @@ var TaskCreateTool = {
   }
 };
 
+// tools/task/taskControlTool.ts
+var TaskControlTool = {
+  name: "TaskControl",
+  inputSchema: null,
+  outputSchema: null,
+  async description() {
+    return "Control workflow tasks and executor: list tasks, retry/skip/continue/resume tasks, start/stop executor, or set task status";
+  },
+  async call(args, context, _canUseTool, _parentMessage) {
+    const { action } = args;
+    if (action === "list") {
+      const allTasks = await listTasks(context.cwd);
+      return {
+        data: {
+          ok: true,
+          action: "list",
+          message: `Found ${allTasks.length} task(s)`,
+          tasks: allTasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            assignee: t.assignee,
+            sessionId: t.sessionId,
+            lastError: t.lastError ? t.lastError.slice(0, 200) : void 0,
+            checkpointAfter: t.checkpointAfter,
+            requiresApproval: t.requiresApproval
+          }))
+        }
+      };
+    }
+    if (action === "start-executor") {
+      eventBus.emit("executor:command", { action: "start" });
+      return {
+        data: { ok: true, action: "start-executor", message: "Executor started \u2014 pending tasks will be picked up automatically" }
+      };
+    }
+    if (action === "stop-executor") {
+      eventBus.emit("executor:command", { action: "stop" });
+      return {
+        data: { ok: true, action: "stop-executor", message: "Executor stopped \u2014 running tasks paused" }
+      };
+    }
+    if (!args.taskId) {
+      throw new Error("taskId is required for this action");
+    }
+    const task = await readTaskInfo(context.cwd, args.taskId);
+    if (!task) {
+      throw new Error(`Task ${args.taskId} not found`);
+    }
+    if (action === "retry") {
+      eventBus.emit("executor:command", { action: "retry-task", taskId: args.taskId });
+      return {
+        data: { ok: true, action: "retry", message: `Task "${task.title}" queued for retry \u2014 status reset to todo` }
+      };
+    }
+    if (action === "skip") {
+      eventBus.emit("executor:command", { action: "skip-task", taskId: args.taskId, reason: args.reason });
+      return {
+        data: { ok: true, action: "skip", message: `Task "${task.title}" skipped \u2014 downstream tasks will be triggered` }
+      };
+    }
+    if (action === "continue") {
+      eventBus.emit("executor:command", { action: "continue-task", taskId: args.taskId });
+      return {
+        data: { ok: true, action: "continue", message: `Continuing past failed task "${task.title}" \u2014 downstream tasks will be triggered` }
+      };
+    }
+    if (action === "resume") {
+      eventBus.emit("executor:command", { action: "resume-task", taskId: args.taskId });
+      return {
+        data: { ok: true, action: "resume", message: `Task "${task.title}" resumed from paused state` }
+      };
+    }
+    if (action === "set-status") {
+      if (!args.status) {
+        throw new Error("status is required for set-status action");
+      }
+      eventBus.emit("executor:command", { action: "set-status", taskId: args.taskId, status: args.status, reason: args.reason });
+      return {
+        data: { ok: true, action: "set-status", message: `Task "${task.title}" status set to ${args.status}` }
+      };
+    }
+    throw new Error(`Unknown action: ${action}`);
+  },
+  async validateInput(input3) {
+    const validActions = ["list", "retry", "skip", "continue", "resume", "start-executor", "stop-executor", "set-status"];
+    if (!input3?.action || !validActions.includes(input3.action)) {
+      return { result: false, message: `action must be one of: ${validActions.join(", ")}` };
+    }
+    return { result: true };
+  },
+  async checkPermissions(_input, _context) {
+    return { behavior: "allow", updatedInput: _input };
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return true;
+  }
+};
+
 // tools/registry.ts
 function getTools() {
   return [
@@ -5920,7 +6102,8 @@ function getTools() {
     DiscoveryTool,
     GrpcClientTool,
     CheckpointTool,
-    TaskCreateTool
+    TaskCreateTool,
+    TaskControlTool
   ];
 }
 
@@ -6260,6 +6443,34 @@ function getToolDefinitions() {
           provider: { type: "string", enum: ["openai", "stability"], description: "Image generation provider." }
         },
         required: ["prompt"],
+        additionalProperties: false
+      }
+    },
+    {
+      name: "TaskControl",
+      description: "Control workflow tasks and the executor. Use this to interact with the workflow when one is active. Actions: 'list' (list all tasks with status), 'retry' (retry a failed/paused task by taskId), 'skip' (skip a failed task and continue downstream), 'continue' (mark failed task as done and continue), 'resume' (resume a paused task), 'start-executor' (start/resume the workflow executor), 'stop-executor' (pause the executor), 'set-status' (manually set a task's status). When the user says '\u7EE7\u7EED'/'continue'/'retry'/'\u91CD\u8BD5'/'\u8DF3\u8FC7'/'skip' about a workflow task, use this tool instead of executing the task yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["list", "retry", "skip", "continue", "resume", "start-executor", "stop-executor", "set-status"],
+            description: "The control action to perform."
+          },
+          taskId: {
+            type: "string",
+            description: "Task ID (required for retry, skip, continue, resume, set-status). Use 'list' first to find task IDs."
+          },
+          status: {
+            type: "string",
+            description: "New status (required for set-status). One of: todo, in_progress, paused, done, failed, skipped, cancelled."
+          },
+          reason: {
+            type: "string",
+            description: "Optional reason for skip or set-status."
+          }
+        },
+        required: ["action"],
         additionalProperties: false
       }
     }

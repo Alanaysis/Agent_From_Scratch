@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   Plus, History, Play, Pause, Send, Square, Loader2,
   CheckCircle, XCircle, Clock, ChevronRight, ChevronDown,
-  Wrench, Cpu, Bot, ChevronLeft, Maximize2, FileText
+  Wrench, Cpu, Bot, ChevronLeft, Maximize2, FileText, Trash2
 } from 'lucide-react'
 import { WorkflowRail } from './WorkflowRail'
 import { ProposalPicker } from './ProposalPicker'
@@ -144,7 +144,7 @@ function SystemEventTag({ task, tasks }: { task: CompactTask; tasks: CompactTask
   )
 }
 
-function MessageBubble({ msg, tasks }: { msg: CompactMessage; tasks: CompactTask[] }) {
+function MessageBubble({ msg, tasks, allMessages }: { msg: CompactMessage; tasks: CompactTask[]; allMessages: CompactMessage[] }) {
   if (msg.role === 'system') return null
 
   const isUser = msg.role === 'user'
@@ -167,18 +167,39 @@ function MessageBubble({ msg, tasks }: { msg: CompactMessage; tasks: CompactTask
   }
 
   if (isToolResult) {
+    // Try to parse tool result content for friendlier display
+    let displayContent = msg.content
+    let parsedError: string | null = null
+    try {
+      const parsed = JSON.parse(msg.content)
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.error === 'string') {
+          parsedError = parsed.error
+        } else if (typeof parsed.message === 'string') {
+          parsedError = parsed.message
+        } else if (parsed.stdout !== undefined) {
+          displayContent = parsed.stdout || '(empty stdout)'
+          if (parsed.stderr) displayContent += `\n[stderr] ${parsed.stderr}`
+          if (parsed.exitCode !== undefined && parsed.exitCode !== 0) displayContent += `\n[exit] ${parsed.exitCode}`
+        }
+      }
+    } catch {}
+
+    const isError = msg.role === 'tool_error' || parsedError !== null
+    const shownContent = parsedError || displayContent
+
     return (
       <div style={{ padding: '2px 10px' }}>
         <div style={{
           padding: '4px 8px',
-          backgroundColor: msg.role === 'tool_error' ? 'rgba(192,80,80,0.06)' : 'rgba(92,184,92,0.04)',
-          border: `1px solid ${msg.role === 'tool_error' ? 'rgba(192,80,80,0.15)' : 'rgba(92,184,92,0.1)'}`,
+          backgroundColor: isError ? 'rgba(192,80,80,0.06)' : 'rgba(92,184,92,0.04)',
+          border: `1px solid ${isError ? 'rgba(192,80,80,0.15)' : 'rgba(92,184,92,0.1)'}`,
           borderLeft: taskColor ? `3px solid ${taskColor}` : undefined,
-          fontSize: 10, fontFamily: mono, color: msg.role === 'tool_error' ? 'var(--warm-red)' : 'var(--text-secondary)',
+          fontSize: 10, fontFamily: mono, color: isError ? 'var(--warm-red)' : 'var(--text-secondary)',
           maxHeight: 120, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
           borderRadius: 2,
         }}>
-          {msg.content.slice(0, 500)}
+          {shownContent.slice(0, 500)}
         </div>
       </div>
     )
@@ -206,7 +227,23 @@ function MessageBubble({ msg, tasks }: { msg: CompactMessage; tasks: CompactTask
             ? msg.blocks.map((block: any, i: number) => {
                 if (block.type === 'text') return <div key={i}>{renderMarkdown(block.text || '')}</div>
                 if (block.type === 'tool_use') {
-                  const toolStatus = block.status || 'pending'
+                  let toolStatus = block.status || 'pending'
+                  if (!block.status) {
+                    const hasResult = allMessages.some(m =>
+                      (m.role === 'tool_result' || m.role === 'tool_error') &&
+                      m.blocks?.some((b: any) => b.toolUseId === block.id)
+                    )
+                    if (hasResult) {
+                      const isError = allMessages.some(m =>
+                        m.role === 'tool_error' &&
+                        m.blocks?.some((b: any) => b.toolUseId === block.id)
+                      )
+                      toolStatus = isError ? 'failed' : 'completed'
+                    } else {
+                      const runningTask = tasks.find(t => t.status === 'in_progress')
+                      toolStatus = runningTask ? 'running' : 'pending'
+                    }
+                  }
                   const sCfg: Record<string, { color: string; label: string }> = {
                     pending: { color: 'var(--text-muted)', label: 'PENDING' },
                     running: { color: 'var(--amber)', label: 'RUNNING' },
@@ -255,6 +292,12 @@ export function CompactWorkflowView() {
   const [workflowName, setWorkflowName] = React.useState<string | null>(null)
   const [executorRunning, setExecutorRunning] = React.useState(false)
   const [autoCollapsed, setAutoCollapsed] = React.useState(false)
+  const [statusBanners, setStatusBanners] = React.useState<Array<{
+    id: string
+    text: string
+    type: 'start' | 'done' | 'failed'
+    taskTitle: string
+  }>>([])
   const [approvalPopup, setApprovalPopup] = React.useState<{
     taskId: string
     taskTitle: string
@@ -269,10 +312,29 @@ export function CompactWorkflowView() {
     loading: boolean
   } | null>(null)
   const [stopChoice, setStopChoice] = React.useState(false)
+  const [expandedFailedDesc, setExpandedFailedDesc] = React.useState<Set<string>>(new Set())
   const [failedTaskAction, setFailedTaskAction] = React.useState<{
     taskId: string
     taskTitle: string
     error: string
+  } | null>(null)
+  const dismissedFailedTasksRef = React.useRef<Set<string>>(new Set())
+
+  function pushBanner(type: 'start' | 'done' | 'failed', taskTitle: string) {
+    const id = `banner-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const text = type === 'start' ? `▸ ${taskTitle} Running`
+      : type === 'done' ? `✓ ${taskTitle} Done`
+      : `✕ ${taskTitle} Failed`
+    setStatusBanners(prev => [...prev, { id, text, type, taskTitle }])
+    setTimeout(() => {
+      setStatusBanners(prev => prev.filter(b => b.id !== id))
+    }, 3500)
+  }
+  const [permissionRequest, setPermissionRequest] = React.useState<{
+    id: string
+    toolName: string
+    message: string
+    input?: any
   } | null>(null)
   const approvalPopupRef = React.useRef<typeof approvalPopup>(null)
 
@@ -285,6 +347,9 @@ export function CompactWorkflowView() {
   const seenMsgIdsRef = React.useRef<Set<string>>(new Set())
   const taskOrderRef = React.useRef<string[]>([])
   const tasksRef = React.useRef<CompactTask[]>([])
+  const messagesRef = React.useRef<CompactMessage[]>([])
+  const workflowExpandedRef = React.useRef(false)
+  const userCollapsedRef = React.useRef(false)
 
   React.useEffect(() => {
     sessionIdRef.current = sessionId
@@ -315,8 +380,24 @@ export function CompactWorkflowView() {
   }, [tasks])
 
   React.useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  React.useEffect(() => {
+    workflowExpandedRef.current = workflowExpanded
+  }, [workflowExpanded])
+
+  React.useEffect(() => {
     approvalPopupRef.current = approvalPopup
   }, [approvalPopup])
+
+  // Centralize approval popup updates so the state and ref always stay in
+  // sync. The ref is updated synchronously (for SSE handlers that read it
+  // before re-render) and the state triggers the re-render.
+  function updateApprovalPopup(next: typeof approvalPopup) {
+    approvalPopupRef.current = next
+    setApprovalPopup(next)
+  }
 
   React.useEffect(() => {
     const saved = localStorage.getItem('compact-session-id')
@@ -400,7 +481,7 @@ export function CompactWorkflowView() {
       .then(data => {
         if (data.approvals) {
           for (const req of data.approvals) {
-            if (req.requestType === 'task_failure') {
+            if (req.requestType === 'task_failure' && !dismissedFailedTasksRef.current.has(req.taskId)) {
               const rawError = req.errorMessage || req.approvalMessage || 'Task failed'
               const cleanError = rawError.replace(/^Task failed:\s*/i, '')
               setFailedTaskAction({
@@ -436,7 +517,7 @@ export function CompactWorkflowView() {
           if (!blocks) {
             blocks = m.content.map((c: any) => {
               if (c.type === 'text') return { type: 'text', text: c.text }
-              if (c.type === 'tool_use') return { type: 'tool_use', id: c.id, name: c.name, input: c.input, status: 'completed' }
+              if (c.type === 'tool_use') return { type: 'tool_use', id: c.id, name: c.name, input: c.input, status: 'pending' }
               return c
             })
           }
@@ -450,6 +531,12 @@ export function CompactWorkflowView() {
             }
             return b
           })
+        }
+
+        // For tool_result messages, ensure toolUseId is in blocks for status matching
+        if (m.type === 'tool_result' && m.toolUseId) {
+          if (!blocks) blocks = []
+          blocks = [{ type: 'tool_result', toolUseId: m.toolUseId, isError: m.isError }, ...(blocks as any[])]
         }
 
         // Associate with the currently running task (if any)
@@ -474,6 +561,15 @@ export function CompactWorkflowView() {
         const data = JSON.parse(e.data)
         if (taskIdsRef.current.has(data.taskId)) {
           setTasks(prev => prev.map(t => t.id === data.taskId ? { ...t, status: 'in_progress' } : t))
+          // First task starting: switch from workflow detail to chat view
+          const claimedTask = tasksRef.current.find(t => t.id === data.taskId)
+          const noActiveBefore = !tasksRef.current.some(t => t.status === 'in_progress' || t.status === 'done' || t.status === 'failed')
+          if (noActiveBefore && workflowExpandedRef.current) {
+            setWorkflowExpanded(false)
+          }
+          if (claimedTask) {
+            pushBanner('start', claimedTask.title)
+          }
         }
       } catch {}
     })
@@ -482,14 +578,19 @@ export function CompactWorkflowView() {
       try {
         const data = JSON.parse(e.data)
         if (taskIdsRef.current.has(data.taskId)) {
-          loadTasks()
+          loadTasksDebounced()
+          const completedTask = tasksRef.current.find(t => t.id === data.taskId)
           if (data.success === false) {
-            const failedTask = tasksRef.current.find(t => t.id === data.taskId)
-            setFailedTaskAction({
-              taskId: data.taskId,
-              taskTitle: failedTask?.title || data.taskId,
-              error: typeof data.result === 'string' ? data.result : 'Task failed',
-            })
+            if (completedTask) pushBanner('failed', completedTask.title)
+            if (!dismissedFailedTasksRef.current.has(data.taskId)) {
+              setFailedTaskAction({
+                taskId: data.taskId,
+                taskTitle: completedTask?.title || data.taskId,
+                error: typeof data.result === 'string' ? data.result : 'Task failed',
+              })
+            }
+          } else {
+            if (completedTask) pushBanner('done', completedTask.title)
           }
         }
       } catch {}
@@ -505,6 +606,7 @@ export function CompactWorkflowView() {
         const data = JSON.parse(e.data)
         // task_failure: show inline action bar above input, not popup
         if (data.requestType === 'task_failure') {
+          if (dismissedFailedTasksRef.current.has(data.taskId)) return
           const rawError = data.errorMessage || data.approvalMessage || 'Task failed'
           const cleanError = rawError.replace(/^Task failed:\s*/i, '')
           setFailedTaskAction({
@@ -512,7 +614,7 @@ export function CompactWorkflowView() {
             taskTitle: data.taskTitle || data.taskId,
             error: cleanError,
           })
-          loadTasks()
+          loadTasksDebounced()
           return
         }
         // Skip if popup already showing for this task (prevents flicker from re-emitted events)
@@ -521,14 +623,14 @@ export function CompactWorkflowView() {
         // Show popup for any approval event
         const task = tasksRef.current.find(t => t.id === data.taskId)
         const isCheckpoint = task?.status === 'paused' && task?.checkpointAfter === true
-        setApprovalPopup({
+        updateApprovalPopup({
           taskId: data.taskId,
           taskTitle: data.taskTitle || data.taskId,
           message: data.approvalMessage || 'Approval required',
           isCheckpoint,
           resolving: false,
         })
-        loadTasks()
+        loadTasksDebounced()
       } catch {
         // ignore parse errors
       }
@@ -539,8 +641,7 @@ export function CompactWorkflowView() {
         const data = JSON.parse(e.data)
         const current = approvalPopupRef.current
         if (current && current.taskId === data.taskId) {
-          setApprovalPopup(null)
-          approvalPopupRef.current = null
+          updateApprovalPopup(null)
         }
         setFailedTaskAction(prev => prev && prev.taskId === data.taskId ? null : prev)
       } catch {}
@@ -549,6 +650,32 @@ export function CompactWorkflowView() {
     es.addEventListener('tool:start', () => {})
     es.addEventListener('tool:result', () => {})
     es.addEventListener('tool:error', () => {})
+
+    es.addEventListener('permission', (e: any) => {
+      try {
+        const data = JSON.parse(e.data)
+        const permId = data.permId || data.id
+        if (!permId) return
+        setPermissionRequest({
+          id: permId,
+          toolName: data.toolName || 'Unknown Tool',
+          message: data.message || `Allow ${data.toolName}?`,
+          input: data.input,
+        })
+      } catch {}
+    })
+
+    es.addEventListener('permission-timeout', (e: any) => {
+      try {
+        const data = JSON.parse(e.data)
+        setPermissionRequest(prev => {
+          if (!prev) return null
+          const permId = data.permId || data.id
+          if (permId && prev.id !== permId) return prev
+          return null
+        })
+      } catch {}
+    })
 
     es.onerror = () => {
       es.close()
@@ -565,8 +692,8 @@ export function CompactWorkflowView() {
   }
 
   async function approveTask(taskId: string, action: 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop') {
-    setApprovalPopup(prev => prev ? { ...prev, resolving: true } : null)
-    approvalPopupRef.current = approvalPopupRef.current ? { ...approvalPopupRef.current, resolving: true } : null
+    const cur = approvalPopupRef.current
+    updateApprovalPopup(cur ? { ...cur, resolving: true } : null)
     try {
       await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
         method: 'POST',
@@ -577,14 +704,19 @@ export function CompactWorkflowView() {
     } catch (e) {
       console.error('[Compact] approve error:', e)
     } finally {
-      setApprovalPopup(null)
-      approvalPopupRef.current = null
+      // Only clear if popup is still for the same task — a new approval may have arrived during await
+      const after = approvalPopupRef.current
+      updateApprovalPopup(after && after.taskId === taskId ? null : after)
     }
   }
 
   async function handleFailedTaskAction(action: 'retry' | 'continue' | 'new') {
     if (!failedTaskAction) return
     const { taskId } = failedTaskAction
+    // Only dismiss on continue/new (terminal actions); retry should allow re-popup on next failure
+    if (action === 'continue' || action === 'new') {
+      dismissedFailedTasksRef.current.add(taskId)
+    }
     setFailedTaskAction(null)
     try {
       if (action === 'retry') {
@@ -611,6 +743,21 @@ export function CompactWorkflowView() {
       await loadTasks()
     } catch (e) {
       console.error('[Compact] failed task action error:', e)
+    }
+  }
+
+  async function handlePermissionResponse(approved: boolean) {
+    if (!permissionRequest) return
+    const permId = permissionRequest.id
+    setPermissionRequest(null)
+    try {
+      await fetch(`${API_BASE}/api/chat/permission-response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: permId, approved }),
+      })
+    } catch (e) {
+      console.error('[Compact] permission response error:', e)
     }
   }
 
@@ -646,15 +793,118 @@ export function CompactWorkflowView() {
         }
         setTasks(compact)
         taskIdsRef.current = new Set(compact.map(t => t.id))
+        // Check if workflow fully completed — auto switch to detail view
+        if (compact.length > 0) {
+          const allDone = compact.every(t =>
+            t.status === 'done' || t.status === 'failed' || t.status === 'cancelled' || t.status === 'skipped'
+          )
+          const hasAnyStarted = compact.some(t =>
+            t.status === 'done' || t.status === 'failed' || t.status === 'cancelled' || t.status === 'skipped' || t.status === 'in_progress'
+          )
+          if (allDone && hasAnyStarted && !workflowExpandedRef.current && !userCollapsedRef.current) {
+            setWorkflowExpanded(true)
+          }
+        }
       }
     } catch {}
   }
 
-  async function handleStart(filePath: string, params?: Record<string, string>) {
+  // Debounced refresh for SSE-driven updates. The 2s poll already keeps state
+  // fresh; SSE events (task-completed/approval) can fire in rapid bursts, so
+  // coalescing them avoids redundant /api/tasks fetches on top of the poll.
+  const loadTasksDebouncedRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  function loadTasksDebounced() {
+    if (loadTasksDebouncedRef.current) clearTimeout(loadTasksDebouncedRef.current)
+    loadTasksDebouncedRef.current = setTimeout(() => {
+      loadTasksDebouncedRef.current = null
+      loadTasks()
+    }, 300)
+  }
+
+  async function handleStart(filePath: string, _params?: Record<string, string>) {
+    try {
+      // Stop any background activity from the previous session before starting fresh
+      const oldSid = sessionIdRef.current
+      if (oldSid) {
+        try {
+          // Cancel all active tasks (in_progress / paused / todo) from the old session
+          const tasksRes = await fetch(`${API_BASE}/api/tasks`)
+          const tasksData = await tasksRes.json()
+          const activeTasks = (tasksData.tasks || []).filter(
+            (t: any) => t.sessionId === oldSid &&
+              ['in_progress', 'paused', 'todo', 'pausing', 'verify'].includes(t.status)
+          )
+          for (const t of activeTasks) {
+            await fetch(`${API_BASE}/api/tasks/${t.id}/cancel`, { method: 'POST' }).catch(() => {})
+          }
+        } catch {}
+      }
+      // Always stop the executor to halt the polling loop, then it will be restarted by launchWorkflow
+      await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' }).catch(() => {})
+      setExecutorRunning(false)
+      // Abort any in-flight chat stream
+      if (chatAbortRef.current) {
+        chatAbortRef.current.abort()
+        chatAbortRef.current = null
+      }
+
+      // Read the template to get its triggers/useCase for generating a trigger message
+      userCollapsedRef.current = false
+      const tmplRes = await fetch(`${API_BASE}/api/templates`)
+      const tmplData = await tmplRes.json()
+      const template = (tmplData.templates || []).find((t: any) => t.filename === filePath || t.id === filePath)
+      const triggerText = template?.useCase
+        ? template.useCase
+        : (template?.triggers?.[0] || template?.name || '创建工作流')
+
+      // Clear old state
+      setMessages([])
+      seenMsgIdsRef.current.clear()
+      setTasks([])
+      taskOrderRef.current = []
+      setSessionId(null)
+      sessionIdRef.current = null
+      setWorkflowName(null)
+      setFailedTaskAction(null)
+      updateApprovalPopup(null)
+      setPermissionRequest(null)
+      setStopChoice(false)
+      dismissedFailedTasksRef.current = new Set()
+      localStorage.removeItem('compact-session-id')
+      localStorage.removeItem('compact-task-order')
+
+      // Typewriter effect: fill the trigger text into the input box so user sees the auto-fill process
+      setInput('')
+      await new Promise<void>(resolve => {
+        let i = 0
+        const step = Math.max(1, Math.ceil(triggerText.length / 40))
+        const timer = setInterval(() => {
+          i += step
+          if (i >= triggerText.length) {
+            setInput(triggerText)
+            clearInterval(timer)
+            resolve()
+          } else {
+            setInput(triggerText.slice(0, i))
+          }
+        }, 20)
+      })
+
+      // Brief pause so user can see the full text before sending
+      await new Promise(r => setTimeout(r, 300))
+
+      // Auto-send the trigger text
+      await autoSend(triggerText)
+    } catch (e) {
+      console.error('[Compact] start error:', e)
+      alert('Failed to start workflow')
+    }
+  }
+
+  async function launchWorkflow(filePath: string, params?: Record<string, string>) {
     try {
       setIsLoading(true)
       setTemplateConfirm(prev => prev ? { ...prev, loading: true } : null)
-      // Always create a new session — don't reuse old one
       const res = await fetch(`${API_BASE}/api/compact/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -665,7 +915,6 @@ export function CompactWorkflowView() {
         alert(data.error)
         return
       }
-      // Clear old state
       setMessages([])
       seenMsgIdsRef.current.clear()
       setSessionId(data.sessionId)
@@ -680,14 +929,170 @@ export function CompactWorkflowView() {
       taskOrderRef.current = newTasks.map(t => t.id)
       setTasks(newTasks)
       taskIdsRef.current = new Set(newTasks.map(t => t.id))
+      userCollapsedRef.current = false
       setWorkflowExpanded(true)
       setTemplateConfirm(null)
+      try {
+        await fetch(`${API_BASE}/api/executor/start`, { method: 'POST' })
+        setExecutorRunning(true)
+      } catch {}
     } catch (e) {
-      console.error('[Compact] start error:', e)
+      console.error('[Compact] launch error:', e)
       alert('Failed to start workflow')
       setTemplateConfirm(prev => prev ? { ...prev, loading: false } : null)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  /**
+   * Shared SSE stream consumer for /api/chat/sse. Parses `delta`, `message`,
+   * `done`, `error`, `permission` and `permission-timeout` events, updating
+   * component state directly. Returns the sessionId reported by `done`.
+   * Used by both autoSend and handleSend to avoid duplicated parsing logic.
+   */
+  async function consumeChatSseStream(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let currentEvent = ''
+    let newSessionId = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7)
+        } else if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (currentEvent === 'delta') {
+              setStreamingText(data.text)
+            } else if (currentEvent === 'message') {
+              setStreamingText('')
+              if (data.role !== 'user') {
+                const msgId = data.id || `msg-${Date.now()}-${Math.random()}`
+                if (seenMsgIdsRef.current.has(msgId)) continue
+                seenMsgIdsRef.current.add(msgId)
+                let chatBlocks = data.blocks
+                if (data.toolUseId) {
+                  chatBlocks = [{ type: 'tool_result', toolUseId: data.toolUseId, isError: data.role === 'tool_error' }, ...(chatBlocks || [])]
+                }
+                const msg: CompactMessage = {
+                  id: msgId,
+                  role: data.role || 'assistant',
+                  content: data.content || '',
+                  timestamp: Date.now(),
+                  blocks: chatBlocks,
+                }
+                setMessages(prev => [...prev, msg])
+              }
+            } else if (currentEvent === 'done') {
+              newSessionId = data.sessionId
+            } else if (currentEvent === 'error') {
+              console.error('[Compact] chat error:', data.message)
+            } else if (currentEvent === 'permission') {
+              const permId = data.id || data.permId
+              if (permId) {
+                setPermissionRequest({
+                  id: permId,
+                  toolName: data.toolName,
+                  message: data.message || `Allow ${data.toolName}?`,
+                  input: data.input,
+                })
+              }
+            } else if (currentEvent === 'permission-timeout') {
+              setPermissionRequest(null)
+            }
+          } catch {}
+        }
+      }
+    }
+    return newSessionId
+  }
+
+  async function autoSend(text: string) {
+    if (!text.trim()) return
+
+    // Clear the input box now that the message is being sent
+    setInput('')
+
+    const userMsgId = `user-${Date.now()}`
+    seenMsgIdsRef.current.add(userMsgId)
+    const userMsg: CompactMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    }
+    setMessages(prev => [...prev, userMsg])
+
+    setIsLoading(true)
+    setIntentLoading(true)
+    setStreamingText('')
+
+    try {
+      // Intent recognition first
+      const intentRes = await fetch(`${API_BASE}/api/chat/intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      })
+      const intentData = await intentRes.json()
+      if (intentData.matched && intentData.template) {
+        const defaultParams: Record<string, string> = {}
+        for (const p of intentData.template.params || []) {
+          defaultParams[p.name] = p.default != null ? String(p.default) : 'localhost'
+        }
+        setTemplateConfirm({
+          template: intentData.template,
+          enhancement: intentData.enhancement,
+          params: defaultParams,
+          loading: false,
+        })
+        return
+      }
+
+      // No template matched — fall through to normal chat
+      let sid = sessionIdRef.current
+      if (!sid) {
+        const res = await fetch(`${API_BASE}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: text.slice(0, 50) }),
+        })
+        const data = await res.json()
+        if (data.session) {
+          sid = data.session.id
+          setSessionId(sid)
+          sessionIdRef.current = sid
+        }
+      }
+
+      const abortController = new AbortController()
+      chatAbortRef.current = abortController
+      const res = await fetch(`${API_BASE}/api/chat/sse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { text }, sessionId: sid || undefined, keepOpen: true }),
+        signal: abortController.signal,
+      })
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+
+      const newSessionId = await consumeChatSseStream(res.body.getReader())
+      if (newSessionId && !sid) {
+        setSessionId(newSessionId)
+        sessionIdRef.current = newSessionId
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') console.error('[Compact] autoSend error:', e)
+    } finally {
+      setIsLoading(false)
+      setIntentLoading(false)
+      setStreamingText('')
+      chatAbortRef.current = null
     }
   }
 
@@ -706,6 +1111,7 @@ export function CompactWorkflowView() {
         })
         const intentData = await intentRes.json()
         if (intentData.matched && intentData.template) {
+          setInput('')
           const defaultParams: Record<string, string> = {}
           for (const p of intentData.template.params || []) {
             defaultParams[p.name] = p.default != null ? String(p.default) : 'localhost'
@@ -774,53 +1180,7 @@ export function CompactWorkflowView() {
 
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let newSessionId = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let currentEvent = ''
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7)
-          } else if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (currentEvent === 'delta') {
-                setStreamingText(data.text)
-              } else if (currentEvent === 'message') {
-                setStreamingText('')
-                if (data.role !== 'user') {
-                  const msgId = data.id || `msg-${Date.now()}-${Math.random()}`
-                  if (seenMsgIdsRef.current.has(msgId)) continue
-                  seenMsgIdsRef.current.add(msgId)
-                  const msg: CompactMessage = {
-                    id: msgId,
-                    role: data.role || 'assistant',
-                    content: data.content || '',
-                    timestamp: Date.now(),
-                    blocks: data.blocks,
-                  }
-                  setMessages(prev => [...prev, msg])
-                }
-              } else if (currentEvent === 'done') {
-                newSessionId = data.sessionId
-              } else if (currentEvent === 'error') {
-                console.error('[Compact] chat error:', data.message)
-              }
-            } catch {}
-          }
-        }
-      }
-
+      const newSessionId = await consumeChatSseStream(res.body.getReader())
       if (newSessionId && !sid) {
         setSessionId(newSessionId)
         sessionIdRef.current = newSessionId
@@ -856,7 +1216,10 @@ export function CompactWorkflowView() {
     setWorkflowExpanded(false)
     setStreamingText('')
     setInput('')
+    setFailedTaskAction(null)
+    updateApprovalPopup(null)
     seenMsgIdsRef.current = new Set()
+    dismissedFailedTasksRef.current = new Set()
     localStorage.removeItem('compact-session-id')
     localStorage.removeItem('compact-task-order')
   }
@@ -870,6 +1233,18 @@ export function CompactWorkflowView() {
     } catch {}
   }
 
+  async function handleDeleteSession(sid: string) {
+    try {
+      await fetch(`${API_BASE}/api/sessions/${sid}`, { method: 'DELETE' })
+      setSessions(prev => prev.filter(s => s.id !== sid))
+      if (sessionIdRef.current === sid) {
+        await handleNewSession()
+      }
+    } catch (e) {
+      console.error('[Compact] delete session error:', e)
+    }
+  }
+
   async function handleSelectSession(sid: string) {
     setSessionId(sid)
     sessionIdRef.current = sid
@@ -878,8 +1253,11 @@ export function CompactWorkflowView() {
     taskOrderRef.current = []
     setWorkflowName(null)
     setWorkflowExpanded(false)
+    setFailedTaskAction(null)
+    updateApprovalPopup(null)
     setShowHistory(false)
     seenMsgIdsRef.current = new Set()
+    dismissedFailedTasksRef.current = new Set()
     await restoreSession(sid)
   }
 
@@ -905,13 +1283,20 @@ export function CompactWorkflowView() {
         await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
         setExecutorRunning(false)
       } else {
-        // Cancel all running tasks
-        const runningTasks = tasks.filter(t => t.status === 'in_progress')
-        for (const t of runningTasks) {
-          await fetch(`${API_BASE}/api/tasks/${t.id}/cancel`, { method: 'POST' })
+        // Cancel all non-terminal tasks (running, paused, pending) so nothing
+        // is left behind. Paused tasks include failed-but-waiting-decision ones.
+        const activeTasks = tasks.filter(t =>
+          t.status === 'in_progress' || t.status === 'paused' ||
+          t.status === 'pausing' || t.status === 'verify' || t.status === 'todo'
+        )
+        for (const t of activeTasks) {
+          await fetch(`${API_BASE}/api/tasks/${t.id}/cancel`, { method: 'POST' }).catch(() => {})
         }
         await fetch(`${API_BASE}/api/executor/stop`, { method: 'POST' })
         setExecutorRunning(false)
+        // Clear any pending failure/approval popups since the workflow is cancelled
+        setFailedTaskAction(null)
+        updateApprovalPopup(null)
       }
     } catch (e) {
       console.error('[Compact] stop choice error:', e)
@@ -958,7 +1343,7 @@ export function CompactWorkflowView() {
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', fontFamily: mono, letterSpacing: '0.05em' }}>IRG</span>
         </div>
         <div style={{ flex: 1 }} />
-        <ToolbarButton icon={<Plus size={12} />} label="New" onClick={handleNewSession} />
+        <ToolbarButton icon={<Plus size={12} />} label="Chat" onClick={handleNewSession} />
         <div style={{ position: 'relative' }}>
           <ToolbarButton icon={<History size={12} />} label="History" onClick={handleHistory} />
           {showHistory && (
@@ -972,24 +1357,44 @@ export function CompactWorkflowView() {
                 <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-faint)', fontSize: 11 }}>No sessions</div>
               )}
               {sessions.map(s => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => handleSelectSession(s.id)}
                   style={{
-                    display: 'block', width: '100%', padding: '6px 10px',
-                    background: 'none', border: 'none', borderBottom: '1px solid var(--border-subtle)',
-                    cursor: 'pointer', textAlign: 'left',
+                    display: 'flex', alignItems: 'center',
+                    borderBottom: '1px solid var(--border-subtle)',
                   }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-2)'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
-                  <div style={{ fontSize: 11, color: 'var(--text-primary)', fontFamily: sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.title || s.id}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--text-faint)', fontFamily: mono }}>
-                    {s.messageCount || 0} msgs · {new Date(s.updatedAt || s.createdAt).toLocaleDateString()}
-                  </div>
-                </button>
+                  <button
+                    onClick={() => handleSelectSession(s.id)}
+                    style={{
+                      flex: 1, display: 'block', padding: '6px 10px',
+                      background: 'none', border: 'none',
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: 'var(--text-primary)', fontFamily: sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.title || s.id}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text-faint)', fontFamily: mono }}>
+                      {s.messageCount || 0} msgs · {new Date(s.updatedAt || s.createdAt).toLocaleDateString()}
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id) }}
+                    title="Delete session"
+                    style={{
+                      padding: '6px 8px', background: 'none', border: 'none',
+                      cursor: 'pointer', color: 'var(--text-faint)',
+                      display: 'flex', alignItems: 'center',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--warm-red)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -1001,17 +1406,44 @@ export function CompactWorkflowView() {
           accent
           disabled={isLoading}
         />
-        <ToolbarButton
-          icon={executorRunning ? <Pause size={12} /> : <Play size={12} />}
-          label={executorRunning ? 'Pause' : 'Run'}
-          onClick={handleToggleExecutor}
-          disabled={!hasWorkflow}
-          accent={executorRunning}
-        />
       </div>
 
       {/* Middle Area */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+        {/* Status Banners — float across the top */}
+        {statusBanners.length > 0 && (
+          <div style={{
+            position: 'absolute', top: 8, left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 200, display: 'flex', flexDirection: 'column', gap: 4,
+            alignItems: 'center', pointerEvents: 'none',
+          }}>
+            {statusBanners.map(b => (
+              <div key={b.id} style={{
+                padding: '5px 14px',
+                fontSize: 11, fontFamily: mono, fontWeight: 700,
+                color: b.type === 'start' ? '#fbbf24'
+                  : b.type === 'done' ? '#86efac' : '#fca5a5',
+                backgroundColor: 'rgba(12,12,12,0.92)',
+                backdropFilter: 'blur(6px)',
+                border: `1px solid ${
+                  b.type === 'start' ? 'rgba(251,191,36,0.5)'
+                  : b.type === 'done' ? 'rgba(134,239,172,0.5)' : 'rgba(252,165,165,0.5)'}`,
+                borderLeft: `3px solid ${
+                  b.type === 'start' ? '#fbbf24'
+                  : b.type === 'done' ? '#86efac' : '#fca5a5'}`,
+                borderRadius: 2,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                maxWidth: 320,
+                boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+                animation: 'bannerSlide 0.4s ease-out',
+              }}>
+                {b.text}
+              </div>
+            ))}
+            <style>{`@keyframes bannerSlide { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+          </div>
+        )}
         {/* Workflow Rail (collapsed) */}
         {hasWorkflow && !workflowExpanded && (
           <WorkflowRail tasks={tasks} onExpand={() => setWorkflowExpanded(true)} />
@@ -1062,7 +1494,7 @@ export function CompactWorkflowView() {
                 {showSystemEvent && taskForEvent && taskForEvent.status !== 'todo' && (
                   <SystemEventTag task={taskForEvent} tasks={tasks} />
                 )}
-                <MessageBubble msg={msg} tasks={tasks} />
+                <MessageBubble msg={msg} tasks={tasks} allMessages={messages} />
               </React.Fragment>
             )
           })}
@@ -1179,7 +1611,7 @@ export function CompactWorkflowView() {
                 )}
               </div>
               <button
-                onClick={() => setWorkflowExpanded(false)}
+                onClick={() => { userCollapsedRef.current = true; setWorkflowExpanded(false) }}
                 style={{
                   background: 'none', border: '1px solid rgba(255,255,255,0.2)',
                   borderRadius: 2, cursor: 'pointer', padding: '3px 8px',
@@ -1321,21 +1753,76 @@ export function CompactWorkflowView() {
                           </div>
                         </div>
 
-                        {/* Description (visible for active/failed tasks) */}
+                        {/* Description (visible for active/failed tasks; collapsed by default when failed) */}
                         {task.description && (isActive || task.status === 'failed') && (
-                          <div style={{
-                            marginTop: 5, fontSize: 11, fontFamily: mono,
-                            color: task.status === 'failed' ? '#fca5a5' : '#e8e0d4',
-                            lineHeight: 1.45,
-                            padding: '4px 6px',
-                            backgroundColor: 'rgba(0,0,0,0.5)',
-                            borderRadius: 2,
-                            maxHeight: 80, overflow: 'auto',
-                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                          }}>
-                            {task.description.slice(0, 400)}
-                          </div>
+                          task.status === 'failed' && !expandedFailedDesc.has(task.id) ? (
+                            <button
+                              onClick={() => setExpandedFailedDesc(prev => new Set(prev).add(task.id))}
+                              style={{
+                                marginTop: 5, width: '100%', textAlign: 'left',
+                                fontSize: 10, fontFamily: mono,
+                                color: '#fca5a5', cursor: 'pointer',
+                                padding: '3px 6px',
+                                backgroundColor: 'rgba(0,0,0,0.3)',
+                                borderRadius: 2,
+                                border: '1px solid rgba(252,165,165,0.2)',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              <ChevronRight size={10} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                {task.description.slice(0, 60)}
+                              </span>
+                              <span style={{ fontSize: 9, opacity: 0.7, flexShrink: 0 }}>展开</span>
+                            </button>
+                          ) : task.status === 'failed' ? (
+                            <div style={{ marginTop: 5 }}>
+                              <button
+                                onClick={() => setExpandedFailedDesc(prev => {
+                                  const next = new Set(prev)
+                                  next.delete(task.id)
+                                  return next
+                                })}
+                                style={{
+                                  width: '100%', textAlign: 'left',
+                                  fontSize: 10, fontFamily: mono,
+                                  color: '#fca5a5', cursor: 'pointer',
+                                  padding: '3px 6px', marginBottom: 3,
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  display: 'flex', alignItems: 'center', gap: 4,
+                                }}
+                              >
+                                <ChevronDown size={10} />
+                                <span style={{ fontSize: 9, opacity: 0.7 }}>收起描述</span>
+                              </button>
+                              <div style={{
+                                fontSize: 11, fontFamily: mono,
+                                color: '#fca5a5', lineHeight: 1.45,
+                                padding: '4px 6px',
+                                backgroundColor: 'rgba(0,0,0,0.5)',
+                                borderRadius: 2,
+                                maxHeight: 80, overflow: 'auto',
+                                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                              }}>
+                                {task.description.slice(0, 400)}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{
+                              marginTop: 5, fontSize: 11, fontFamily: mono,
+                              color: '#e8e0d4', lineHeight: 1.45,
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(0,0,0,0.5)',
+                              borderRadius: 2,
+                              maxHeight: 80, overflow: 'auto',
+                              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                            }}>
+                              {task.description.slice(0, 400)}
+                            </div>
+                          )
                         )}
 
                         {/* Error summary for failed tasks */}
@@ -1467,18 +1954,18 @@ export function CompactWorkflowView() {
                   border: '1px solid var(--border-medium)', borderRadius: 2,
                 }}
               >
-                ⏭ Continue
+                ⏭ Skip
               </button>
               <button
                 onClick={() => handleFailedTaskAction('new')}
                 style={{
                   flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: 600,
                   fontFamily: mono, cursor: 'pointer',
-                  backgroundColor: 'var(--surface-1)', color: 'var(--text-muted)',
-                  border: '1px solid var(--border-subtle)', borderRadius: 2,
+                  backgroundColor: 'var(--surface-1)', color: 'var(--warm-red)',
+                  border: '1px solid var(--warm-red)', borderRadius: 2,
                 }}
               >
-                ✕ New Task
+                ✕ Stop
               </button>
             </div>
           </div>
@@ -1507,6 +1994,7 @@ export function CompactWorkflowView() {
           {isLoading ? (
             <button
               onClick={handleCancel}
+              title="Stop chat response"
               style={{
                 width: 32, height: 32, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1516,10 +2004,37 @@ export function CompactWorkflowView() {
             >
               <Square size={12} />
             </button>
+          ) : hasWorkflow && executorRunning ? (
+            <button
+              onClick={handleToggleExecutor}
+              title="Pause workflow"
+              style={{
+                width: 32, height: 32, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'var(--amber)', border: 'none',
+                borderRadius: 2, cursor: 'pointer', color: '#0c0c0c',
+              }}
+            >
+              <Pause size={12} />
+            </button>
+          ) : hasWorkflow && !executorRunning ? (
+            <button
+              onClick={handleToggleExecutor}
+              title="Resume workflow"
+              style={{
+                width: 32, height: 32, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'var(--status-green, #86efac)', border: 'none',
+                borderRadius: 2, cursor: 'pointer', color: '#0c0c0c',
+              }}
+            >
+              <Play size={12} />
+            </button>
           ) : (
             <button
               onClick={handleSend}
               disabled={!input.trim()}
+              title="Send message"
               style={{
                 width: 32, height: 32, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1807,7 +2322,7 @@ export function CompactWorkflowView() {
 
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => handleStart(templateConfirm.template.filename, templateConfirm.params)}
+                onClick={() => launchWorkflow(templateConfirm.template.filename, templateConfirm.params)}
                 disabled={templateConfirm.loading}
                 style={{
                   flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
@@ -1897,6 +2412,86 @@ export function CompactWorkflowView() {
                 }}
               >
                 Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permission Request Popup */}
+      {permissionRequest && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999,
+        }}>
+          <div style={{
+            backgroundColor: 'var(--surface-2, #1a1a1a)',
+            border: '1px solid var(--border-medium, #444)',
+            borderLeft: '3px solid var(--amber, #fbbf24)',
+            borderRadius: 4,
+            padding: '16px 20px',
+            maxWidth: 380,
+            width: '90%',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginBottom: 10,
+            }}>
+              <Wrench size={16} color="var(--amber, #fbbf24)" />
+              <span style={{
+                fontSize: 13, fontWeight: 700,
+                color: 'var(--amber, #fbbf24)',
+                fontFamily: mono, textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Permission Required
+              </span>
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--text-primary, #fff)',
+              fontFamily: mono, fontWeight: 600,
+              marginBottom: 6,
+            }}>
+              {permissionRequest.toolName}
+            </div>
+            <div style={{
+              fontSize: 11, color: 'var(--text-secondary, #ccc)',
+              fontFamily: mono, lineHeight: 1.5,
+              marginBottom: 12, maxHeight: 120, overflowY: 'auto',
+              padding: '6px 8px',
+              backgroundColor: 'var(--surface-0, #0c0c0c)',
+              border: '1px solid var(--border-subtle, #333)',
+              borderRadius: 2,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {permissionRequest.message}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handlePermissionResponse(true)}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 700,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'var(--amber, #fbbf24)', color: '#000',
+                  border: '1px solid var(--amber, #fbbf24)', borderRadius: 2,
+                }}
+              >
+                ✓ Allow
+              </button>
+              <button
+                onClick={() => handlePermissionResponse(false)}
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'var(--surface-1, #1a1a1a)',
+                  color: 'var(--text-muted, #999)',
+                  border: '1px solid var(--border-subtle, #333)',
+                  borderRadius: 2,
+                }}
+              >
+                ✕ Deny
               </button>
             </div>
           </div>

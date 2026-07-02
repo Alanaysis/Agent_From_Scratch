@@ -7,20 +7,24 @@ const API_BASE = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.hostname}:3002`
   : ''
 
-interface RemoteFile {
+interface TemplateItem {
+  id: string
+  filename: string
   name: string
-  path: string
-  type: string
+  description?: string
+  tags?: string[]
+  triggers?: string[]
+  useCase?: string
 }
 
 interface ProposalPickerProps {
   open: boolean
   onClose: () => void
-  onSelect: (filePath: string) => void
+  onSelect: (filename: string) => void
 }
 
 export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps) {
-  const [files, setFiles] = React.useState<RemoteFile[]>([])
+  const [templates, setTemplates] = React.useState<TemplateItem[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -28,10 +32,10 @@ export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps)
     if (!open) return
     setLoading(true)
     setError(null)
-    fetch(`${API_BASE}/api/workflows/files`)
+    fetch(`${API_BASE}/api/templates`)
       .then(r => r.json())
       .then(data => {
-        setFiles(data.files || [])
+        setTemplates(data.templates || [])
         setLoading(false)
       })
       .catch(e => {
@@ -85,7 +89,7 @@ export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps)
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
           }}>
-            Select Workflow
+            Select Template
           </span>
           <button
             onClick={onClose}
@@ -110,19 +114,19 @@ export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps)
             </div>
           )}
 
-          {!loading && !error && files.length === 0 && (
+          {!loading && !error && templates.length === 0 && (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-faint)', fontSize: 11 }}>
-              No workflow files found. Place *.yaml files in the workflows/ directory.
+              No templates found. Place *.yaml files in .irg/templates/ directory.
             </div>
           )}
 
-          {!loading && files.map(file => (
+          {!loading && templates.map(tpl => (
             <button
-              key={file.path}
-              onClick={() => { onSelect(file.path); onClose() }}
+              key={tpl.id}
+              onClick={() => { onSelect(tpl.filename); onClose() }}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 10,
                 width: '100%',
                 padding: '8px 14px',
@@ -136,7 +140,7 @@ export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps)
               onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-2)'}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <FileText size={14} color="var(--amber)" style={{ flexShrink: 0 }} />
+              <FileText size={14} color="var(--amber)" style={{ flexShrink: 0, marginTop: 2 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
                   fontSize: 12,
@@ -147,18 +151,39 @@ export function ProposalPicker({ open, onClose, onSelect }: ProposalPickerProps)
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}>
-                  {file.name}
+                  {tpl.name}
                 </div>
-                <div style={{
-                  fontSize: 9,
-                  color: 'var(--text-faint)',
-                  fontFamily: 'IBM Plex Mono, monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {file.path}
-                </div>
+                {tpl.description && (
+                  <div style={{
+                    fontSize: 9,
+                    color: 'var(--text-faint)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    marginTop: 2,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {tpl.description}
+                  </div>
+                )}
+                {tpl.triggers && tpl.triggers.length > 0 && (
+                  <div style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4,
+                  }}>
+                    {tpl.triggers.slice(0, 4).map((tg, i) => (
+                      <span key={i} style={{
+                        fontSize: 8, padding: '1px 5px',
+                        backgroundColor: 'rgba(251,191,36,0.1)',
+                        color: 'var(--amber)',
+                        border: '1px solid rgba(251,191,36,0.2)',
+                        borderRadius: 2,
+                        fontFamily: 'IBM Plex Mono, monospace',
+                      }}>
+                        {tg}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </button>
           ))}

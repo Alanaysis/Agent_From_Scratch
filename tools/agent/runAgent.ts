@@ -17,6 +17,11 @@ export type RunAgentParams = {
   maxTurns?: number;
   onProgress?: (text: string) => void;
   onMessage?: (message: Message) => void | Promise<void>;
+  onPermissionRequest?: (request: {
+    toolName: string;
+    input: unknown;
+    message: string;
+  }) => Promise<boolean | { allowed: boolean; updatedInput?: unknown }>;
 };
 
 function buildSubagentSystemPrompt(agentDef: ReturnType<typeof getAgentDefinition>): string[] {
@@ -241,6 +246,7 @@ async function* executeSubagentToolCall(
   context: ToolUseContext,
   permissionFn: CanUseToolFn,
   filteredTools: Tools,
+  onPermissionRequest?: RunAgentParams["onPermissionRequest"],
 ): AsyncGenerator<Message, void> {
   const tool = findToolByName(filteredTools, toolName);
   if (!tool) {
@@ -260,7 +266,30 @@ async function* executeSubagentToolCall(
   }
 
   let effectiveInput = toolInput;
-  if (permission.updatedInput !== undefined) {
+  if (permission.behavior === "ask") {
+    const permResult = onPermissionRequest
+      ? await onPermissionRequest({
+          toolName,
+          input: toolInput,
+          message: permission.message || `Tool ${toolName} requires confirmation`,
+        })
+      : false;
+    const allowed = typeof permResult === 'boolean' ? permResult : permResult.allowed;
+    if (!allowed) {
+      yield createToolResultMessage(
+        toolUseId,
+        stringify({ error: `User rejected ${toolName}` }),
+        true,
+      );
+      return;
+    }
+    // onPermissionRequest can override input (e.g. inject checkpointId)
+    if (typeof permResult === 'object' && permResult.updatedInput !== undefined) {
+      effectiveInput = permResult.updatedInput;
+    } else if (permission.updatedInput !== undefined) {
+      effectiveInput = permission.updatedInput;
+    }
+  } else if (permission.updatedInput !== undefined) {
     effectiveInput = permission.updatedInput;
   }
 
@@ -397,6 +426,7 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
         subContext,
         permissionFn,
         filteredTools,
+        params.onPermissionRequest,
       )) {
         messages.push(msg);
         allResultMessages.push(msg);

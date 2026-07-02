@@ -28,7 +28,6 @@ export type WorkflowTemplate = {
 function getTemplatesDirs(cwd: string): string[] {
   return [
     join(cwd, ".irg", "templates"),
-    join(cwd, "workflows"),
   ];
 }
 

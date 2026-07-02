@@ -113,16 +113,19 @@ export type TaskInfo = {
 };
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  todo: ["in_progress", "failed", "skipped", "cancelled"],
-  in_progress: ["verify", "failed", "pausing", "paused", "cancelling", "cancelled"],
-  pausing: ["paused", "failed"],
-  paused: ["in_progress", "cancelling", "cancelled"],
+  todo: ["in_progress", "failed", "skipped", "cancelled", "done"],
+  in_progress: ["verify", "failed", "pausing", "paused", "cancelling", "cancelled", "todo", "done"],
+  pausing: ["paused", "failed", "todo"],
+  paused: ["in_progress", "cancelling", "cancelled", "todo", "failed", "done"],
   cancelling: ["cancelled", "failed"],
-  verify: ["done", "in_progress", "paused", "cancelled"],
-  done: [],
-  failed: ["todo"],
-  cancelled: [],
-  skipped: [],
+  verify: ["done", "in_progress", "paused", "cancelled", "todo"],
+  // `done` is terminal for the success path — do NOT allow done → failed,
+  // otherwise already-completed tasks could be retroactively broken and
+  // affect downstream tasks that already ran based on the done state.
+  done: ["todo", "in_progress"],
+  failed: ["todo", "in_progress", "paused", "skipped", "cancelled"],
+  cancelled: ["todo"],
+  skipped: ["todo", "in_progress"],
 };
 
 export function isValidTransition(from: string, to: string): boolean {
@@ -134,9 +137,11 @@ export function evaluateCondition(
   allTasks: TaskInfo[],
 ): boolean {
   if (condition.type === 'llm_judge') {
-    // For llm_judge, we need to defer to runtime, default to true for now
-    console.warn('[evaluateCondition] llm_judge condition not implemented in static check, defaulting to true');
-    return true;
+    // llm_judge requires runtime LLM evaluation which is not implemented yet.
+    // Default to false (skip the branch) so unimplemented judge conditions
+    // do not silently execute branches that should be gated.
+    console.warn('[evaluateCondition] llm_judge condition not implemented in static check, defaulting to false (branch skipped)');
+    return false;
   }
 
   if (condition.type !== 'step_result') {
@@ -214,10 +219,14 @@ export async function createTask(
   return newTask;
 }
 
+export type TaskUpdates = {
+  [K in keyof Omit<TaskInfo, "id" | "createdAt" | "activities" | "statusHistory">]?: TaskInfo[K] | null;
+};
+
 export async function updateTaskInfo(
   cwd: string,
   taskId: string,
-  updates: Partial<Omit<TaskInfo, "id" | "createdAt" | "activities" | "statusHistory">>,
+  updates: TaskUpdates,
   actor?: string,
 ): Promise<TaskInfo | null> {
   return withTaskLock(taskId, async () => {
@@ -236,12 +245,12 @@ export async function updateTaskInfo(
     }
   }
 
-  // Filter out undefined values to prevent overwriting existing fields
+  // Filter out undefined values to prevent overwriting existing fields.
+  // Use null to explicitly clear a field (e.g. lastError: null clears the error).
   const cleanUpdates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(updates)) {
-    if (value !== undefined) {
-      cleanUpdates[key] = value;
-    }
+    if (value === undefined) continue;
+    cleanUpdates[key] = value === null ? undefined : value;
   }
 
   const now = new Date().toISOString();

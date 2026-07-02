@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { GitBranch, ChevronRight } from 'lucide-react'
 
 const statusDotConfig: Record<string, { color: string; bg: string }> = {
   todo: { color: '#7dd3fc', bg: 'rgba(125,211,252,0.15)' },
@@ -36,16 +37,21 @@ function getDotConfig(task: RailTask) {
 }
 
 export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
+  const doneCount = tasks.filter(t =>
+    t.status === 'done' || t.status === 'failed' || t.status === 'cancelled' || t.status === 'skipped'
+  ).length
+  const totalCount = tasks.length
+
   return (
     <div
       onClick={onExpand}
       style={{
-        width: 24,
-        minWidth: 24,
+        width: 32,
+        minWidth: 32,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 3,
+        gap: 4,
         padding: '8px 0',
         backgroundColor: 'var(--surface-1)',
         borderRight: '1px solid var(--border-subtle)',
@@ -55,6 +61,26 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
       }}
       title="Expand workflow"
     >
+      {/* Top icon — GitBranch, indicates this is the workflow progress column */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+        marginBottom: 4, paddingBottom: 4,
+        borderBottom: '1px solid var(--border-subtle)',
+        width: '100%',
+      }}>
+        <GitBranch size={14} color="var(--amber)" strokeWidth={1.8} />
+        {totalCount > 0 && (
+          <span style={{
+            fontSize: 8, fontFamily: 'IBM Plex Mono, monospace',
+            color: 'var(--text-secondary)', fontWeight: 700,
+            lineHeight: 1,
+          }}>
+            {doneCount}/{totalCount}
+          </span>
+        )}
+      </div>
+
+      {/* Status dots */}
       {tasks.map((task) => {
         const cfg = getDotConfig(task)
         const isActive = task.status === 'in_progress'
@@ -65,19 +91,35 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
             key={task.id}
             title={`${task.title}: ${isFailedPaused ? 'Failed' : task.status}`}
             style={{
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               borderRadius: '50%',
               backgroundColor: cfg.bg,
               border: `2px solid ${cfg.color}`,
               flexShrink: 0,
-              animation: isActive ? 'pulse 2s infinite' : undefined,
-              transition: 'border-color 0.3s, background-color 0.3s',
+              animation: isActive ? 'railPulse 1.5s ease-in-out infinite' : undefined,
+              boxShadow: isActive ? `0 0 8px ${cfg.color}, 0 0 4px ${cfg.color}` : 'none',
+              transition: 'border-color 0.3s, background-color 0.3s, box-shadow 0.3s',
             }}
           />
         )
       })}
-      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+
+      {/* Bottom expand hint */}
+      <div style={{
+        marginTop: 'auto', paddingTop: 4,
+        borderTop: '1px solid var(--border-subtle)',
+        width: '100%', display: 'flex', justifyContent: 'center',
+      }}>
+        <ChevronRight size={12} color="var(--text-faint)" style={{ transform: 'rotate(90deg)' }} />
+      </div>
+
+      <style>{`
+        @keyframes railPulse {
+          0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 8px #fbbf24, 0 0 4px #fbbf24; }
+          50% { opacity: 0.6; transform: scale(1.15); box-shadow: 0 0 14px #fbbf24, 0 0 8px #fbbf24; }
+        }
+      `}</style>
     </div>
   )
 }
