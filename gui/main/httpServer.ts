@@ -217,6 +217,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   // Don't delete for later action - we want to re-prompt
   if (action !== 'later') {
     pendingApprovalTasks.delete(taskId);
+    approvalEmittedAt.delete(taskId);
   }
 
   // Handle task failure decisions
@@ -1623,6 +1624,8 @@ function handleTaskExecuteSse(req: http.IncomingMessage, res: http.ServerRespons
 const executingTasks = new Set<string>();
 const taskAbortControllers = new Map<string, AbortController>();
 const pendingApprovalTasks = new Map<string, ApprovalRequestEvent>(); // tasks waiting for user approval
+const approvalEmittedAt = new Map<string, number>(); // taskId → last emit timestamp (throttle re-emits)
+const APPROVAL_REEMIT_INTERVAL_MS = 30000; // re-emit at most every 30s, not every 5s poll
 const taskPermissions = new Map<string, { resolve: (approved: boolean) => void; request: any }>(); // task tool permissions
 let taskPollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -1667,12 +1670,16 @@ function isTaskBlocked(task: any, allTasks: any[]): boolean {
 
 async function pollAndExecuteTasks() {
   try {
-    // Re-emit pending checkpoint approvals (for "later" action)
+    // Re-emit pending checkpoint approvals (for "later" action or SSE reconnect)
     // Skip task_failure requests — those are shown as inline action bar, not popup
+    // Throttle: re-emit at most every 30s per task, not every 5s poll cycle
     for (const [taskId, req] of pendingApprovalTasks.entries()) {
       if (req.requestType === 'task_failure') continue;
       const task = await readTaskInfo(cwd(), taskId);
       if (task?.status === "paused") {
+        const lastEmitted = approvalEmittedAt.get(taskId) || 0;
+        if (Date.now() - lastEmitted < APPROVAL_REEMIT_INTERVAL_MS) continue;
+        approvalEmittedAt.set(taskId, Date.now());
         log("INFO", "AutoExec", `Re-emitting checkpoint approval for: ${task.title}`);
         eventBus.emit("approval:required", req);
       }
@@ -1731,21 +1738,26 @@ async function pollAndExecuteTasks() {
 
       log("INFO", "AutoExec", `Requesting approval for: ${task.title} (step ${stepIndex}/${stepTotal})`);
       eventBus.emit("approval:required", approvalReq);
+      approvalEmittedAt.set(task.id, Date.now());
     }
 
-    // Auto-execute non-approval tasks
+    // Auto-execute non-approval tasks — start all independent tasks in parallel,
+    // bounded by a concurrency cap. Previously only autoTasks[0] was executed per
+    // poll cycle, forcing independent tasks to wait 5s each.
     if (autoTasks.length === 0) return;
 
-    const task = autoTasks[0]!;
-    executingTasks.add(task.id);
-    log("INFO", "AutoExec", `Auto-executing unblocked task: ${task.title} (${task.id})`);
+    const MAX_CONCURRENT = 3;
+    const slotsAvailable = MAX_CONCURRENT - executingTasks.size;
+    const toStart = autoTasks.slice(0, Math.max(0, slotsAvailable));
 
-    try {
-      await executeTaskViaHttp(task.id);
-    } catch (e) {
-      log("ERROR", "AutoExec", `Auto-execution failed for ${task.id}`, e);
-    } finally {
-      executingTasks.delete(task.id);
+    for (const task of toStart) {
+      executingTasks.add(task.id);
+      log("INFO", "AutoExec", `Auto-executing unblocked task: ${task.title} (${task.id})`);
+      // Fire-and-forget: don't await — let independent tasks run concurrently.
+      // executeTaskViaHttp handles its own errors and status transitions.
+      executeTaskViaHttp(task.id)
+        .catch(e => log("ERROR", "AutoExec", `Auto-execution failed for ${task.id}`, e))
+        .finally(() => executingTasks.delete(task.id));
     }
   } catch (e) {
     log("ERROR", "AutoExec", "Poll error", e);
@@ -2741,17 +2753,20 @@ export function startHttpServer(port = 3002): http.Server {
       } else if (cmd.action === 'retry-task' && cmd.taskId) {
         await updateTaskInfo(cwd(), cmd.taskId, { status: "todo", lastError: null }).catch(() => {});
         pendingApprovalTasks.delete(cmd.taskId);
+        approvalEmittedAt.delete(cmd.taskId);
         eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
         startTaskAutoExec();
       } else if (cmd.action === 'skip-task' && cmd.taskId) {
         await updateTaskInfo(cwd(), cmd.taskId, { status: "failed", lastError: cmd.reason || "Skipped by user via chat" }).catch(() => {});
         pendingApprovalTasks.delete(cmd.taskId);
+        approvalEmittedAt.delete(cmd.taskId);
         eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
         await assignDependentTasks(cmd.taskId).catch(() => {});
         eventBus.emit("executor:task-completed", { taskId: cmd.taskId, success: false, result: "Skipped" });
       } else if (cmd.action === 'continue-task' && cmd.taskId) {
         await updateTaskInfo(cwd(), cmd.taskId, { status: "failed" }).catch(() => {});
         pendingApprovalTasks.delete(cmd.taskId);
+        approvalEmittedAt.delete(cmd.taskId);
         eventBus.emit("approval:resolved", { taskId: cmd.taskId, action: "execute" });
         await assignDependentTasks(cmd.taskId).catch(() => {});
         eventBus.emit("executor:task-completed", { taskId: cmd.taskId, success: false, result: "Continued past failure" });

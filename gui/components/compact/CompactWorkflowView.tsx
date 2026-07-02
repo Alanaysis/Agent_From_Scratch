@@ -319,6 +319,7 @@ export function CompactWorkflowView() {
     error: string
   } | null>(null)
   const dismissedFailedTasksRef = React.useRef<Set<string>>(new Set())
+  const isTypewritingRef = React.useRef(false)
 
   function pushBanner(type: 'start' | 'done' | 'failed', taskTitle: string) {
     const id = `banner-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -436,6 +437,9 @@ export function CompactWorkflowView() {
   }, [tasks.length])
 
   React.useEffect(() => {
+    // Skip auto-collapse while the typewriter is filling the input —
+    // otherwise each 20ms setInput triggers this effect and collapses the panel mid-animation
+    if (isTypewritingRef.current) return
     if (input.length > 0 && workflowExpanded && !autoCollapsed) {
       setWorkflowExpanded(false)
       setAutoCollapsed(true)
@@ -875,6 +879,7 @@ export function CompactWorkflowView() {
 
       // Typewriter effect: fill the trigger text into the input box so user sees the auto-fill process
       setInput('')
+      isTypewritingRef.current = true
       await new Promise<void>(resolve => {
         let i = 0
         const step = Math.max(1, Math.ceil(triggerText.length / 40))
@@ -889,6 +894,7 @@ export function CompactWorkflowView() {
           }
         }, 20)
       })
+      isTypewritingRef.current = false
 
       // Brief pause so user can see the full text before sending
       await new Promise(r => setTimeout(r, 300))
