@@ -522,78 +522,23 @@ async function* executeToolCall(
   toolUseMessage: AssistantMessage,
   toolUseBlock: AssistantToolUseBlock,
 ): AsyncGenerator<Message, void> {
-  const tool = findToolByName(getTools(), toolUseBlock.name);
-  if (!tool) {
-    yield createToolResultMessage(
-      toolUseBlock.id,
-      stringify({ error: `Unknown tool ${toolUseBlock.name}` }),
-      true,
-    );
-    return;
-  }
-
-  let effectiveInput = toolUseBlock.input;
-  const permission = await params.canUseTool(
-    tool as never,
-    effectiveInput as never,
-    params.toolUseContext,
-    toolUseMessage,
-    toolUseBlock.id,
-  );
-
-  if (permission.behavior === "deny") {
-    yield createToolResultMessage(
-      toolUseBlock.id,
-      stringify({ error: permission.message }),
-      true,
-    );
-    return;
-  }
-
-  if (permission.behavior === "ask") {
-    const allowed = await params.onPermissionRequest?.({
-      toolName: toolUseBlock.name,
-      input: effectiveInput,
-      message: permission.message,
-    });
-    if (!allowed) {
-      yield createToolResultMessage(
-        toolUseBlock.id,
-        stringify({ error: `User rejected ${toolUseBlock.name}` }),
-        true,
-      );
-      return;
-    }
-    if (permission.updatedInput) {
-      effectiveInput = permission.updatedInput;
-    }
-  } else if (permission.updatedInput) {
-    effectiveInput = permission.updatedInput;
-  }
-
-  try {
-    const result = await tool.call(
-      effectiveInput as never,
-      params.toolUseContext,
-      params.canUseTool,
-      toolUseMessage,
-    );
-    yield createToolResultMessage(toolUseBlock.id, stringify(result.data));
-    if (result.extraMessages) {
-      for (const extraMessage of result.extraMessages) {
-        yield extraMessage;
-      }
-    }
-    if (result.contextModifier) {
-      params.toolUseContext = result.contextModifier(params.toolUseContext);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    yield createToolResultMessage(
-      toolUseBlock.id,
-      stringify({ error: message }),
-      true,
-    );
+  // Delegate to the unified engine — ensures CLI path gets the same
+  // schema validation + constraint hooks + audit logging as HTTP path.
+  const { executeToolCall: runUnifiedToolCall } = await import("./engine/executeToolCall");
+  const result = await runUnifiedToolCall({
+    toolName: toolUseBlock.name,
+    toolInput: toolUseBlock.input,
+    toolUseId: toolUseBlock.id,
+    context: params.toolUseContext,
+    permissionFn: params.canUseTool,
+    tools: getTools(),
+    onPermissionRequest: params.onPermissionRequest,
+    onContextModifier: (modifier) => {
+      params.toolUseContext = modifier(params.toolUseContext);
+    },
+  });
+  for (const msg of result.messages) {
+    yield msg;
   }
 }
 

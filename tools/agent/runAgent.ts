@@ -331,140 +331,20 @@ async function* executeSubagentToolCall(
   filteredTools: Tools,
   onPermissionRequest?: RunAgentParams["onPermissionRequest"],
 ): AsyncGenerator<Message, void> {
-  const tool = findToolByName(filteredTools, toolName);
-  if (!tool) {
-    yield createToolResultMessage(toolUseId, stringify({ error: `Unknown tool ${toolName}` }), true);
-    return;
-  }
-
-  const parentMessage = createAssistantMessage([
-    { type: "tool_use", id: toolUseId, name: toolName, input: toolInput },
-  ]);
-
-  const permission = await permissionFn(tool, toolInput, context, parentMessage, toolUseId);
-
-  if (permission.behavior === "deny") {
-    yield createToolResultMessage(toolUseId, stringify({ error: permission.message }), true);
-    return;
-  }
-
-  let effectiveInput = toolInput;
-  if (permission.behavior === "ask") {
-    const permResult = onPermissionRequest
-      ? await onPermissionRequest({
-          toolName,
-          input: toolInput,
-          message: permission.message || `Tool ${toolName} requires confirmation`,
-        })
-      : false;
-    const allowed = typeof permResult === 'boolean' ? permResult : permResult.allowed;
-    if (!allowed) {
-      yield createToolResultMessage(
-        toolUseId,
-        stringify({ error: `User rejected ${toolName}` }),
-        true,
-      );
-      return;
-    }
-    // onPermissionRequest can override input (e.g. inject checkpointId)
-    if (typeof permResult === 'object' && permResult.updatedInput !== undefined) {
-      effectiveInput = permResult.updatedInput;
-    } else if (permission.updatedInput !== undefined) {
-      effectiveInput = permission.updatedInput;
-    }
-  } else if (permission.updatedInput !== undefined) {
-    effectiveInput = permission.updatedInput;
-  }
-
-  // Schema validation (beforeToolCall constraint layer #1):
-  // Tools with a JsonSchema inputSchema get validated here, before any hook
-  // or tool execution. Invalid input is rejected without reaching the tool.
-  if (tool.inputSchema) {
-    const schemaError = validateAgainstSchema(effectiveInput, tool.inputSchema);
-    if (schemaError) {
-      yield createToolResultMessage(
-        toolUseId,
-        stringify({ error: `Schema validation failed: ${schemaError}` }),
-        true,
-      );
-      return;
-    }
-  }
-
-  // beforeToolCall hooks (constraint layer #2):
-  // Registered hooks (e.g. ToolRouter constraint enforcement) can block or
-  // modify the input. Runs AFTER schema validation so hooks see clean input.
-  const hookCtx: HookContext = {
+  // Delegate to the unified engine — single source of truth for
+  // schema validation + constraint hooks + audit logging.
+  const { executeToolCall: runUnifiedToolCall } = await import("../../runtime/engine/executeToolCall");
+  const result = await runUnifiedToolCall({
     toolName,
-    input: effectiveInput,
-    context,
+    toolInput,
     toolUseId,
-    timestamp: Date.now(),
-  };
-  const beforeResult = await executeBeforeHooks(hookCtx);
-  if (!beforeResult.proceed) {
-    const blockReason = beforeResult.reason || "unspecified";
-    yield createToolResultMessage(
-      toolUseId,
-      stringify({ error: `Blocked by policy: ${blockReason}` }),
-      true,
-    );
-    // Audit: blocked call
-    appendAudit(context.cwd, {
-      taskId: context.agentId || "unknown",
-      sessionId: context.agentId,
-      tool: toolName,
-      input: effectiveInput,
-      error: blockReason,
-      actor: context.agentType,
-      blocked: true,
-      blockReason,
-    }).catch(() => {}); // fire-and-forget
-    return;
-  }
-  if (beforeResult.modifiedInput !== undefined) {
-    effectiveInput = beforeResult.modifiedInput;
-  }
-
-  const callStartTime = Date.now();
-  try {
-    const result = await tool.call(
-      effectiveInput as never,
-      context,
-      permissionFn,
-      parentMessage,
-    );
-    const durationMs = Date.now() - callStartTime;
-    yield createToolResultMessage(toolUseId, stringify(result.data));
-    // Audit: successful call
-    appendAudit(context.cwd, {
-      taskId: context.agentId || "unknown",
-      sessionId: context.agentId,
-      tool: toolName,
-      input: effectiveInput,
-      output: result.data,
-      durationMs,
-      actor: context.agentType,
-    }).catch(() => {});
-    if (result.extraMessages) {
-      for (const extraMessage of result.extraMessages) {
-        yield extraMessage;
-      }
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const durationMs = Date.now() - callStartTime;
-    yield createToolResultMessage(toolUseId, stringify({ error: message }), true);
-    // Audit: failed call
-    appendAudit(context.cwd, {
-      taskId: context.agentId || "unknown",
-      sessionId: context.agentId,
-      tool: toolName,
-      input: effectiveInput,
-      error: message,
-      durationMs,
-      actor: context.agentType,
-    }).catch(() => {});
+    context,
+    permissionFn,
+    tools: filteredTools,
+    onPermissionRequest: onPermissionRequest as any,
+  });
+  for (const msg of result.messages) {
+    yield msg;
   }
 }
 
