@@ -8,6 +8,7 @@ import { findToolByName, type CanUseToolFn, type ToolUseContext, type Tools, typ
 import { getTools } from "../registry";
 import { canUseTool } from "../../permissions/engine";
 import { executeBeforeHooks, type HookContext } from "../hooks";
+import { appendAudit } from "../../storage/audit";
 
 export type RunAgentParams = {
   description: string;
@@ -402,17 +403,30 @@ async function* executeSubagentToolCall(
   };
   const beforeResult = await executeBeforeHooks(hookCtx);
   if (!beforeResult.proceed) {
+    const blockReason = beforeResult.reason || "unspecified";
     yield createToolResultMessage(
       toolUseId,
-      stringify({ error: `Blocked by policy: ${beforeResult.reason || "unspecified"}` }),
+      stringify({ error: `Blocked by policy: ${blockReason}` }),
       true,
     );
+    // Audit: blocked call
+    appendAudit(context.cwd, {
+      taskId: context.agentId || "unknown",
+      sessionId: context.agentId,
+      tool: toolName,
+      input: effectiveInput,
+      error: blockReason,
+      actor: context.agentType,
+      blocked: true,
+      blockReason,
+    }).catch(() => {}); // fire-and-forget
     return;
   }
   if (beforeResult.modifiedInput !== undefined) {
     effectiveInput = beforeResult.modifiedInput;
   }
 
+  const callStartTime = Date.now();
   try {
     const result = await tool.call(
       effectiveInput as never,
@@ -420,7 +434,18 @@ async function* executeSubagentToolCall(
       permissionFn,
       parentMessage,
     );
+    const durationMs = Date.now() - callStartTime;
     yield createToolResultMessage(toolUseId, stringify(result.data));
+    // Audit: successful call
+    appendAudit(context.cwd, {
+      taskId: context.agentId || "unknown",
+      sessionId: context.agentId,
+      tool: toolName,
+      input: effectiveInput,
+      output: result.data,
+      durationMs,
+      actor: context.agentType,
+    }).catch(() => {});
     if (result.extraMessages) {
       for (const extraMessage of result.extraMessages) {
         yield extraMessage;
@@ -428,7 +453,18 @@ async function* executeSubagentToolCall(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const durationMs = Date.now() - callStartTime;
     yield createToolResultMessage(toolUseId, stringify({ error: message }), true);
+    // Audit: failed call
+    appendAudit(context.cwd, {
+      taskId: context.agentId || "unknown",
+      sessionId: context.agentId,
+      tool: toolName,
+      input: effectiveInput,
+      error: message,
+      durationMs,
+      actor: context.agentType,
+    }).catch(() => {});
   }
 }
 

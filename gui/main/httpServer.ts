@@ -2559,6 +2559,18 @@ routes.set("GET /api/remediations", async () => {
   return { remediations: entries };
 });
 
+// Audit log (read-only — for AuditDrawer)
+routes.set("GET /api/audit", async (_req, _body, params?: Record<string, string>) => {
+  const { readAuditLog } = await import("../../storage/audit");
+  const query = params || {};
+  const entries = await readAuditLog(cwd(), {
+    taskId: query.taskId,
+    tool: query.tool,
+    limit: query.limit ? Number(query.limit) : 100,
+  });
+  return { entries };
+});
+
 // ====== Route matching ======
 
 function matchRoute(method: string, url: string): { handler: RouteHandler; params: Record<string, string> } | null {
