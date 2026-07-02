@@ -1169,7 +1169,10 @@ import { query } from "../../runtime/query";
 import { canUseTool } from "../../permissions/engine";
 import { createInitialAppState } from "../../runtime/state";
 import { initLlmConfig, getLlmConfig } from "../../runtime/llm";
-import type { Message } from "../../runtime/messages";
+import type { Message, AssistantMessage, ToolResultMessage } from "../../runtime/messages";
+import { evolveAfterSession, DEFAULT_EVOLUTION_CONFIG } from "../../runtime/evolution";
+import type { ToolUseContext } from "../../tools/Tool";
+import type { GrpcClientInput } from "../../tools/grpc/grpcClientTool";
 
 // Pending permission requests for HTTP mode
 const httpPermissions = new Map<string, { resolve: (approved: boolean) => void; request: unknown }>();
@@ -2042,6 +2045,143 @@ Enrich each node description, identify risks, suggest improvements. Output JSON:
   }
 }
 
+/**
+ * Fire-and-forget: trigger reflection after a task failure so the agent
+ * can extract anti-patterns / constraints / remediation hints.
+ * Only fires when there are tool errors in the transcript.
+ */
+function triggerReflectionOnFailure(
+  taskId: string,
+  sessionId: string | undefined,
+  title: string,
+  messages: Message[],
+): void {
+  if (!sessionId || messages.length === 0) return;
+  const errorMessages = messages.filter(m => m.type === "tool_result" && (m as any).isError);
+  if (errorMessages.length === 0) return;
+
+  const errorCount = errorMessages.length;
+  const lastError = errorMessages
+    .map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
+    .join('; ').slice(0, 200) || "Unknown error";
+
+  const sessionInfo = {
+    id: sessionId,
+    title,
+    messageCount: messages.length,
+    toolUseCount: messages.filter(m => m.type === "tool_result").length,
+    errorCount,
+    lastError,
+    status: "error" as const,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const emptyState = createInitialAppState();
+  const parentContext: ToolUseContext = {
+    cwd: cwd(),
+    abortController: new AbortController(),
+    messages: [],
+    getAppState: () => emptyState,
+    setAppState: () => {},
+    agentId: "reflection",
+    agentType: "reflect",
+  };
+
+  evolveAfterSession(cwd(), sessionInfo, messages, parentContext, {
+    ...DEFAULT_EVOLUTION_CONFIG,
+    reflectionOnComplete: false,
+    reflectionOnError: true,
+  }).catch(e => {
+    log("ERROR", "Reflection", `Reflection failed for task ${taskId}: ${e}`);
+  });
+  log("INFO", "Reflection", `Reflection scheduled for failed task ${taskId} (${errorCount} errors)`);
+}
+
+/**
+ * Execute a gRPC task directly via GrpcClientTool.call(), bypassing the LLM.
+ * Writes assistant + tool_result messages to the transcript so the existing
+ * post-execution logic (error detection, reflection, status transitions)
+ * works unchanged.
+ */
+async function executeGrpcDirectly(
+  taskId: string,
+  task: { grpcConfig?: any; sessionId?: string },
+  sessionId: string,
+  abortController: AbortController,
+  appState: ReturnType<typeof createInitialAppState>,
+): Promise<void> {
+  const { GrpcClientTool } = await import("../../tools/grpc/grpcClientTool");
+  const { appendTranscript } = await import("../../storage/transcript");
+
+  const grpc = task.grpcConfig;
+  if (!grpc) return;
+
+  const toolUseId = createId("tooluse");
+  const input: GrpcClientInput = {
+    protoFile: grpc.protoFile || "protos/AlgoService.proto",
+    service: grpc.service,
+    method: grpc.method,
+    address: grpc.address,
+    payload: grpc.payload || {},
+    metadata: grpc.metadata,
+    deadline: grpc.deadline,
+  };
+
+  // Write assistant message with tool_use block
+  const assistantMsg: AssistantMessage = {
+    id: createId("msg"),
+    type: "assistant",
+    content: [{
+      type: "tool_use",
+      id: toolUseId,
+      name: "GrpcClient",
+      input,
+    }],
+  };
+  await appendTranscript(cwd(), sessionId, [assistantMsg]);
+  eventBus.emit("session:message-appended", { sessionId, message: assistantMsg });
+
+  const context: ToolUseContext = {
+    cwd: cwd(),
+    abortController,
+    messages: [],
+    getAppState: () => appState,
+    setAppState: () => {},
+    agentId: "grpc-direct",
+    agentType: "grpc-worker",
+  };
+
+  let resultContent: string;
+  let isError = false;
+  try {
+    log("INFO", "AutoExec", `Direct gRPC call: ${grpc.service}.${grpc.method} → ${grpc.address}`);
+    const result = await GrpcClientTool.call(
+      input,
+      context,
+      async () => ({ behavior: "allow" as const }),
+      assistantMsg,
+    );
+    resultContent = JSON.stringify(result.data, null, 2);
+    log("INFO", "AutoExec", `Direct gRPC call succeeded (${result.data.durationMs}ms)`);
+  } catch (error) {
+    isError = true;
+    resultContent = error instanceof Error ? error.message : String(error);
+    log("ERROR", "AutoExec", `Direct gRPC call failed: ${resultContent.slice(0, 200)}`);
+  }
+
+  // Write tool_result message
+  const toolResultMsg: ToolResultMessage = {
+    id: createId("msg"),
+    type: "tool_result",
+    toolUseId,
+    content: resultContent,
+    isError,
+  };
+  await appendTranscript(cwd(), sessionId, [toolResultMsg]);
+  eventBus.emit("session:message-appended", { sessionId, message: toolResultMsg });
+}
+
 async function executeTaskViaHttp(taskId: string) {
   const task = await readTaskInfo(cwd(), taskId);
   if (!task) {
@@ -2131,9 +2271,14 @@ async function executeTaskViaHttp(taskId: string) {
   let messageCount = 0;
 
   try {
-    log("INFO", "AutoExec", `Calling runAgent for task ${taskId}, subagentType=${task.assignee || "general-purpose"}`);
-
-    const result = await runAgent({
+    let result: string | undefined;
+    if (task.grpcConfig) {
+      log("INFO", "AutoExec", `Task ${taskId} executing gRPC directly (bypassing LLM)`);
+      await executeGrpcDirectly(taskId, task, sessionId!, abortController, appState);
+      result = "(direct gRPC execution)";
+    } else {
+      log("INFO", "AutoExec", `Calling runAgent for task ${taskId}, subagentType=${task.assignee || "general-purpose"}`);
+      result = await runAgent({
       description: title,
       prompt,
       subagentType: task.assignee || "general-purpose",
@@ -2188,7 +2333,9 @@ async function executeTaskViaHttp(taskId: string) {
       },
     });
 
-    log("INFO", "AutoExec", `runAgent returned for task ${taskId}: ${messageCount} messages, result length=${result?.length || 0}`);
+    } // end of else (LLM path)
+
+    log("INFO", "AutoExec", `Execution returned for task ${taskId}: ${messageCount} messages, mode=${task.grpcConfig ? "direct" : "llm"}`);
 
     // Update session info
     let allMessagesForCheck: any[] = [];
@@ -2239,6 +2386,7 @@ async function executeTaskViaHttp(taskId: string) {
       };
       pendingApprovalTasks.set(taskId, failureReq);
       eventBus.emit("approval:required", failureReq);
+      triggerReflectionOnFailure(taskId, sessionId, failedTask?.title || taskId, allMessagesForCheck);
       return;
     }
 
@@ -2313,6 +2461,7 @@ async function executeTaskViaHttp(taskId: string) {
     };
     pendingApprovalTasks.set(taskId, failureReq);
     eventBus.emit("approval:required", failureReq);
+    triggerReflectionOnFailure(taskId, failedTask?.sessionId, failedTask?.title || taskId, sessionMessages);
     // Don't emit task-completed yet — wait for user decision
     // Task stays 'paused' so downstream tasks are blocked (getUnblockedTasks
     // treats paused deps as blocking). User decision will set failed/todo.

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile, rm } from "fs/promises";
 import { join } from "path";
 import { createId } from "../shared/ids";
 
-export type KnowledgeCategory = "fact" | "preference" | "pattern" | "anti_pattern";
+export type KnowledgeCategory = "fact" | "preference" | "pattern" | "anti_pattern" | "constraint" | "remediation";
 
 export type KnowledgeEntry = {
   id: string;
@@ -211,6 +211,8 @@ export function knowledgeToSystemPrompt(entries: KnowledgeEntry[]): string {
     preference: [],
     pattern: [],
     anti_pattern: [],
+    constraint: [],
+    remediation: [],
   };
 
   for (const entry of entries) {
@@ -220,6 +222,13 @@ export function knowledgeToSystemPrompt(entries: KnowledgeEntry[]): string {
   if (grouped.anti_pattern.length > 0) {
     lines.push("\n--- Anti-Patterns (AVOID these) ---");
     for (const entry of grouped.anti_pattern) {
+      lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
+    }
+  }
+
+  if (grouped.constraint.length > 0) {
+    lines.push("\n--- Hard Constraints (MUST follow) ---");
+    for (const entry of grouped.constraint) {
       lines.push(`- [${entry.confidence.toFixed(1)}] ${entry.content}`);
     }
   }

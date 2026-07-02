@@ -129,6 +129,21 @@ function callMethod(
   });
 }
 
+/** gRPC status codes that are safe to retry (transient failures). */
+const TRANSIENT_GRPC_CODES = new Set([14, 4]); // UNAVAILABLE, DEADLINE_EXCEEDED
+
+/** Extract gRPC status code from the error message produced by callMethod. */
+function isTransientGrpcError(error: Error): boolean {
+  const match = error.message.match(/gRPC error \[(\d+)\]/);
+  if (!match) return false;
+  const code = Number(match[1]);
+  return TRANSIENT_GRPC_CODES.has(code);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
   name: "GrpcClient",
   inputSchema: null,
@@ -147,25 +162,28 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
     const startTime = Date.now();
     const deadline = args.deadline || 300000;
     const metadata = args.metadata || {};
+    const maxRetries = 3;
+    const backoffMs = [1000, 3000, 10000];
 
-    try {
-      // Resolve proto file path
-      const protoPath = args.protoFile.startsWith("/")
-        ? args.protoFile
-        : join(context.cwd, args.protoFile);
+    // Resolve proto file path (once — not retryable)
+    const protoPath = args.protoFile.startsWith("/")
+      ? args.protoFile
+      : join(context.cwd, args.protoFile);
 
-      if (!existsSync(protoPath)) {
-        throw new Error(`Proto file not found: ${protoPath}`);
-      }
+    if (!existsSync(protoPath)) {
+      throw new Error(`Proto file not found: ${protoPath}`);
+    }
 
-      // Load proto and create client
-      const packageDef = await loadProto(protoPath);
+    // Load proto definition (once — cached)
+    const packageDef = await loadProto(protoPath);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Create a fresh client per attempt — connection may be dead after a transient failure
       const client = getServiceClient(packageDef, args.service, args.address);
-
       try {
-        // Make the call
         const response = await callMethod(client, args.method, args.payload, metadata, deadline);
-
         return {
           data: {
             success: true,
@@ -173,13 +191,26 @@ export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
             durationMs: Date.now() - startTime,
           },
         };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Only retry transient errors (UNAVAILABLE / DEADLINE_EXCEEDED)
+        if (attempt < maxRetries && isTransientGrpcError(lastError)) {
+          const waitMs = backoffMs[attempt] ?? 10000;
+          // Don't retry if the call was aborted
+          if (context.abortController.signal.aborted) break;
+          await sleep(waitMs);
+          continue;
+        }
+        break;
       } finally {
         client.close();
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`gRPC call failed: ${message}`);
     }
+
+    const message = lastError?.message || "Unknown error";
+    const retrySuffix = ` (after ${maxRetries + 1} attempts)`;
+    throw new Error(`gRPC call failed: ${message}${retrySuffix}`);
   },
 
   async validateInput(input) {
