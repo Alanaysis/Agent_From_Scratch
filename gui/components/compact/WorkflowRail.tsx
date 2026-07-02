@@ -27,6 +27,8 @@ interface RailTask {
 interface WorkflowRailProps {
   tasks: RailTask[]
   onExpand: () => void
+  /** Called when user clicks a paused (non-failed) node to re-open the dismissed approval popup. */
+  onReopenApproval?: (taskId: string) => void
 }
 
 function getDotConfig(task: RailTask) {
@@ -36,7 +38,7 @@ function getDotConfig(task: RailTask) {
   return statusDotConfig[task.status] || statusDotConfig.todo
 }
 
-export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
+export function WorkflowRail({ tasks, onExpand, onReopenApproval }: WorkflowRailProps) {
   const doneCount = tasks.filter(t =>
     t.status === 'done' || t.status === 'failed' || t.status === 'cancelled' || t.status === 'skipped'
   ).length
@@ -85,11 +87,16 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
         const cfg = getDotConfig(task)
         const isActive = task.status === 'in_progress'
         const isFailedPaused = task.status === 'paused' && task.lastError
+        // Paused (non-failed) = waiting for user approval/checkpoint — pulsing reminder
+        const isWaitingPaused = task.status === 'paused' && !task.lastError
+        // Clicking a waiting-paused node re-opens the dismissed approval popup
+        const clickable = isWaitingPaused && !!onReopenApproval
 
         return (
           <div
             key={task.id}
-            title={`${task.title}: ${isFailedPaused ? 'Failed' : task.status}`}
+            onClick={clickable ? (e) => { e.stopPropagation(); onReopenApproval!(task.id) } : undefined}
+            title={`${task.title}: ${isFailedPaused ? 'Failed' : isWaitingPaused ? 'Paused — click to resume approval' : task.status}`}
             style={{
               width: 12,
               height: 12,
@@ -97,8 +104,17 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
               backgroundColor: cfg.bg,
               border: `2px solid ${cfg.color}`,
               flexShrink: 0,
-              animation: isActive ? 'railPulse 1.5s ease-in-out infinite' : undefined,
-              boxShadow: isActive ? `0 0 8px ${cfg.color}, 0 0 4px ${cfg.color}` : 'none',
+              cursor: clickable ? 'pointer' : undefined,
+              animation: isActive
+                ? 'railPulse 1.5s ease-in-out infinite'
+                : isWaitingPaused
+                  ? 'railPausedPulse 2.5s ease-in-out infinite'
+                  : undefined,
+              boxShadow: isActive
+                ? `0 0 8px ${cfg.color}, 0 0 4px ${cfg.color}`
+                : isWaitingPaused
+                  ? `0 0 6px ${cfg.color}`
+                  : 'none',
               transition: 'border-color 0.3s, background-color 0.3s, box-shadow 0.3s',
             }}
           />
@@ -118,6 +134,10 @@ export function WorkflowRail({ tasks, onExpand }: WorkflowRailProps) {
         @keyframes railPulse {
           0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 8px #fbbf24, 0 0 4px #fbbf24; }
           50% { opacity: 0.6; transform: scale(1.15); box-shadow: 0 0 14px #fbbf24, 0 0 8px #fbbf24; }
+        }
+        @keyframes railPausedPulse {
+          0%, 100% { opacity: 0.7; transform: scale(1); box-shadow: 0 0 4px #60a5fa; }
+          50% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 10px #60a5fa, 0 0 5px #60a5fa; }
         }
       `}</style>
     </div>

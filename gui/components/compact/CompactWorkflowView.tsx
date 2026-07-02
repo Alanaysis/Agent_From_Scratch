@@ -319,6 +319,7 @@ export function CompactWorkflowView() {
     error: string
   } | null>(null)
   const dismissedFailedTasksRef = React.useRef<Set<string>>(new Set())
+  const dismissedApprovalsRef = React.useRef<Set<string>>(new Set()) // taskIds user clicked "Later" on
   const isTypewritingRef = React.useRef(false)
 
   function pushBanner(type: 'start' | 'done' | 'failed', taskTitle: string) {
@@ -624,6 +625,10 @@ export function CompactWorkflowView() {
         // Skip if popup already showing for this task (prevents flicker from re-emitted events)
         const current = approvalPopupRef.current
         if (current && current.taskId === data.taskId && !current.resolving) return
+        // Skip if user previously dismissed this approval via "Later" —
+        // the task stays paused and the rail keeps a pulsing reminder;
+        // user re-opens the approval by clicking the paused node in the rail.
+        if (dismissedApprovalsRef.current.has(data.taskId)) return
         // Show popup for any approval event
         const task = tasksRef.current.find(t => t.id === data.taskId)
         const isCheckpoint = task?.status === 'paused' && task?.checkpointAfter === true
@@ -698,6 +703,14 @@ export function CompactWorkflowView() {
   async function approveTask(taskId: string, action: 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop') {
     const cur = approvalPopupRef.current
     updateApprovalPopup(cur ? { ...cur, resolving: true } : null)
+    if (action === 'later') {
+      // Mark as dismissed so SSE re-emits (if any) don't re-popup.
+      // Task stays paused; the rail keeps a pulsing reminder.
+      dismissedApprovalsRef.current.add(taskId)
+    } else {
+      // Any other action clears the dismissal — user is actively handling it
+      dismissedApprovalsRef.current.delete(taskId)
+    }
     try {
       await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
         method: 'POST',
@@ -711,6 +724,34 @@ export function CompactWorkflowView() {
       // Only clear if popup is still for the same task — a new approval may have arrived during await
       const after = approvalPopupRef.current
       updateApprovalPopup(after && after.taskId === taskId ? null : after)
+    }
+  }
+
+  /** Re-open an approval popup for a paused task that was previously dismissed via "Later".
+   *  Triggered by clicking the pulsing paused node in WorkflowRail. */
+  function reopenApproval(taskId: string) {
+    const task = tasksRef.current.find(t => t.id === taskId)
+    if (!task || task.status !== 'paused') return
+    dismissedApprovalsRef.current.delete(taskId)
+    const isCheckpoint = task.checkpointAfter === true
+    const isFailure = !!task.lastError
+    if (isFailure) {
+      // Re-open the inline failure action bar instead of the checkpoint popup
+      const rawError = task.lastError || 'Task failed'
+      const cleanError = rawError.replace(/^Task failed:\s*/i, '')
+      setFailedTaskAction({
+        taskId,
+        taskTitle: task.title || taskId,
+        error: cleanError,
+      })
+    } else {
+      updateApprovalPopup({
+        taskId,
+        taskTitle: task.title || taskId,
+        message: task.approvalMessage || 'Approval required',
+        isCheckpoint,
+        resolving: false,
+      })
     }
   }
 
@@ -1452,7 +1493,11 @@ export function CompactWorkflowView() {
         )}
         {/* Workflow Rail (collapsed) */}
         {hasWorkflow && !workflowExpanded && (
-          <WorkflowRail tasks={tasks} onExpand={() => setWorkflowExpanded(true)} />
+          <WorkflowRail
+            tasks={tasks}
+            onExpand={() => setWorkflowExpanded(true)}
+            onReopenApproval={reopenApproval}
+          />
         )}
 
         {/* Chat Messages */}

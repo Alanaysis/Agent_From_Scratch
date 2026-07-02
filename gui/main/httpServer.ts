@@ -275,8 +275,12 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
 
   if (action === 'later') {
     eventBus.emit("approval:resolved", { taskId, action });
-    // Keep pending so next poll re-triggers the approval prompt
-    pendingApprovalTasks.set(taskId, pendingReq!);
+    // Remove from pending so the poll loop stops re-emitting the popup.
+    // Task stays 'paused' so the WorkflowRail keeps showing it as a
+    // persistent reminder (pulsing dot). User re-opens the approval
+    // by clicking the paused node in the rail, not via auto-re-emit.
+    pendingApprovalTasks.delete(taskId);
+    approvalEmittedAt.delete(taskId);
     return { ok: true, action: "later" };
   }
 
