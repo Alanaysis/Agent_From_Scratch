@@ -2724,10 +2724,21 @@ export function startHttpServer(port = 3002): http.Server {
     json(res, { error: "Not found" }, 404);
   });
 
-  server.listen(port, "0.0.0.0", () => {
+  server.listen(port, "0.0.0.0", async () => {
     log("INFO", "HTTP", `HTTP server listening on http://0.0.0.0:${port}`);
     log("INFO", "HTTP", `API: http://0.0.0.0:${port}/api/health`);
     log("INFO", "HTTP", `CORS enabled for all origins`);
+
+    // Register learning + constraint hooks (same as app/main.ts CLI path)
+    try {
+      const { registerKnowledgeHook } = await import("../../tools/knowledgeHook");
+      const { registerConstraintHook } = await import("../../tools/constraintEngine");
+      registerKnowledgeHook(cwd());
+      registerConstraintHook(cwd());
+      log("INFO", "HTTP", "Knowledge + constraint hooks registered");
+    } catch (e) {
+      log("ERROR", "HTTP", `Failed to register hooks: ${e}`);
+    }
 
     // Start auto-execution poll for unblocked tasks
     startTaskAutoExec(5000);

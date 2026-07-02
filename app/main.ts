@@ -4,10 +4,13 @@ import { runHeadless } from "./headless";
 import { startRepl } from "./repl";
 import { startTui } from "./tui";
 import { registerKnowledgeHook } from "../tools/knowledgeHook";
+import { registerConstraintHook } from "../tools/constraintEngine";
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   // Register knowledge extraction hook for automatic learning
   registerKnowledgeHook(cwd());
+  // Register constraint enforcement hook (2nd line of defense against 自作主张)
+  registerConstraintHook(cwd());
 
   const autoApprove = argv.includes("--yes");
   const streamOutput = argv.includes("--stream")

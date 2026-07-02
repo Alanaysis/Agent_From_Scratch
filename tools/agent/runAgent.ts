@@ -7,6 +7,7 @@ import { compressSubagentResult } from "./resultCompressor";
 import { findToolByName, type CanUseToolFn, type ToolUseContext, type Tools, type JsonSchema } from "../Tool";
 import { getTools } from "../registry";
 import { canUseTool } from "../../permissions/engine";
+import { executeBeforeHooks, type HookContext } from "../hooks";
 
 export type RunAgentParams = {
   description: string;
@@ -254,6 +255,72 @@ function stringify(data: unknown): string {
   }
 }
 
+/** Validate tool input against its JsonSchema. Returns null if valid, or an error message. */
+function validateAgainstSchema(input: unknown, schema: JsonSchema): string | null {
+  if (schema.type !== "object") return null; // only object schemas validated here
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return `Expected object input, got ${Array.isArray(input) ? "array" : typeof input}`;
+  }
+  const obj = input as Record<string, unknown>;
+  // required
+  if (schema.required) {
+    for (const field of schema.required) {
+      if (obj[field] === undefined || obj[field] === null) {
+        return `Missing required field: "${field}"`;
+      }
+    }
+  }
+  // additionalProperties: false — reject unknown fields
+  if (schema.additionalProperties === false && schema.properties) {
+    const known = new Set(Object.keys(schema.properties));
+    for (const key of Object.keys(obj)) {
+      if (!known.has(key)) {
+        return `Unknown field "${key}" (schema has additionalProperties: false)`;
+      }
+    }
+  }
+  // per-field type + pattern checks
+  if (schema.properties) {
+    for (const [field, def] of Object.entries(schema.properties)) {
+      const val = obj[field];
+      if (val === undefined || val === null) continue;
+      if (def.type === "string" && typeof val !== "string") {
+        return `Field "${field}" must be string, got ${typeof val}`;
+      }
+      if (def.type === "number" && typeof val !== "number") {
+        return `Field "${field}" must be number, got ${typeof val}`;
+      }
+      if (def.type === "boolean" && typeof val !== "boolean") {
+        return `Field "${field}" must be boolean, got ${typeof val}`;
+      }
+      if (def.type === "object" && (typeof val !== "object" || Array.isArray(val) || val === null)) {
+        return `Field "${field}" must be object, got ${Array.isArray(val) ? "array" : typeof val}`;
+      }
+      if (def.type === "array" && !Array.isArray(val)) {
+        return `Field "${field}" must be array, got ${typeof val}`;
+      }
+      if (def.pattern && typeof val === "string") {
+        const re = new RegExp(def.pattern);
+        if (!re.test(val)) {
+          return `Field "${field}" value "${val.slice(0, 50)}" does not match pattern ${def.pattern}`;
+        }
+      }
+      if (def.enum && !def.enum.includes(val as string | number)) {
+        return `Field "${field}" value must be one of [${def.enum.join(", ")}], got "${val}"`;
+      }
+      if (typeof val === "number") {
+        if (def.minimum !== undefined && val < def.minimum) {
+          return `Field "${field}" value ${val} is below minimum ${def.minimum}`;
+        }
+        if (def.maximum !== undefined && val > def.maximum) {
+          return `Field "${field}" value ${val} is above maximum ${def.maximum}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 async function* executeSubagentToolCall(
   toolName: string,
   toolInput: unknown,
@@ -306,6 +373,44 @@ async function* executeSubagentToolCall(
     }
   } else if (permission.updatedInput !== undefined) {
     effectiveInput = permission.updatedInput;
+  }
+
+  // Schema validation (beforeToolCall constraint layer #1):
+  // Tools with a JsonSchema inputSchema get validated here, before any hook
+  // or tool execution. Invalid input is rejected without reaching the tool.
+  if (tool.inputSchema) {
+    const schemaError = validateAgainstSchema(effectiveInput, tool.inputSchema);
+    if (schemaError) {
+      yield createToolResultMessage(
+        toolUseId,
+        stringify({ error: `Schema validation failed: ${schemaError}` }),
+        true,
+      );
+      return;
+    }
+  }
+
+  // beforeToolCall hooks (constraint layer #2):
+  // Registered hooks (e.g. ToolRouter constraint enforcement) can block or
+  // modify the input. Runs AFTER schema validation so hooks see clean input.
+  const hookCtx: HookContext = {
+    toolName,
+    input: effectiveInput,
+    context,
+    toolUseId,
+    timestamp: Date.now(),
+  };
+  const beforeResult = await executeBeforeHooks(hookCtx);
+  if (!beforeResult.proceed) {
+    yield createToolResultMessage(
+      toolUseId,
+      stringify({ error: `Blocked by policy: ${beforeResult.reason || "unspecified"}` }),
+      true,
+    );
+    return;
+  }
+  if (beforeResult.modifiedInput !== undefined) {
+    effectiveInput = beforeResult.modifiedInput;
   }
 
   try {
