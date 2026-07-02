@@ -76,12 +76,16 @@ function parseReflectionOutput(
   antiPatterns: string[];
   optimizations: string[];
   skillSuggestions: Array<{ name: string; description: string }>;
+  constraints: string[];
+  remediations: Array<{ fingerprint: string; strategy: string }>;
 } {
   const result = {
     successPatterns: [] as string[],
     antiPatterns: [] as string[],
     optimizations: [] as string[],
     skillSuggestions: [] as Array<{ name: string; description: string }>,
+    constraints: [] as string[],
+    remediations: [] as Array<{ fingerprint: string; strategy: string }>,
   };
 
   const sections = output.split(/##\s*/);
@@ -100,6 +104,21 @@ function parseReflectionOutput(
       result.antiPatterns = items;
     } else if (header.includes("optim")) {
       result.optimizations = items;
+    } else if (header.includes("constraint")) {
+      result.constraints = items;
+    } else if (header.includes("remediation") || header.includes("remedy")) {
+      for (const item of items) {
+        // Format: "fingerprint | strategy" or just "strategy"
+        const pipeIndex = item.indexOf("|");
+        if (pipeIndex > 0) {
+          result.remediations.push({
+            fingerprint: item.slice(0, pipeIndex).trim(),
+            strategy: item.slice(pipeIndex + 1).trim(),
+          });
+        } else {
+          result.remediations.push({ fingerprint: "unknown", strategy: item });
+        }
+      }
     } else if (header.includes("skill")) {
       for (const item of items) {
         const colonIndex = item.indexOf(":");
@@ -135,15 +154,45 @@ export async function runReflection(
   const transcriptSummary = summarizeTranscript(messages);
   const triggerContext = formatTriggerContext(trigger);
 
+  // Domain-focused reflection prompt: ask WHY this task step failed/succeeded,
+  // not "how could the agent use tools better". The goal is to extract
+  // constraints (hard rules to prevent repeats) and remediations (fix recipes).
   const reflectionPrompt = [
-    "Analyze the following interaction transcript and extract insights for self-improvement.",
+    "You are analyzing a workflow task transcript to extract DOMAIN-SPECIFIC insights.",
+    "Focus on the TASK outcome (why did this gRPC call / recipe step fail or succeed),",
+    "NOT on meta-commentary about tool usage patterns.",
     "",
     `Trigger: ${triggerContext}`,
     "",
     "## Transcript Summary",
     transcriptSummary,
     "",
-    "Please identify success patterns, anti-patterns, optimization opportunities, and skill suggestions.",
+    "Extract insights in this EXACT format:",
+    "",
+    "## Anti-Patterns",
+    "- [what went wrong in THIS domain task, e.g. 'gRPC SendMessage to RecipeTool failed because WaferMap was not loaded first']",
+    "",
+    "## Constraints",
+    "- [hard rules to prevent recurrence. Format: 'agentType=X toolName=Y: rule description'",
+    "  e.g. 'agentType=grpc-worker toolName=GrpcClient: must call LoadWafer before CorrectWaferMap']",
+    "  These will be ENFORCED (blocked) on future calls, so be precise and conservative.",
+    "",
+    "## Remediations",
+    "- [error fingerprint | fix strategy]",
+    "  e.g. 'grpc:UNAVAILABLE:AlgoService | check device address is reachable, then retry']",
+    "  e.g. 'RecipeTool:CompletePage:failed | ensure previous step's property page was saved first']",
+    "",
+    "## Success Patterns",
+    "- [what worked well that should be repeated, domain-specific not tool-usage-generic]",
+    "",
+    "## Optimization Opportunities",
+    "- [concrete improvements to this workflow, not generic advice]",
+    "",
+    "## Skill Suggestions",
+    "- [skill name]: [description]",
+    "",
+    "IMPORTANT: Do NOT produce generic coding-agent meta-commentary like 'should have used SearchFiles instead of Read'.",
+    "Focus ONLY on the industrial workflow domain (gRPC calls, recipe steps, wafer alignment, equipment state).",
   ].join("\n");
 
   let reflectionOutput: string;
@@ -183,6 +232,29 @@ export async function runReflection(
       "optimization",
       "reflection",
     ]);
+    result.knowledgeExtracted += 1;
+  }
+
+  // Constraints: hard rules that will be enforced by constraintEngine.ts
+  // (beforeToolCall hook). Low initial confidence (0.5) — must prove itself
+  // by surviving multiple reflections before reaching block-level (0.8).
+  for (const constraint of parsed.constraints) {
+    await addKnowledge(cwd, "constraint", constraint, "agent_reflection", [
+      "constraint",
+      "reflection",
+      "warn", // default to warn until confidence rises
+    ], 0.5);
+    result.knowledgeExtracted += 1;
+  }
+
+  // Remediations: error fingerprint → fix strategy mappings.
+  // Consumed by RemediationEngine (P2) to suggest/automate fixes.
+  for (const remediation of parsed.remediations) {
+    const content = `${remediation.fingerprint} | ${remediation.strategy}`;
+    await addKnowledge(cwd, "remediation", content, "agent_reflection", [
+      "remediation",
+      "reflection",
+    ], 0.6);
     result.knowledgeExtracted += 1;
   }
 
@@ -227,7 +299,9 @@ export async function runReflection(
   }
 
   result.summary = [
-    `Reflection complete: ${result.knowledgeExtracted} insights extracted,`,
+    `Reflection complete: ${result.knowledgeExtracted} insights extracted`,
+    `(${parsed.constraints.length} constraints, ${parsed.remediations.length} remediations,`,
+    `${parsed.antiPatterns.length} anti-patterns, ${parsed.successPatterns.length} patterns),`,
     `${result.skillsCreated} skills created, ${result.skillsPatched} skills refined.`,
   ].join(" ");
 
