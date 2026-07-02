@@ -2571,6 +2571,38 @@ routes.set("GET /api/audit", async (_req, _body, params?: Record<string, string>
   return { entries };
 });
 
+// Task rewind — get available rewind targets for a task
+routes.set("GET /api/tasks/:taskId/rewind-targets", async (_req, _body, params) => {
+  const taskId = params?.taskId;
+  if (!taskId) return { error: "taskId required" };
+  const task = await readTaskInfo(cwd(), taskId);
+  if (!task) return { error: "Task not found" };
+  const { getRewindTargets } = await import("../../runtime/engine/taskStateMachine");
+  const targets = getRewindTargets(task.status, (task.statusHistory || []) as any);
+  return { targets };
+});
+
+// Task rewind — restore task to a previous status
+routes.set("POST /api/tasks/:taskId/rewind", async (_req, body, params) => {
+  const taskId = params?.taskId;
+  if (!taskId) return { error: "taskId required" };
+  const { targetStatus } = body as unknown as { targetStatus: string };
+  if (!targetStatus) return { error: "targetStatus required" };
+  const task = await readTaskInfo(cwd(), taskId);
+  if (!task) return { error: "Task not found" };
+  const { canRewindTo } = await import("../../runtime/engine/taskStateMachine");
+  if (!canRewindTo(task.status, targetStatus, (task.statusHistory || []) as any)) {
+    return { error: `Cannot rewind from ${task.status} to ${targetStatus}` };
+  }
+  // Rewind: reset to target status, clear error
+  await updateTaskInfo(cwd(), taskId, {
+    status: targetStatus as any,
+    lastError: null,
+  }, "user-rewind");
+  log("INFO", "Rewind", `Task ${taskId} rewound from ${task.status} to ${targetStatus}`);
+  return { ok: true, from: task.status, to: targetStatus };
+});
+
 // ====== Route matching ======
 
 function matchRoute(method: string, url: string): { handler: RouteHandler; params: Record<string, string> } | null {
