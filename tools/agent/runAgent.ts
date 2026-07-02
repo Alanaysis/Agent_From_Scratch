@@ -4,7 +4,7 @@ import { getLlmConfig, runLlmTurn, type LlmToolDefinition } from "../../runtime/
 import { createSubagentContext, type SubagentContextOverrides } from "./subagentContext";
 import { getAgentDefinition, getToolDefinitionsForAgent } from "./agentRegistry";
 import { compressSubagentResult } from "./resultCompressor";
-import { findToolByName, type CanUseToolFn, type ToolUseContext, type Tools } from "../Tool";
+import { findToolByName, type CanUseToolFn, type ToolUseContext, type Tools, type JsonSchema } from "../Tool";
 import { getTools } from "../registry";
 import { canUseTool } from "../../permissions/engine";
 
@@ -43,6 +43,27 @@ function getFilteredTools(agentDef: ReturnType<typeof getAgentDefinition>): Tool
   );
 }
 
+/**
+ * Convert a Tool's JsonSchema inputSchema into an LlmToolDefinition.
+ * The description is derived from the schema's description (if present),
+ * otherwise the caller should fall back to a hand-written definition.
+ */
+function toolToLlmDefinition(
+  name: string,
+  schema: JsonSchema,
+  description: string,
+): LlmToolDefinition {
+  return {
+    name,
+    description,
+    parameters: schema as unknown as Record<string, unknown>,
+  };
+}
+
+/** Names of tools whose inputSchema is authoritative (auto-generated from schema).
+ *  Tools not in this set still use the hand-written definitions below. */
+const SCHEMA_DRIVEN_TOOLS = new Set(["GrpcClient"]);
+
 function getSubagentToolDefinitions(
   agentDef: ReturnType<typeof getAgentDefinition>,
 ): LlmToolDefinition[] {
@@ -51,7 +72,7 @@ function getSubagentToolDefinitions(
 }
 
 function buildAllToolDefinitions(): LlmToolDefinition[] {
-  return [
+  const handWritten: LlmToolDefinition[] = [
     {
       name: "Read",
       description: "Read a text file from the current working directory.",
@@ -156,24 +177,6 @@ function buildAllToolDefinitions(): LlmToolDefinition[] {
       },
     },
     {
-      name: "GrpcClient",
-      description: "Make a gRPC call to an external service. Requires a .proto file, service name, method name, and target address.",
-      parameters: {
-        type: "object",
-        properties: {
-          protoFile: { type: "string", description: "Path to the .proto file." },
-          service: { type: "string", description: "Fully qualified service name (e.g. 'mypackage.MyService')." },
-          method: { type: "string", description: "Method name to call." },
-          address: { type: "string", description: "Target address in host:port format." },
-          payload: { type: "object", description: "Request payload as key-value pairs." },
-          metadata: { type: "object", description: "Optional gRPC metadata as key-value pairs." },
-          deadline: { type: "number", description: "Optional timeout in milliseconds (default 300000, i.e. 5 minutes)." },
-        },
-        required: ["protoFile", "service", "method", "address", "payload"],
-        additionalProperties: false,
-      },
-    },
-    {
       name: "Checkpoint",
       description: "Pause execution and wait for user input. Use for approval confirmations, error recovery choices (retry/skip/abort), or collecting user-provided data.",
       parameters: {
@@ -205,6 +208,18 @@ function buildAllToolDefinitions(): LlmToolDefinition[] {
       },
     },
   ];
+
+  // Merge: schema-driven tools (from Tool.inputSchema) override hand-written ones.
+  // This lets tools own their schema in one place (the Tool definition) and
+  // have it flow automatically to the LLM tool definition.
+  const schemaDriven = getTools()
+    .filter(t => t.inputSchema && SCHEMA_DRIVEN_TOOLS.has(t.name))
+    .map(t => toolToLlmDefinition(t.name, t.inputSchema!, t.inputSchema!.description || t.name));
+
+  const merged = new Map<string, LlmToolDefinition>();
+  for (const def of handWritten) merged.set(def.name, def);
+  for (const def of schemaDriven) merged.set(def.name, def); // schema wins
+  return [...merged.values()];
 }
 
 function createAssistantMessage(

@@ -6,6 +6,21 @@ export type ValidationResult =
   | { result: true }
   | { result: false; message: string; errorCode?: number }
 
+/** JSON Schema (draft-07 subset) used for tool input validation and LLM tool definitions. */
+export type JsonSchema = {
+  type: "object" | "string" | "number" | "boolean" | "array" | "integer"
+  description?: string
+  properties?: Record<string, JsonSchema>
+  required?: string[]
+  additionalProperties?: boolean
+  items?: JsonSchema
+  enum?: (string | number)[]
+  default?: unknown
+  minimum?: number
+  maximum?: number
+  pattern?: string
+}
+
 export type PermissionDecision<Input> =
   | { behavior: 'allow'; updatedInput?: Input }
   | { behavior: 'deny'; message: string }
@@ -42,7 +57,9 @@ export type CanUseToolFn = <Input>(
 
 export type Tool<Input, Output> = {
   name: string
-  inputSchema: unknown
+  /** JSON Schema describing the tool's input. When non-null, the LLM tool
+   *  definition and input validation are derived from this schema. */
+  inputSchema: JsonSchema | null
   outputSchema?: unknown
   resourceType?: ResourceType
   actionType?: ActionType

@@ -1,4 +1,4 @@
-import type { Tool, ToolResult, ToolUseContext, CanUseToolFn } from "../Tool";
+import type { Tool, ToolResult, ToolUseContext, CanUseToolFn, JsonSchema } from "../Tool";
 import type { AssistantMessage } from "../../runtime/messages";
 import { join } from "path";
 import { existsSync } from "fs";
@@ -144,9 +144,51 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const GRPC_INPUT_SCHEMA: JsonSchema = {
+  type: "object",
+  description: "Execute a gRPC call to an external microservice.",
+  properties: {
+    protoFile: {
+      type: "string",
+      description: "Path to the .proto file (relative to cwd or absolute).",
+    },
+    service: {
+      type: "string",
+      description: "Fully qualified service name (e.g. 'AlgoGRPC.AlgoService').",
+    },
+    method: {
+      type: "string",
+      description: "Method name to call on the service.",
+    },
+    address: {
+      type: "string",
+      description: "Target address in host:port format (e.g. '192.168.24.82:9010').",
+      pattern: "^[a-zA-Z0-9._-]+:\\d+$",
+    },
+    payload: {
+      type: "object",
+      description: "Request payload as key-value pairs.",
+      additionalProperties: true,
+    },
+    metadata: {
+      type: "object",
+      description: "Optional gRPC metadata (headers) as key-value pairs.",
+      additionalProperties: true,
+    },
+    deadline: {
+      type: "number",
+      description: "Optional timeout in milliseconds (default 300000 = 5 min).",
+      minimum: 1000,
+      maximum: 600000,
+    },
+  },
+  required: ["protoFile", "service", "method", "address", "payload"],
+  additionalProperties: false,
+};
+
 export const GrpcClientTool: Tool<GrpcClientInput, GrpcClientOutput> = {
   name: "GrpcClient",
-  inputSchema: null,
+  inputSchema: GRPC_INPUT_SCHEMA,
   outputSchema: null,
 
   async description() {
