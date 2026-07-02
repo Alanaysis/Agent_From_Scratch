@@ -10,6 +10,9 @@ import { WorkflowRail } from './WorkflowRail'
 import { ProposalPicker } from './ProposalPicker'
 import { CompactToolbar, type SessionItem as CompactSessionItem } from './CompactToolbar'
 import { CompactWorkflowOverlay } from './CompactWorkflowOverlay'
+import { AuditDrawer } from './AuditDrawer'
+import { RemediationPanel } from './RemediationPanel'
+import { ConstraintPanel } from './ConstraintPanel'
 import {
   TASK_COLORS, statusConfig, mono, sans,
   type CompactTask, type CompactMessage,
@@ -215,6 +218,8 @@ export function CompactWorkflowView() {
     taskTitle: string
     error: string
   } | null>(null)
+  const [showParamEditor, setShowParamEditor] = React.useState(false)
+  const [paramEditorValue, setParamEditorValue] = React.useState('')
   const dismissedFailedTasksRef = React.useRef<Set<string>>(new Set())
   const dismissedApprovalsRef = React.useRef<Set<string>>(new Set()) // taskIds user clicked "Later" on
   const isTypewritingRef = React.useRef(false)
@@ -1189,6 +1194,30 @@ export function CompactWorkflowView() {
     }
   }
 
+  async function handleEditAndRetry() {
+    if (!failedTaskAction) return
+    const { taskId } = failedTaskAction
+    let newParams: Record<string, unknown> = {}
+    try {
+      newParams = JSON.parse(paramEditorValue)
+    } catch {
+      // invalid JSON — fallback to plain retry
+      console.warn('[Edit&Retry] invalid JSON, falling back to plain retry')
+    }
+    setFailedTaskAction(null)
+    setShowParamEditor(false)
+    setParamEditorValue('')
+    try {
+      await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retry-with-params', newParams }),
+      })
+    } catch (e) {
+      console.error('[Edit&Retry] error:', e)
+    }
+  }
+
   async function handleSelectSession(sid: string) {
     setSessionId(sid)
     sessionIdRef.current = sid
@@ -1285,6 +1314,12 @@ export function CompactWorkflowView() {
         onDeleteSession={handleDeleteSession}
         onOpenPicker={() => setShowPicker(true)}
       />
+
+      {/* Constraint Panel — learned hard rules */}
+      <ConstraintPanel />
+
+      {/* Remediation Panel — learned error fixes */}
+      <RemediationPanel />
 
       {/* Middle Area */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
@@ -1479,6 +1514,15 @@ export function CompactWorkflowView() {
               })
             }}
             onClose={() => { userCollapsedRef.current = true; setWorkflowExpanded(false) }}
+            onTaskRewound={() => {
+              // Trigger task list refresh — reuse the same SSE refresh path
+              fetch(`${API_BASE}/api/tasks`).then(r => r.json()).then(data => {
+                if (data.tasks) {
+                  // Same logic as SSE task update
+                  setTasks(data.tasks)
+                }
+              }).catch(() => {})
+            }}
           />
         )}
       </div>
@@ -1540,6 +1584,17 @@ export function CompactWorkflowView() {
                 }}
               >
                 ↻ Retry
+              </button>
+              <button
+                onClick={() => setShowParamEditor(true)}
+                style={{
+                  flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: 600,
+                  fontFamily: mono, cursor: 'pointer',
+                  backgroundColor: 'var(--surface-3)', color: 'var(--blue)',
+                  border: '1px solid var(--blue)', borderRadius: 2,
+                }}
+              >
+                ✎ Edit & Retry
               </button>
               <button
                 onClick={() => handleFailedTaskAction('continue')}
@@ -2093,6 +2148,78 @@ export function CompactWorkflowView() {
           </div>
         </div>
       )}
+
+      {/* Param Editor Popup — edit gRPC params before retry */}
+      {showParamEditor && failedTaskAction && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowParamEditor(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: 500, maxHeight: 400,
+              backgroundColor: 'var(--surface-1)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 4,
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              padding: '10px 12px',
+              borderBottom: '1px solid var(--border-subtle)',
+              fontSize: 11, fontWeight: 700, fontFamily: mono,
+              color: 'var(--blue)',
+            }}>
+              ✎ Edit Parameters & Retry — {failedTaskAction.taskTitle}
+            </div>
+            <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--text-faint)', fontFamily: mono }}>
+              Enter new gRPC params as JSON. The diff from original will be recorded as a remediation entry.
+            </div>
+            <textarea
+              value={paramEditorValue}
+              onChange={e => setParamEditorValue(e.target.value)}
+              placeholder='{"address": "192.168.24.82:9010", "payload": {...}}'
+              style={{
+                flex: 1, margin: '0 12px', padding: '8px',
+                backgroundColor: 'var(--surface-0)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 2,
+                color: 'var(--text-primary)', fontFamily: mono, fontSize: 11,
+                resize: 'none', minHeight: 150,
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 6, padding: '10px 12px' }}>
+              <button
+                onClick={() => setShowParamEditor(false)}
+                style={{
+                  flex: 1, padding: '6px 8px', fontSize: 11, fontFamily: mono,
+                  background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-medium)', borderRadius: 2, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditAndRetry}
+                style={{
+                  flex: 1, padding: '6px 8px', fontSize: 11, fontWeight: 700, fontFamily: mono,
+                  background: 'var(--blue)', color: '#000',
+                  border: '1px solid var(--blue)', borderRadius: 2, cursor: 'pointer',
+                }}
+              >
+                Retry with new params
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audit Drawer — bottom expandable panel */}
+      <AuditDrawer />
 
       {/* Click outside to close history */}
       {showHistory && (

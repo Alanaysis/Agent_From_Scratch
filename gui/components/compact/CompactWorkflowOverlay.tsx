@@ -1,11 +1,20 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, ChevronDown, XCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, XCircle, RotateCcw } from 'lucide-react'
 import {
   type CompactTask,
   getStatusConfig, getTaskColor, mono, sans,
 } from './compactTypes'
+
+const API_BASE = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:3002`
+  : ''
+
+interface RewindTarget {
+  status: string
+  timestamp: string
+}
 
 export interface CompactWorkflowOverlayProps {
   tasks: CompactTask[]
@@ -13,6 +22,7 @@ export interface CompactWorkflowOverlayProps {
   expandedFailedDesc: Set<string>
   onToggleFailedDesc: (taskId: string, expand: boolean) => void
   onClose: () => void
+  onTaskRewound?: () => void
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -23,8 +33,51 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 export function CompactWorkflowOverlay({
-  tasks, workflowName, expandedFailedDesc, onToggleFailedDesc, onClose,
+  tasks, workflowName, expandedFailedDesc, onToggleFailedDesc, onClose, onTaskRewound,
 }: CompactWorkflowOverlayProps) {
+  const [rewindMenuTaskId, setRewindMenuTaskId] = React.useState<string | null>(null)
+  const [rewindTargets, setRewindTargets] = React.useState<RewindTarget[]>([])
+
+  const loadRewindTargets = React.useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/rewind-targets`)
+      const data = await res.json()
+      setRewindTargets(data.targets || [])
+    } catch (e) {
+      console.error('[Rewind] load targets error:', e)
+      setRewindTargets([])
+    }
+  }, [])
+
+  const handleRewind = React.useCallback(async (taskId: string, targetStatus: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/rewind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetStatus }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        console.log(`[Rewind] ${taskId}: ${data.from} → ${data.to}`)
+        setRewindMenuTaskId(null)
+        onTaskRewound?.()
+      } else {
+        console.error('[Rewind] error:', data.error)
+      }
+    } catch (e) {
+      console.error('[Rewind] error:', e)
+    }
+  }, [onTaskRewound])
+
+  const toggleRewindMenu = React.useCallback((taskId: string) => {
+    if (rewindMenuTaskId === taskId) {
+      setRewindMenuTaskId(null)
+    } else {
+      setRewindMenuTaskId(taskId)
+      loadRewindTargets(taskId)
+    }
+  }, [rewindMenuTaskId, loadRewindTargets])
+
   return (
     <div style={{
       position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -271,6 +324,74 @@ export function CompactWorkflowOverlay({
                       <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                         {task.lastError}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Rewind button for terminal states */}
+                  {(task.status === 'failed' || task.status === 'done' || task.status === 'cancelled') && (
+                    <div style={{ marginTop: 5 }}>
+                      <button
+                        onClick={() => toggleRewindMenu(task.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '3px 8px',
+                          background: rewindMenuTaskId === task.id ? 'rgba(96,165,250,0.2)' : 'transparent',
+                          border: '1px solid rgba(96,165,250,0.4)',
+                          borderRadius: 2,
+                          color: '#60a5fa', fontSize: 10, fontFamily: mono,
+                          cursor: 'pointer', fontWeight: 600,
+                        }}
+                      >
+                        <RotateCcw size={10} />
+                        Rewind
+                      </button>
+                      {rewindMenuTaskId === task.id && (
+                        <div style={{
+                          marginTop: 4, padding: '4px 6px',
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          border: '1px solid rgba(96,165,250,0.3)',
+                          borderRadius: 2,
+                        }}>
+                          <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 3, fontFamily: mono }}>
+                            回退到历史状态：
+                          </div>
+                          {rewindTargets.length === 0 ? (
+                            <div style={{ fontSize: 9, color: '#64748b', fontFamily: mono }}>
+                              No rewind targets available
+                            </div>
+                          ) : (
+                            rewindTargets.map(target => (
+                              <button
+                                key={target.status}
+                                onClick={() => handleRewind(task.id, target.status)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 6,
+                                  width: '100%', padding: '3px 6px', marginBottom: 2,
+                                  background: 'transparent',
+                                  border: '1px solid transparent',
+                                  borderRadius: 2,
+                                  color: '#d4d4d4', fontSize: 10, fontFamily: mono,
+                                  cursor: 'pointer', textAlign: 'left',
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = 'rgba(96,165,250,0.15)'
+                                  e.currentTarget.style.borderColor = 'rgba(96,165,250,0.4)'
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = 'transparent'
+                                  e.currentTarget.style.borderColor = 'transparent'
+                                }}
+                              >
+                                <RotateCcw size={9} color="#60a5fa" />
+                                <span style={{ fontWeight: 600 }}>{target.status}</span>
+                                <span style={{ color: '#64748b', fontSize: 8 }}>
+                                  {new Date(target.timestamp).toLocaleTimeString()}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

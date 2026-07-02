@@ -206,10 +206,10 @@ routes.set("POST /api/tasks/:id/execute", async (_req, _body, _params) => {
 routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<string, string>) => {
   const input = JSON.parse(body);
   const taskId = params!.id!;
-  const action = input.action as 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop';
+  const action = input.action as 'execute' | 'later' | 'abort' | 'continue' | 'retry' | 'stop' | 'retry-with-params';
 
-  if (!action || !['execute', 'later', 'abort', 'continue', 'retry', 'stop'].includes(action)) {
-    return { error: "action must be 'execute', 'later', 'abort', 'continue', 'retry', or 'stop'" };
+  if (!action || !['execute', 'later', 'abort', 'continue', 'retry', 'stop', 'retry-with-params'].includes(action)) {
+    return { error: "action must be 'execute', 'later', 'abort', 'continue', 'retry', 'stop', or 'retry-with-params'" };
   }
 
   const pendingReq = pendingApprovalTasks.get(taskId);
@@ -222,7 +222,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
 
   // Handle task failure decisions
   if (pendingReq?.requestType === 'task_failure') {
-    eventBus.emit("approval:resolved", { taskId, action });
+    eventBus.emit("approval:resolved", { taskId, action: action as any });
 
     if (action === 'retry') {
       // Retry: reset task to todo and re-execute.
@@ -238,6 +238,45 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
         executingTasks.delete(taskId);
       });
       return { ok: true, action: "retry" };
+    }
+
+    if (action === 'retry-with-params') {
+      // Retry with new params: user edited the grpcConfig/payload before retrying.
+      // Record the paramDiff as a remediation entry for future error matching.
+      const newParams = input.newParams as Record<string, unknown> | undefined;
+      const oldParams = (pendingReq as any)?.taskInfo?.grpcConfig || {};
+      const errorMessage = pendingReq?.errorMessage || "unknown error";
+      const taskInfo = await readTaskInfo(cwd(), taskId);
+
+      if (newParams && Object.keys(newParams).length > 0) {
+        try {
+          const { recordUserRemediation, computeParamDiff } = await import("../../runtime/remediationEngine");
+          const diff = computeParamDiff(oldParams as Record<string, unknown>, newParams);
+          if (Object.keys(diff).length > 0) {
+            await recordUserRemediation(
+              cwd(), taskId, taskInfo?.sessionId,
+              errorMessage, diff, taskInfo?.title || taskId,
+            );
+            log("INFO", "AutoExec", `Recorded paramDiff for ${taskId}: ${Object.keys(diff).join(", ")}`);
+          }
+          // Update task grpcConfig with new params
+          await updateTaskInfo(cwd(), taskId, {
+            status: "todo", lastError: null,
+            grpcConfig: { ...(taskInfo?.grpcConfig || {}), ...newParams },
+          } as any);
+        } catch (e) {
+          log("ERROR", "AutoExec", `Failed to record paramDiff: ${e}`);
+          await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: null });
+        }
+      } else {
+        await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: null });
+      }
+
+      executingTasks.add(taskId);
+      executeTaskViaHttp(taskId).finally(() => {
+        executingTasks.delete(taskId);
+      });
+      return { ok: true, action: "retry-with-params" };
     }
 
     if (action === 'continue' || action === 'execute') {
@@ -290,7 +329,7 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
   }
 
   // action === 'execute'
-  eventBus.emit("approval:resolved", { taskId, action });
+  eventBus.emit("approval:resolved", { taskId, action: action as any });
 
   // Check if this is a checkpoint_after confirmation (task paused waiting for confirm)
   const task = await readTaskInfo(cwd(), taskId);
@@ -2557,6 +2596,14 @@ routes.set("GET /api/remediations", async () => {
   const { listRemediations } = await import("../../runtime/remediationEngine");
   const entries = await listRemediations(cwd());
   return { remediations: entries };
+});
+
+// Constraint entries (read-only — for ConstraintPanel)
+routes.set("GET /api/constraints", async () => {
+  const { loadKnowledgeStore } = await import("../../storage/knowledge");
+  const store = await loadKnowledgeStore(cwd());
+  const constraints = store.entries.filter(e => e.category === "constraint");
+  return { constraints };
 });
 
 // Audit log (read-only — for AuditDrawer)
