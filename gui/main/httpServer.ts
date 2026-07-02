@@ -225,7 +225,12 @@ routes.set("POST /api/tasks/:id/approve", async (_req, body, params?: Record<str
     eventBus.emit("approval:resolved", { taskId, action });
 
     if (action === 'retry') {
-      // Retry: reset task to todo and re-execute
+      // Retry: reset task to todo and re-execute.
+      // NOTE: paramDiff recording happens in executeTaskViaHttp's success path
+      // when it detects the task previously failed (via statusHistory) and the
+      // current grpcConfig differs from the failed attempt. For now, plain
+      // retry reuses the same params; "retry with new params" is a future
+      // frontend feature that will call recordUserRemediation explicitly.
       log("INFO", "AutoExec", `Retrying failed task ${taskId}`);
       await updateTaskInfo(cwd(), taskId, { status: "todo", lastError: null });
       executingTasks.add(taskId);
@@ -2545,6 +2550,13 @@ routes.set("GET /api/approvals/pending", async () => {
 
 routes.set("GET /api/health", async () => {
   return { status: "ok", timestamp: new Date().toISOString() };
+});
+
+// Remediation entries (read-only — for future RemediationPanel UI)
+routes.set("GET /api/remediations", async () => {
+  const { listRemediations } = await import("../../runtime/remediationEngine");
+  const entries = await listRemediations(cwd());
+  return { remediations: entries };
 });
 
 // ====== Route matching ======
