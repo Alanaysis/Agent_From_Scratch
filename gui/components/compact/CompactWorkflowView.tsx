@@ -8,120 +8,17 @@ import {
 } from 'lucide-react'
 import { WorkflowRail } from './WorkflowRail'
 import { ProposalPicker } from './ProposalPicker'
+import { CompactToolbar, type SessionItem as CompactSessionItem } from './CompactToolbar'
+import { CompactWorkflowOverlay } from './CompactWorkflowOverlay'
+import {
+  TASK_COLORS, statusConfig, mono, sans,
+  type CompactTask, type CompactMessage,
+  getStatusConfig, getTaskColor, renderMarkdown, renderInlineMarkdown,
+} from './compactTypes'
 
 const API_BASE = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.hostname}:3002`
   : ''
-
-const TASK_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
-
-const mono = 'IBM Plex Mono, monospace'
-const sans = 'IBM Plex Sans, sans-serif'
-
-const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  todo: { color: '#7dd3fc', icon: <ChevronRight size={10} />, label: 'Pending' },
-  in_progress: { color: '#fbbf24', icon: <Loader2 size={10} />, label: 'Running' },
-  pausing: { color: '#fde68a', icon: <Loader2 size={10} />, label: 'Pausing' },
-  paused: { color: '#60a5fa', icon: <Clock size={10} />, label: 'Paused' },
-  cancelling: { color: '#fb923c', icon: <Loader2 size={10} />, label: 'Cancelling' },
-  cancelled: { color: '#94a3b8', icon: <XCircle size={10} />, label: 'Cancelled' },
-  verify: { color: '#c4b5fd', icon: <Clock size={10} />, label: 'Verify' },
-  done: { color: '#86efac', icon: <CheckCircle size={10} />, label: 'Done' },
-  failed: { color: '#fca5a5', icon: <XCircle size={10} />, label: 'Failed' },
-  skipped: { color: '#94a3b8', icon: <ChevronRight size={10} />, label: 'Skipped' },
-}
-
-function getStatusConfig(task: CompactTask) {
-  if (task.status === 'paused' && task.lastError) {
-    return { color: '#fca5a5', icon: <XCircle size={10} />, label: 'Failed' }
-  }
-  return statusConfig[task.status] || statusConfig.todo
-}
-
-interface CompactTask {
-  id: string
-  title: string
-  status: string
-  assignee?: string
-  dependsOn?: string[]
-  condition?: {
-    type: 'step_result' | 'llm_judge'
-    source?: string
-    field?: string
-    equals?: string
-  }
-  loop?: {
-    max: number
-    steps: string[]
-  }
-  checkpointAfter?: boolean
-  checkpointMessage?: string
-  requiresApproval?: boolean
-  approvalMessage?: string
-  description?: string
-  lastError?: string
-}
-
-interface CompactMessage {
-  id: string
-  role: 'user' | 'assistant' | 'tool_result' | 'tool_error' | 'system'
-  content: string
-  timestamp: number
-  taskId?: string
-  blocks?: any[]
-}
-
-function getTaskColor(taskId: string, tasks: CompactTask[]): string {
-  const idx = tasks.findIndex(t => t.id === taskId)
-  return TASK_COLORS[idx % TASK_COLORS.length] || TASK_COLORS[0]!
-}
-
-function renderInlineMarkdown(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = []
-  let remaining = text
-  let key = 0
-  while (remaining.length > 0) {
-    const codeMatch = remaining.match(/^`([^`]+)`/)
-    if (codeMatch) {
-      parts.push(<code key={key++} style={{ backgroundColor: 'var(--surface-2)', padding: '1px 3px', fontSize: 11, fontFamily: mono, border: '1px solid var(--border-subtle)', borderRadius: 2 }}>{codeMatch[1]}</code>)
-      remaining = remaining.slice(codeMatch[0].length)
-      continue
-    }
-    const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/)
-    if (boldMatch) {
-      parts.push(<strong key={key++} style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{boldMatch[1]}</strong>)
-      remaining = remaining.slice(boldMatch[0].length)
-      continue
-    }
-    const nextSpecial = remaining.search(/[`*]/)
-    if (nextSpecial === -1) { parts.push(remaining); break }
-    if (nextSpecial === 0) { parts.push(remaining[0]); remaining = remaining.slice(1) }
-    else { parts.push(remaining.slice(0, nextSpecial)); remaining = remaining.slice(nextSpecial) }
-  }
-  return parts.length === 1 ? parts[0] : <>{parts}</>
-}
-
-function renderMarkdown(text: string): React.ReactNode[] {
-  if (!text) return [text]
-  const lines = text.split('\n')
-  const elements: React.ReactNode[] = []
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i]!
-    if (line.startsWith('```')) {
-      const codeLines: string[] = []
-      i++
-      while (i < lines.length && !lines[i]!.startsWith('```')) { codeLines.push(lines[i]!); i++ }
-      i++
-      elements.push(<pre key={`code-${elements.length}`} style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-subtle)', padding: '6px 8px', margin: '3px 0', overflow: 'auto', fontSize: 11, fontFamily: mono, lineHeight: 1.5, borderRadius: 2 }}><code>{codeLines.join('\n')}</code></pre>)
-      continue
-    }
-    if (line.trim() === '') { elements.push(<div key={`br-${elements.length}`} style={{ height: 3 }} />); i++; continue }
-    elements.push(<p key={`p-${elements.length}`} style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--text-secondary)', margin: '1px 0' }}>{renderInlineMarkdown(line)}</p>)
-    i++
-  }
-  return elements
-}
 
 function SystemEventTag({ task, tasks }: { task: CompactTask; tasks: CompactTask[] }) {
   const cfg = getStatusConfig(task)
@@ -1378,82 +1275,16 @@ export function CompactWorkflowView() {
       overflow: 'hidden',
     }}>
       {/* Top Toolbar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '6px 10px',
-        borderBottom: '1px solid var(--border-subtle)',
-        backgroundColor: 'var(--surface-1)',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 4 }}>
-          <Cpu size={14} color="var(--amber)" strokeWidth={1.5} />
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', fontFamily: mono, letterSpacing: '0.05em' }}>IRG</span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <ToolbarButton icon={<Plus size={12} />} label="Chat" onClick={handleNewSession} />
-        <div style={{ position: 'relative' }}>
-          <ToolbarButton icon={<History size={12} />} label="History" onClick={handleHistory} />
-          {showHistory && (
-            <div style={{
-              position: 'absolute', top: '100%', right: 0, zIndex: 100,
-              width: 260, maxHeight: 300, overflow: 'auto',
-              backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-medium)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-            }}>
-              {sessions.length === 0 && (
-                <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-faint)', fontSize: 11 }}>No sessions</div>
-              )}
-              {sessions.map(s => (
-                <div
-                  key={s.id}
-                  style={{
-                    display: 'flex', alignItems: 'center',
-                    borderBottom: '1px solid var(--border-subtle)',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-2)'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  <button
-                    onClick={() => handleSelectSession(s.id)}
-                    style={{
-                      flex: 1, display: 'block', padding: '6px 10px',
-                      background: 'none', border: 'none',
-                      cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: 'var(--text-primary)', fontFamily: sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.title || s.id}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'var(--text-faint)', fontFamily: mono }}>
-                      {s.messageCount || 0} msgs · {new Date(s.updatedAt || s.createdAt).toLocaleDateString()}
-                    </div>
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id) }}
-                    title="Delete session"
-                    style={{
-                      padding: '6px 8px', background: 'none', border: 'none',
-                      cursor: 'pointer', color: 'var(--text-faint)',
-                      display: 'flex', alignItems: 'center',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--warm-red)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <ToolbarButton
-          icon={<Play size={12} />}
-          label="Start"
-          onClick={() => setShowPicker(true)}
-          accent
-          disabled={isLoading}
-        />
-      </div>
+      <CompactToolbar
+        sessions={sessions}
+        showHistory={showHistory}
+        isLoading={isLoading}
+        onNewSession={handleNewSession}
+        onToggleHistory={handleHistory}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
+        onOpenPicker={() => setShowPicker(true)}
+      />
 
       {/* Middle Area */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
@@ -1635,306 +1466,20 @@ export function CompactWorkflowView() {
 
         {/* Workflow Overlay (expanded) */}
         {hasWorkflow && workflowExpanded && (
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(12,12,12,0.88)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 50,
-            display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            {/* Overlay header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 12px',
-              borderBottom: '1px solid rgba(255,255,255,0.15)',
-              backgroundColor: 'rgba(0,0,0,0.7)',
-              flexShrink: 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff', fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Workflow
-                </span>
-                {workflowName && (
-                  <span style={{ fontSize: 10, color: '#d4d4d4', fontFamily: mono }}>
-                    — {workflowName}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => { userCollapsedRef.current = true; setWorkflowExpanded(false) }}
-                style={{
-                  background: 'none', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 2, cursor: 'pointer', padding: '3px 8px',
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  color: '#d4d4d4', fontSize: 10, fontFamily: mono,
-                }}
-              >
-                <ChevronLeft size={10} />
-                Collapse
-              </button>
-            </div>
-
-            {/* Workflow steps */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-              {tasks.map((task, idx) => {
-                const cfg = getStatusConfig(task)
-                const color = getTaskColor(task.id, tasks)
-                const isActive = task.status === 'in_progress'
-                const isLast = idx === tasks.length - 1
-                const hasCondition = !!task.condition
-                const hasLoop = !!task.loop
-                const hasCheckpoint = !!task.checkpointAfter
-
-                // Convert hex color to rgba with proper alpha for visibility
-                const hexToRgba = (hex: string, alpha: number) => {
-                  const r = parseInt(hex.slice(1, 3), 16)
-                  const g = parseInt(hex.slice(3, 5), 16)
-                  const b = parseInt(hex.slice(5, 7), 16)
-                  return `rgba(${r},${g},${b},${alpha})`
-                }
-
-                return (
-                  <div key={task.id} style={{
-                    marginLeft: 0, position: 'relative',
-                    opacity: task.status === 'skipped' ? 0.45 : 1,
-                  }}>
-                    <div style={{
-                      position: 'absolute', left: 9, top: 0,
-                      bottom: isLast ? 16 : 0, width: 2,
-                      backgroundColor: 'rgba(255,255,255,0.15)',
-                    }} />
-
-                    <div style={{
-                      display: 'flex', alignItems: 'stretch', gap: 10, padding: '6px 0',
-                    }}>
-                      {/* Status dot */}
-                      <div style={{
-                        width: 18, height: 18, borderRadius: '50%',
-                        backgroundColor: isActive ? hexToRgba(color, 0.4) : hexToRgba(color, 0.2),
-                        border: `2px solid ${color}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0, marginTop: 3,
-                        animation: isActive ? 'pulse 2s infinite' : undefined,
-                        boxShadow: isActive ? `0 0 10px ${hexToRgba(color, 0.6)}` : 'none',
-                        zIndex: 1,
-                      }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color }} />
-                      </div>
-
-                      {/* Task card */}
-                      <div style={{
-                        flex: 1, minWidth: 0,
-                        backgroundColor: isActive ? hexToRgba(color, 0.15) : 'rgba(40,40,40,0.8)',
-                        border: `1px solid ${isActive ? color : 'rgba(255,255,255,0.15)'}`,
-                        borderRadius: 3, padding: '8px 10px',
-                      }}>
-                        {/* Badges row (static, no animation) */}
-                        {(hasCondition || hasLoop || hasCheckpoint) && (
-                          <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap' }}>
-                            {hasCondition && (
-                              <span style={{
-                                fontSize: 9, fontFamily: mono, fontWeight: 700,
-                                padding: '2px 6px',
-                                backgroundColor: 'rgba(251,191,36,0.25)',
-                                color: '#fbbf24',
-                                border: '1px solid #fbbf24',
-                                borderRadius: 2,
-                              }}>
-                                {task.condition?.type === 'llm_judge' ? 'LLM?' : `IF=${task.condition?.equals || '?'}`}
-                              </span>
-                            )}
-                            {hasLoop && (
-                              <span style={{
-                                fontSize: 9, fontFamily: mono, fontWeight: 700,
-                                padding: '2px 6px',
-                                backgroundColor: 'rgba(196,181,253,0.25)',
-                                color: '#c4b5fd',
-                                border: '1px solid #c4b5fd',
-                                borderRadius: 2,
-                              }}>
-                                ⟳ ×{task.loop?.max}
-                              </span>
-                            )}
-                            {hasCheckpoint && (
-                              <span style={{
-                                fontSize: 9, fontFamily: mono, fontWeight: 700,
-                                padding: '2px 6px',
-                                backgroundColor: 'rgba(134,239,172,0.25)',
-                                color: '#86efac',
-                                border: '1px solid #86efac',
-                                borderRadius: 2,
-                              }}>
-                                ⏸ CP
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Title + status row */}
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          justifyContent: 'space-between',
-                        }}>
-                          <span style={{
-                            fontSize: 13, fontWeight: 700,
-                            color: task.status === 'skipped' ? '#94a3b8' : '#ffffff',
-                            fontFamily: sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-                          }}>
-                            {task.title}
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                            <span style={{
-                              fontSize: 10, color: cfg.color, fontFamily: mono,
-                              display: 'flex', alignItems: 'center', gap: 3, fontWeight: 700,
-                              backgroundColor: 'rgba(0,0,0,0.5)', padding: '1px 5px', borderRadius: 2,
-                            }}>
-                              {cfg.icon} {cfg.label}
-                            </span>
-                            {task.assignee && (
-                              <span style={{
-                                fontSize: 9, color: '#e8e0d4', fontFamily: mono,
-                                backgroundColor: 'rgba(0,0,0,0.4)', padding: '1px 5px',
-                                borderRadius: 2, fontWeight: 600, border: '1px solid rgba(255,255,255,0.1)',
-                              }}>
-                                @{task.assignee}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Description (visible for active/failed tasks; collapsed by default when failed) */}
-                        {task.description && (isActive || task.status === 'failed') && (
-                          task.status === 'failed' && !expandedFailedDesc.has(task.id) ? (
-                            <button
-                              onClick={() => setExpandedFailedDesc(prev => new Set(prev).add(task.id))}
-                              style={{
-                                marginTop: 5, width: '100%', textAlign: 'left',
-                                fontSize: 10, fontFamily: mono,
-                                color: '#fca5a5', cursor: 'pointer',
-                                padding: '3px 6px',
-                                backgroundColor: 'rgba(0,0,0,0.3)',
-                                borderRadius: 2,
-                                border: '1px solid rgba(252,165,165,0.2)',
-                                display: 'flex', alignItems: 'center', gap: 4,
-                              }}
-                            >
-                              <ChevronRight size={10} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                                {task.description.slice(0, 60)}
-                              </span>
-                              <span style={{ fontSize: 9, opacity: 0.7, flexShrink: 0 }}>展开</span>
-                            </button>
-                          ) : task.status === 'failed' ? (
-                            <div style={{ marginTop: 5 }}>
-                              <button
-                                onClick={() => setExpandedFailedDesc(prev => {
-                                  const next = new Set(prev)
-                                  next.delete(task.id)
-                                  return next
-                                })}
-                                style={{
-                                  width: '100%', textAlign: 'left',
-                                  fontSize: 10, fontFamily: mono,
-                                  color: '#fca5a5', cursor: 'pointer',
-                                  padding: '3px 6px', marginBottom: 3,
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  display: 'flex', alignItems: 'center', gap: 4,
-                                }}
-                              >
-                                <ChevronDown size={10} />
-                                <span style={{ fontSize: 9, opacity: 0.7 }}>收起描述</span>
-                              </button>
-                              <div style={{
-                                fontSize: 11, fontFamily: mono,
-                                color: '#fca5a5', lineHeight: 1.45,
-                                padding: '4px 6px',
-                                backgroundColor: 'rgba(0,0,0,0.5)',
-                                borderRadius: 2,
-                                maxHeight: 80, overflow: 'auto',
-                                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                                border: '1px solid rgba(255,255,255,0.15)',
-                              }}>
-                                {task.description.slice(0, 400)}
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{
-                              marginTop: 5, fontSize: 11, fontFamily: mono,
-                              color: '#e8e0d4', lineHeight: 1.45,
-                              padding: '4px 6px',
-                              backgroundColor: 'rgba(0,0,0,0.5)',
-                              borderRadius: 2,
-                              maxHeight: 80, overflow: 'auto',
-                              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                              border: '1px solid rgba(255,255,255,0.15)',
-                            }}>
-                              {task.description.slice(0, 400)}
-                            </div>
-                          )
-                        )}
-
-                        {/* Error summary for failed tasks */}
-                        {task.status === 'failed' && task.lastError && (
-                          <div style={{
-                            marginTop: 5, fontSize: 11, fontFamily: mono,
-                            color: '#fca5a5', lineHeight: 1.45,
-                            padding: '5px 8px',
-                            backgroundColor: 'rgba(252,165,165,0.1)',
-                            borderRadius: 2,
-                            border: '1px solid rgba(252,165,165,0.3)',
-                            borderLeft: '3px solid #fca5a5',
-                            display: 'flex', alignItems: 'flex-start', gap: 5,
-                          }}>
-                            <XCircle size={11} color="#fca5a5" style={{ marginTop: 1, flexShrink: 0 }} />
-                            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                              {task.lastError}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
-            </div>
-
-            {/* Progress summary */}
-            {tasks.length > 0 && (
-              <div style={{
-                padding: '8px 12px',
-                borderTop: '1px solid var(--border-medium)',
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                flexShrink: 0,
-              }}>
-                <div style={{ display: 'flex', gap: 8, fontSize: 10, fontFamily: mono, flexWrap: 'wrap' }}>
-                  {tasks.filter(t => t.status === 'in_progress').length > 0 && (
-                    <span style={{ color: '#fbbf24', fontWeight: 700 }}>{tasks.filter(t => t.status === 'in_progress').length} running</span>
-                  )}
-                  {tasks.filter(t => t.status === 'done').length > 0 && (
-                    <span style={{ color: '#86efac', fontWeight: 700 }}>{tasks.filter(t => t.status === 'done').length} done</span>
-                  )}
-                  {tasks.filter(t => t.status === 'failed').length > 0 && (
-                    <span style={{ color: '#fca5a5', fontWeight: 700 }}>{tasks.filter(t => t.status === 'failed').length} failed</span>
-                  )}
-                  <span style={{ color: '#d4d4d4', fontWeight: 600 }}>
-                    {tasks.filter(t => t.status === 'todo').length} pending
-                  </span>
-                </div>
-                <div style={{ marginTop: 6, height: 4, backgroundColor: 'var(--surface-3)', borderRadius: 2, overflow: 'hidden' }}>
-                  {(() => {
-                    const done = tasks.filter(t => t.status === 'done').length
-                    const total = tasks.length
-                    const pct = total > 0 ? Math.round((done / total) * 100) : 0
-                    return <div style={{ width: `${pct}%`, height: '100%', backgroundColor: '#86efac', borderRadius: 2, transition: 'width 0.3s' }} />
-                  })()}
-                </div>
-              </div>
-            )}
-          </div>
+          <CompactWorkflowOverlay
+            tasks={tasks}
+            workflowName={workflowName || ''}
+            expandedFailedDesc={expandedFailedDesc}
+            onToggleFailedDesc={(taskId, expand) => {
+              setExpandedFailedDesc(prev => {
+                const next = new Set(prev)
+                if (expand) next.add(taskId)
+                else next.delete(taskId)
+                return next
+              })
+            }}
+            onClose={() => { userCollapsedRef.current = true; setWorkflowExpanded(false) }}
+          />
         )}
       </div>
 
@@ -2560,32 +2105,4 @@ export function CompactWorkflowView() {
   )
 }
 
-function ToolbarButton({ icon, label, onClick, accent, disabled }: {
-  icon: React.ReactNode
-  label: string
-  onClick: () => void
-  accent?: boolean
-  disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '4px 8px', fontSize: 10, fontFamily: mono, fontWeight: 500,
-        backgroundColor: accent ? 'var(--amber)' : 'transparent',
-        border: accent ? 'none' : '1px solid var(--border-subtle)',
-        borderRadius: 2,
-        color: accent ? '#0c0c0c' : 'var(--text-muted)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        transition: 'all 0.15s',
-        letterSpacing: '0.03em',
-      }}
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}
+
